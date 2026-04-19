@@ -41,3 +41,26 @@ Purpose: CLAUDE.md が 141 行となり post-tool-use hook が分割検討を出
 | 47.1.1 | (a) CLAUDE.md 現行 141 行を section 単位で token 計測し、どのセクションが session-start 読込時に最もコストを食っているかをデータで出す（`wc -l` + 各セクションの行数表を `docs/claude-md-structure-audit.md` に記録）。(b) 他の harness repo (.claude/rules/ 配下 11 ファイル) に移せる section 候補を列挙（例: Permission Boundaries → `.claude/rules/permission-boundaries.md`、MCP Trust Policy → `.claude/rules/mcp-trust-policy.md` として再配置可能か）。(c) 分割した場合の CLAUDE.md side の pointer 方式（`@path/to/file.md` 参照 vs インラインコピー）を比較し、CC 2.1.111+ で `@` 記法が安定動作するかを `tests/test-claude-md-auto-include.sh` のような smoke test で確認（既存があれば参照、無ければ新設不要で観察のみ）。(d) 最終判断: 分割実装する/現状維持する のどちらかを rationale 付きで docs に記録 | (a) section 別 line 計測が docs/claude-md-structure-audit.md にある、(b) 分割候補 section が 2 つ以上列挙されている、(c) `@` 記法の可否が判定済み、(d) 判断と根拠が記録されている、(e) この Phase は調査のみで本体 CLAUDE.md は変更しない | - | cc:TODO |
 
 ---
+
+## Phase 48: Session Monitor 能動監視化 [P2]
+
+Purpose: `monitors/monitors.json` の description が掲げる 3 要素（harness-mem health / advisor/reviewer state / Plans.md drift）のうち、現時点で能動監視できているのは Plans.md の件数カウントと git 状態のみ。残り 2 要素（mem health、advisor drift）の検知ロジックと、Plans.md の閾値警告を `go/internal/session/monitor.go` に追加し、monitors manifest の description と実装の乖離を解消する。出力フォーマットは `⚠️ {category}: {detail}` の 1 行形式に統一し、Claude 側が重要度判定して PushNotification を送れるようにする。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 48.1.1 | `go/internal/session/monitor.go` の `MonitorHandler.Handle` に harness-mem health 呼び出しを追加する。`bin/harness mem health` サブコマンド（未実装なら同 Phase 内で新設）を `exec.Command` で起動、timeout 2 秒、exit code と JSON 出力から healthy/unhealthy を判定。unhealthy 時は stdout 末尾に `⚠️ harness-mem unhealthy: {reason}` の 1 行を出力し、session.json に `harness_mem: { healthy: bool, last_checked: <RFC3339>, last_error: string }` フィールドを追加する。timeout または exec 失敗時は healthy=unknown で握り潰し、monitor 全体は停止させない | (a) `session.json` に `harness_mem` フィールドが書かれる、(b) mem 不達時に stdout の最終行に `⚠️ harness-mem unhealthy:` プレフィックス行が出る、(c) `go/internal/session/monitor_test.go` に healthy / unhealthy / timeout の 3 ケースが追加され全部 pass、(d) `time go run ./go/cmd/harness hook session-monitor < /dev/null` が実 repo で 3 秒以内に完了する | - | cc:完了 [888b1953] |
+| 48.1.2 | `MonitorHandler` に session.events.jsonl 読み取りと advisor/reviewer drift 検知を追加する。`.claude/state/session.events.jsonl` の末尾 200 行を読み、`advisor-request.v1` 型のイベントに対応する `advisor-response.v1` が TTL（既定 600 秒、`.claude-code-harness.config.yaml` の `orchestration.advisor_ttl_seconds` で上書き可）を超えて見つからない場合、stdout に `⚠️ advisor drift: request_id={id}, waiting {elapsed}s` を 1 行出力する。複数件存在する場合は最古の 1 件のみ表示。reviewer 側の `review-result.v1` 未応答も同じロジックで `⚠️ reviewer drift:` として検出する | (a) TTL 超過の advisor request が 1 件以上あれば `⚠️ advisor drift` 行が stdout に出る、(b) TTL 未満の request では警告行が出ない、(c) 対応する response が既に存在する request は検出対象外になる、(d) `config.yaml` の `orchestration.advisor_ttl_seconds` を 10 秒に設定したテストで 10 秒超が drift 扱いになる、(e) `monitor_test.go` に drift-hit / drift-miss / config-override の 3 ケース追加 | - | cc:完了 [888b1953] |
+| 48.1.3 | `collectPlansState` に閾値判定を追加する。判定条件は (i) `WIP_COUNT >= wip_threshold`（既定 5）、(ii) Plans.md の `last_modified` が現在時刻から `stale_hours` 時間（既定 24）以上経過、のいずれか 1 つ以上が真の場合。該当時は stdout に `⚠️ plans drift: WIP={n}, stale_for={hours}h` を 1 行出力する。閾値は `.claude-code-harness.config.yaml` の `monitor.plans_drift.wip_threshold` / `monitor.plans_drift.stale_hours` で上書き可能。両キーとも未指定なら既定値を使い、設定読み取り失敗時は警告を出さずに continue する | (a) WIP=0 かつ 24h 以内更新なら警告行無し、(b) WIP >= 5 で `⚠️ plans drift: WIP=` プレフィックス行が出る、(c) 24h 超の stale で同じプレフィックス行が出る（WIP 件数と独立）、(d) config 未指定時に既定値 (5 / 24) が適用される、(e) `monitor_test.go` に wip-threshold-hit / stale-hit / below-threshold / config-override の 4 ケース追加 | - | cc:完了 [888b1953] |
+
+---
+
+## Phase 49: SessionStart に resume_pack 注入を追加 (XR-003) [P0]
+
+Purpose: `cross-repo-session-bootstrap.sh` が harness-mem `/v1/resume-pack` を一切呼んでおらず、新 session 起動時に直前 session の文脈が注入されない状態が 2026-04-19 に確認された。daemon 自体は healthy、`detail_level=L0` の軽量 pack も取得可能なのに hook 側の呼び出しコードが欠損していた。`harness-governance-private/XR-Registry.md` の **XR-003** として発番、harness-mem 側 Plans.md §90 と整合。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 49.1.1 | `.claude/hooks/cross-repo-session-bootstrap.sh` に `/v1/resume-pack` 呼び出しを追加する。`detail_level=L0` / `resume_pack_max_tokens=1500` / `limit=3` で取得し、jq で `items` から最新の `session_summary` タイプを抽出、`## 直前セッション要約 (session_id[0:8], ended_at)` セクションを `BOOT_CONTEXT` 末尾に append する。timeout 3 秒、daemon 不達 / jq 欠損 / summary null はいずれも silent skip で bootstrap 本体を壊さない。`HARNESS_MEM_HOST` / `HARNESS_MEM_PORT` 環境変数で上書き可能 (既定 127.0.0.1:37888) | (a) `CLAUDE_PROJECT_DIR=<harness-mem path> bash cross-repo-session-bootstrap.sh` を実行すると stdout JSON の `additionalContext` に `## 直前セッション要約` セクションが含まれる、(b) daemon 停止中でも exit 0 で既存の governance context だけが返る、(c) curl / jq 未インストール環境でも exit 0 で skip、(d) 注入サイズが 5KB 以内、(e) bootstrap 実行が 5 秒以内に完了する | - | cc:WIP |
+| 49.1.2 | harness-mem 側 follow-up `summary_only=true` mode との接続 (S90-002 が landed 後、hook 側 jq を単純化) | harness-mem 側 PR が merge されたら hook script を 3 行程度に縮小できる | 49.1.1, S90-002 | cc:TODO |
+
+---

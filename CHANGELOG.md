@@ -6,6 +6,44 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### テーマ: Session Monitor の能動監視化 — manifest と実装の description 乖離を解消
+
+**`monitors/monitors.json` が掲げる 3 要素（harness-mem health / advisor-reviewer drift / Plans.md drift）のうち、これまでは Plans.md の件数カウントと git 状態しか見られていなかった。残り 2 要素を `go/internal/session/monitor.go` に実装し、出力を `⚠️ {category}: {detail}` 1 行形式に統一することで、Claude 側が重要度判定して PushNotification を発火できるようにした。**
+
+---
+
+#### 1. harness-mem health の能動監視 (Phase 48.1.1)
+
+**今まで**: `monitors.json` の description には「harness-mem health を監視する」と書かれていましたが、実装側にはそれに対応するコードが無く、daemon が unhealthy でも session-monitor は黙って素通りしていました。新 session 起動時に resume_pack が取れないままワークフローが始まる事故（XR-003 の遠因）が発生する状態でした。
+
+**今後**: `bin/harness mem health` サブコマンドを新設し、`MonitorHandler.Handle` から timeout 2 秒で起動します。不達時は stdout 末尾に `⚠️ harness-mem unhealthy: {reason}` の 1 行を出力し、session.json に `harness_mem: { healthy, last_checked, last_error }` を記録。timeout や exec 失敗は healthy=unknown で握り潰して monitor 全体は止めません。
+
+```
+⚠️ harness-mem unhealthy: connection refused (127.0.0.1:37888)
+```
+
+#### 2. advisor / reviewer drift の検知 (Phase 48.1.2)
+
+**今まで**: `advisor-request.v1` を投げたあとで Advisor が返答せずに stall しても、Lead が気づく手段が「明らかに進捗が止まった」と感じるタイミングまで存在しませんでした。Reviewer についても同様に、`review-result.v1` 未応答が session 終端まで放置されるケースがありました。
+
+**今後**: `.claude/state/session.events.jsonl` の末尾 200 行を読み、TTL（既定 600 秒）を超えて response がない request を検出。最古 1 件だけを `⚠️ advisor drift: request_id={id}, waiting {elapsed}s` / `⚠️ reviewer drift: ...` で報告します。TTL は `.claude-code-harness.config.yaml` の `orchestration.advisor_ttl_seconds` で project 単位で上書き可能。
+
+#### 3. Plans.md の閾値判定 (Phase 48.1.3)
+
+**今まで**: WIP 件数や Plans.md の最終更新時刻は session.json に記録されていましたが、閾値判定がないため「放置されている WIP がある」「Plans.md が丸 1 日以上動いていない」といった drift を能動的に指摘する仕組みがありませんでした。
+
+**今後**: `collectPlansState` に閾値判定を追加し、`WIP ≥ wip_threshold`（既定 5）または `stale_for ≥ stale_hours`（既定 24）のいずれか 1 つが真になると `⚠️ plans drift: WIP={n}, stale_for={hours}h` を出力します。両閾値とも `.claude-code-harness.config.yaml` の `monitor.plans_drift.wip_threshold` / `monitor.plans_drift.stale_hours` で上書きできます。
+
+#### 4. 既知の non-blocker（Reviewer APPROVE 時の minor findings）
+
+Phase 48 の Reviewer 判定は `APPROVE` (critical=0 / major=0 / minor=3) でしたが、以下 3 件の follow-up は次の機会に織り込みます。ユーザー影響はありません。
+
+- `go/internal/session/monitor.go:751-754` — `checkPlansDrift` の WIP-only ブランチで `stale_for=0h` が sprintf される。両ブランチで同一書式に統一できる余地
+- `go/internal/session/monitor.go:691,763` — config パス読み取りに `filepath.Clean` / symlink チェック未実装（projectRoot は内部由来のため minor）
+- `go/internal/session/monitor_test.go` — DoD で reviewer drift も同ロジックと明記されているが `TestMonitorHandler_ReviewerDrift_*` テスト欠落（実装は `monitor.go:641-675` に存在）
+
+---
+
 ## [4.3.0] - 2026-04-19
 
 ### テーマ: Worker 3層防御 + harness-review fork 起動安定化 — "Arcana" 完成
