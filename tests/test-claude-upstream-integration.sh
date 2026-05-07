@@ -1203,4 +1203,80 @@ for hooks_file in "${HOOK_FILES[@]}"; do
   }
 done
 
+# ---------------------------------------------------------------------------
+# Phase 62: Claude Code 2.1.112-2.1.132 後続活用 + Opus 4.7 follow-up
+# ---------------------------------------------------------------------------
+
+# Phase 62.1.1: Worker stall 10 min timeout (CC 2.1.113) — 2-layer defense
+WORKER_AGENT="${ROOT_DIR}/agents/worker.md"
+TEAM_COMPOSITION_DOC="${ROOT_DIR}/docs/team-composition.md"
+grep -Eq '600|10 分|stall' "${WORKER_AGENT}" || {
+  echo "agents/worker.md is missing CC 2.1.113 stall (600s/10min) guidance — Phase 62.1.1"
+  exit 1
+}
+grep -q 'elicitation-handler' "${WORKER_AGENT}" || {
+  echo "agents/worker.md is missing elicitation-handler 2-layer defense — Phase 62.1.1"
+  exit 1
+}
+grep -q 're-spawn' "${TEAM_COMPOSITION_DOC}" || {
+  echo "docs/team-composition.md is missing Worker stall re-spawn rule — Phase 62.1.1"
+  exit 1
+}
+
+# Phase 62.1.2: ENABLE_PROMPT_CACHING_1H opt-in for long-running skills
+LONG_RUNNING_DOC="${ROOT_DIR}/docs/long-running-harness.md"
+BREEZING_SKILL="${ROOT_DIR}/skills/breezing/SKILL.md"
+HARNESS_LOOP_SKILL="${ROOT_DIR}/skills/harness-loop/SKILL.md"
+PROMPT_CACHE_HITS=0
+for cache_file in "${LONG_RUNNING_DOC}" "${BREEZING_SKILL}" "${HARNESS_LOOP_SKILL}"; do
+  if grep -q 'ENABLE_PROMPT_CACHING_1H' "${cache_file}"; then
+    PROMPT_CACHE_HITS=$((PROMPT_CACHE_HITS + 1))
+  fi
+done
+[ "${PROMPT_CACHE_HITS}" -ge 3 ] || {
+  echo "ENABLE_PROMPT_CACHING_1H must be referenced in long-running-harness.md, breezing, and harness-loop — Phase 62.1.2 (got ${PROMPT_CACHE_HITS}/3)"
+  exit 1
+}
+grep -q '子プロセスへの env 継承' "${LONG_RUNNING_DOC}" || {
+  echo "docs/long-running-harness.md is missing codex-companion env inheritance section — Phase 62.1.2"
+  exit 1
+}
+
+# Phase 62.1.3: hooks type=mcp_tool adoption decision doc
+HOOKS_MCP_EVAL_DOC="${ROOT_DIR}/docs/hooks-mcp-tool-evaluation.md"
+[ -f "${HOOKS_MCP_EVAL_DOC}" ] || {
+  echo "${HOOKS_MCP_EVAL_DOC} does not exist — Phase 62.1.3"
+  exit 1
+}
+grep -q 'silent skip' "${HOOKS_MCP_EVAL_DOC}" || {
+  echo "hooks-mcp-tool-evaluation.md must record fallback policy as silent skip — Phase 62.1.3"
+  exit 1
+}
+grep -Eq '保留|採用|却下' "${HOOKS_MCP_EVAL_DOC}" || {
+  echo "hooks-mcp-tool-evaluation.md must record adoption decision (保留/採用/却下) — Phase 62.1.3"
+  exit 1
+}
+
+# Phase 62.1.4: deniedDomains baseline extension (template canonical)
+SECURITY_TEMPLATE_PHASE62="${ROOT_DIR}/templates/claude/settings.security.json.template"
+jq -e '.sandbox.network.deniedDomains | length >= 4' "${SECURITY_TEMPLATE_PHASE62}" >/dev/null || {
+  echo "${SECURITY_TEMPLATE_PHASE62} must have at least 4 deniedDomains baseline entries — Phase 62.1.4"
+  exit 1
+}
+jq -e '.sandbox.network.deniedDomains | (index("pastebin.com") != null) and (index("transfer.sh") != null)' "${SECURITY_TEMPLATE_PHASE62}" >/dev/null || {
+  echo "${SECURITY_TEMPLATE_PHASE62} must include pastebin.com and transfer.sh in deniedDomains — Phase 62.1.4"
+  exit 1
+}
+
+# Phase 62.1.5: wrapper bypass coverage for R06/R11/R12 (CC 2.1.113)
+GUARDRAIL_RULES_TEST_PHASE62="${ROOT_DIR}/go/internal/guardrail/rules_test.go"
+for wrapped in TestR06_WrappedByEnv TestR06_WrappedBySudo TestR06_WrappedByWatch \
+               TestR11_WrappedByEnv TestR11_WrappedBySudo TestR11_WrappedByWatch \
+               TestR12_WrappedByEnv TestR12_WrappedBySudo TestR12_WrappedByWatch; do
+  grep -q "func ${wrapped}" "${GUARDRAIL_RULES_TEST_PHASE62}" || {
+    echo "${GUARDRAIL_RULES_TEST_PHASE62} is missing ${wrapped} — Phase 62.1.5"
+    exit 1
+  }
+done
+
 echo "OK"

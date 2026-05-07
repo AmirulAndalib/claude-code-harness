@@ -42,6 +42,15 @@ Lead
 ここでいう「グループ」は、同じ commit にまとめても競合しない書き込み集合を指す。
 同じファイルを 2 worker に書かせる分割は禁止。
 
+## Worker stall 時の re-spawn (CC 2.1.113+)
+
+Lead は次の 2 条件のいずれかを満たしたら、同じ task を **最大 1 回** 再 spawn する。
+
+- Plans.md `cc:WIP` 状態が **10 分** (600 秒) 超で更新されない
+- CC 本体が stall log を出力 (`subagents stalling mid-stream fail after 10 minutes`)
+
+再 spawn 後も同じ条件が再現したら escalation する。Worker 並列数の決め方には影響せず、stall 検出は Lead 側のみ責務。詳細は [`agents/worker.md`](../agents/worker.md) の「Stall 検出 — 2 層防御」を参照。
+
 ## 実行フロー
 
 1. Lead が task を分解し、`sprint-contract` を作る

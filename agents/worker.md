@@ -205,6 +205,23 @@ skills:
   - 最後のエラーメッセージ
   - 試した修正の要約 3 行以内
 
+## Stall 検出 — 2 層防御 (CC 2.1.113+)
+
+長時間 stream 中に Worker が応答停止した場合の防御は次の 2 層に分ける。
+
+| 層 | 機構 | 上限 | 反応 |
+|----|------|-----|------|
+| 受動: CC stall timeout | Claude Code 本体 (2.1.113+) | 600 秒 (10 分) | subagent を自動 fail 扱いにし Lead に通知する |
+| 能動: elicitation-handler | `scripts/hook-handlers/elicitation-handler.sh` | breezing session 中は即時 deny | elicitation prompt に対して自動応答し Worker のフリーズを未然に防ぐ |
+
+Lead は次のいずれかを観測したら同じ task を最大 1 回だけ再 spawn する。再 spawn 後も 600 秒 stall が再現したら `status: escalated` を返す。
+
+- `cc:WIP` 状態が 10 分超 (Plans.md timestamp 比較)
+- CC が `subagents stalling mid-stream fail after 10 minutes` を log に出力
+- elicitation-handler.sh が `decision: deny` を返したのに Worker が次の出力を 5 分以上出さない
+
+Worker 自身は stall 検出を行わない (Lead 側の責務)。Worker は `task_complexity_note` に「stall が起きた」事実だけ記録する。
+
 ## モード別ルール
 
 > **注意**: embedded git repo 検出 (NG-2) と nested teammate spawn 禁止 (NG-3) は universal NG rules として全 mode に適用される。Plans.md cc:* マーカー書換禁止 (NG-1) は `mode == breezing` 限定で、他 mode の Plans.md 更新契約は維持される。
