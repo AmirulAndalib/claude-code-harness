@@ -3,6 +3,34 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Phase 64.1.1: archive-aware Plans.md grep helper
+# Plans.md または .claude/memory/archive/Plans-*.md (archive 群) の
+# いずれかに pattern が一致すれば成功とする。
+# Plans.md の archive 操作 (古い Phase を別ファイルへ切り出す cleanup) との
+# 整合性のため、Phase 51-58 系の永続要求 grep をこの helper 経由に置換する。
+# 意図 = 「記録が現存することを検証」は維持し、検索範囲だけを拡張 (= test 改ざんではない)。
+# 承認: .claude/rules/test-quality.md 例外フォーマットでユーザー明示承認済み (2026-05-08)。
+grep_plans_or_archive() {
+    local pattern="$1"
+    local plans="${ROOT_DIR}/Plans.md"
+    local archive_dir="${ROOT_DIR}/.claude/memory/archive"
+
+    if [ -f "${plans}" ] && grep -q -- "${pattern}" "${plans}" 2>/dev/null; then
+        return 0
+    fi
+
+    if [ -d "${archive_dir}" ]; then
+        for archive_file in "${archive_dir}"/Plans-*.md; do
+            [ -f "${archive_file}" ] || continue
+            if grep -q -- "${pattern}" "${archive_file}" 2>/dev/null; then
+                return 0
+            fi
+        done
+    fi
+
+    return 1
+}
+
 SETTINGS_FILE="${ROOT_DIR}/.claude-plugin/settings.json"
 HOOK_FILES=(
   "${ROOT_DIR}/hooks/hooks.json"
@@ -190,13 +218,16 @@ UPSTREAM_SNAPSHOT_DOC="${ROOT_DIR}/docs/upstream-update-snapshot-2026-04-21.md"
 }
 for referencing_file in \
   "${ROOT_DIR}/CHANGELOG.md" \
-  "${ROOT_DIR}/docs/CLAUDE-feature-table.md" \
-  "${ROOT_DIR}/Plans.md"; do
+  "${ROOT_DIR}/docs/CLAUDE-feature-table.md"; do
   grep -q 'upstream-update-snapshot-2026-04-21' "${referencing_file}" || {
     echo "${referencing_file} is missing the expected upstream-update-snapshot-2026-04-21 reference"
     exit 1
   }
 done
+grep_plans_or_archive 'upstream-update-snapshot-2026-04-21' || {
+  echo "Plans.md (or archive) is missing the expected upstream-update-snapshot-2026-04-21 reference"
+  exit 1
+}
 
 # Phase 52: upstream update skill review contract and mirror drift checks
 for skill_name in "${UPSTREAM_SKILL_NAMES[@]}"; do
@@ -268,13 +299,16 @@ PHASE53_SNAPSHOT_DOC="${ROOT_DIR}/docs/upstream-update-snapshot-2026-04-23.md"
 }
 for referencing_file in \
   "${ROOT_DIR}/CHANGELOG.md" \
-  "${ROOT_DIR}/docs/CLAUDE-feature-table.md" \
-  "${ROOT_DIR}/Plans.md"; do
+  "${ROOT_DIR}/docs/CLAUDE-feature-table.md"; do
   grep -q 'upstream-update-snapshot-2026-04-23' "${referencing_file}" || {
     echo "${referencing_file} is missing the expected upstream-update-snapshot-2026-04-23 reference"
     exit 1
   }
 done
+grep_plans_or_archive 'upstream-update-snapshot-2026-04-23' || {
+  echo "Plans.md (or archive) is missing the expected upstream-update-snapshot-2026-04-23 reference"
+  exit 1
+}
 grep -q '53.1.2 MCP tool hook decision' "${PHASE53_SNAPSHOT_DOC}" || {
   echo "Phase 53 snapshot is missing the 53.1.2 MCP tool hook decision"
   exit 1
@@ -790,13 +824,16 @@ PHASE56_FOLLOWUP_DOC="${ROOT_DIR}/docs/upstream-followups-phase56-2026-04-25.md"
 }
 for referencing_file in \
   "${ROOT_DIR}/CHANGELOG.md" \
-  "${ROOT_DIR}/docs/CLAUDE-feature-table.md" \
-  "${ROOT_DIR}/Plans.md"; do
+  "${ROOT_DIR}/docs/CLAUDE-feature-table.md"; do
   grep -q 'upstream-update-snapshot-2026-04-25' "${referencing_file}" || {
     echo "${referencing_file} is missing the expected upstream-update-snapshot-2026-04-25 reference"
     exit 1
   }
 done
+grep_plans_or_archive 'upstream-update-snapshot-2026-04-25' || {
+  echo "Plans.md (or archive) is missing the expected upstream-update-snapshot-2026-04-25 reference"
+  exit 1
+}
 grep -q 'https://code.claude.com/docs/en/changelog' "${PHASE56_SNAPSHOT_DOC}" || {
   echo "Phase 56 snapshot must include the Claude Code docs changelog URL"
   exit 1
@@ -921,35 +958,35 @@ grep -q 'docs-only' "${ROOT_DIR}/skills/harness-release/SKILL.md" || {
   echo "harness-release must document the docs-only multi-host boundary"
   exit 1
 }
-grep -q '56.2.2 | Codex `0.124.0` stable hooks' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '56.2.2 | Codex `0.124.0` stable hooks' || {
   echo "Plans.md must keep the Codex 0.124.0 hooks follow-up task"
   exit 1
 }
-grep -q '56.2.1 | Claude Code `PostToolUse.duration_ms`' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '56.2.1 | Claude Code `PostToolUse.duration_ms`' || {
   echo "Plans.md must keep the Claude Code duration/statusline follow-up task"
   exit 1
 }
-grep -q '56.2.3 | `prUrlTemplate` / `--from-pr` multi-host review support' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '56.2.3 | `prUrlTemplate` / `--from-pr` multi-host review support' || {
   echo "Plans.md must keep the multi-host review follow-up task"
   exit 1
 }
-grep -q '56.2.4 | Codex `0.124.0` multi-environment app-server と branch/workdir policy' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '56.2.4 | Codex `0.124.0` multi-environment app-server と branch/workdir policy' || {
   echo "Plans.md must keep the multi-environment app-server follow-up task"
   exit 1
 }
-grep -q '56.2.1 .* cc:完了' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '56.2.1 .* cc:完了' || {
   echo "Plans.md must mark 56.2.1 as complete"
   exit 1
 }
-grep -q '56.2.2 .* cc:完了' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '56.2.2 .* cc:完了' || {
   echo "Plans.md must mark 56.2.2 as complete"
   exit 1
 }
-grep -q '56.2.3 .* cc:完了' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '56.2.3 .* cc:完了' || {
   echo "Plans.md must mark 56.2.3 as complete"
   exit 1
 }
-grep -q '56.2.4 .* cc:完了' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '56.2.4 .* cc:完了' || {
   echo "Plans.md must mark 56.2.4 as complete"
   exit 1
 }
@@ -992,13 +1029,16 @@ PHASE58_CODEX_PLUGIN_DOC="${ROOT_DIR}/docs/codex-plugin-workflows-policy.md"
 }
 for referencing_file in \
   "${ROOT_DIR}/CHANGELOG.md" \
-  "${ROOT_DIR}/docs/CLAUDE-feature-table.md" \
-  "${ROOT_DIR}/Plans.md"; do
+  "${ROOT_DIR}/docs/CLAUDE-feature-table.md"; do
   grep -q 'upstream-update-snapshot-2026-05-03' "${referencing_file}" || {
     echo "${referencing_file} is missing the expected upstream-update-snapshot-2026-05-03 reference"
     exit 1
   }
 done
+grep_plans_or_archive 'upstream-update-snapshot-2026-05-03' || {
+  echo "Plans.md (or archive) is missing the expected upstream-update-snapshot-2026-05-03 reference"
+  exit 1
+}
 grep -q 'https://code.claude.com/docs/en/changelog' "${PHASE58_SNAPSHOT_DOC}" || {
   echo "Phase 58 snapshot must include the Claude Code docs changelog URL"
   exit 1
@@ -1147,39 +1187,39 @@ grep -q 'protected path taxonomy' "${ROOT_DIR}/CHANGELOG.md" || {
   echo "CHANGELOG must mention protected path taxonomy follow-up"
   exit 1
 }
-grep -q '58.2.1 | Claude Code `--dangerously-skip-permissions`' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '58.2.1 | Claude Code `--dangerously-skip-permissions`' || {
   echo "Plans.md must keep the Phase 58 protected-write hardening task"
   exit 1
 }
-grep -q '58.2.2 | Claude Code `PostToolUse` の `hookSpecificOutput.updatedToolOutput`' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '58.2.2 | Claude Code `PostToolUse` の `hookSpecificOutput.updatedToolOutput`' || {
   echo "Plans.md must keep the Phase 58 updatedToolOutput governance task"
   exit 1
 }
-grep -q '58.3.1 | Codex `0.125.0` / `0.128.0` の permission profiles' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '58.3.1 | Codex `0.125.0` / `0.128.0` の permission profiles' || {
   echo "Plans.md must keep the Phase 58 Codex permission profile task"
   exit 1
 }
-grep -q '58.3.2 | Codex `0.128.0` の plugin workflows' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '58.3.2 | Codex `0.128.0` の plugin workflows' || {
   echo "Plans.md must keep the Phase 58 Codex plugin workflow task"
   exit 1
 }
-grep -q '58.1.1 .* cc:完了' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '58.1.1 .* cc:完了' || {
   echo "Plans.md must mark 58.1.1 as complete"
   exit 1
 }
-grep -q '58.1.2 .* cc:完了' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '58.1.2 .* cc:完了' || {
   echo "Plans.md must mark 58.1.2 as complete"
   exit 1
 }
-grep -q '58.1.3 .* cc:完了' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '58.1.3 .* cc:完了' || {
   echo "Plans.md must mark 58.1.3 as complete"
   exit 1
 }
-grep -q '58.2.1 .* cc:完了' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '58.2.1 .* cc:完了' || {
   echo "Plans.md must mark 58.2.1 as complete"
   exit 1
 }
-grep -q '58.3.1 .* cc:完了' "${ROOT_DIR}/Plans.md" || {
+grep_plans_or_archive '58.3.1 .* cc:完了' || {
   echo "Plans.md must mark 58.3.1 as complete"
   exit 1
 }
@@ -1314,13 +1354,16 @@ PHASE62_SNAPSHOT_DOC="${ROOT_DIR}/docs/upstream-update-snapshot-2026-05-07.md"
 }
 for referencing_file in \
   "${ROOT_DIR}/CHANGELOG.md" \
-  "${ROOT_DIR}/docs/CLAUDE-feature-table.md" \
-  "${ROOT_DIR}/Plans.md"; do
+  "${ROOT_DIR}/docs/CLAUDE-feature-table.md"; do
   grep -q 'Phase 62' "${referencing_file}" || {
     echo "${referencing_file} is missing the expected Phase 62 reference"
     exit 1
   }
 done
+grep_plans_or_archive 'Phase 62' || {
+  echo "Plans.md (or archive) is missing the expected Phase 62 reference"
+  exit 1
+}
 grep -q 'B: 書いただけ' "${PHASE62_SNAPSHOT_DOC}" || {
   echo "${PHASE62_SNAPSHOT_DOC} must record B: 書いただけ 0 件 reasoning — Phase 62.3.1"
   exit 1
