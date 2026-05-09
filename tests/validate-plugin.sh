@@ -730,6 +730,12 @@ else
     fail_test "cross-project-groups-schema の契約テストに失敗 — 'bash tests/test-cross-project-groups-schema.sh' で詳細確認"
 fi
 
+if bash "$PLUGIN_ROOT/tests/test-redact-by-dictionary.sh" > /dev/null 2>&1; then
+    pass_test "Phase 65.3.2 Layer 2a 辞書ベース固有名詞 redaction (PiiRule 互換 + 二重置換ガード) が動作します (test-redact-by-dictionary.sh)"
+else
+    fail_test "redact-by-dictionary の契約テストに失敗 — 'bash tests/test-redact-by-dictionary.sh' で詳細確認"
+fi
+
 echo ""
 echo "=========================================="
 echo "テスト結果サマリー"
