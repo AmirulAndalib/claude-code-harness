@@ -772,6 +772,12 @@ else
     fail_test "harness-progress の契約テストに失敗 — 'bash tests/test-harness-progress.sh' で詳細確認"
 fi
 
+if bash "$PLUGIN_ROOT/tests/test-progress-regen.sh" > /dev/null 2>&1; then
+    pass_test "Phase 65.4.2 PostToolUse hook 自動再生成 + 60秒 rate limit + dual hooks.json sync が動作します (test-progress-regen.sh)"
+else
+    fail_test "progress-regen の契約テストに失敗 — 'bash tests/test-progress-regen.sh' で詳細確認"
+fi
+
 echo ""
 echo "=========================================="
 echo "テスト結果サマリー"
