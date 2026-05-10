@@ -766,6 +766,12 @@ else
     fail_test "cross-project-redaction-e2e の契約テストに失敗 — 'bash tests/test-cross-project-redaction-e2e.sh' で詳細確認"
 fi
 
+if bash "$PLUGIN_ROOT/tests/test-harness-progress.sh" > /dev/null 2>&1; then
+    pass_test "Phase 65.4.1 progress-snapshot.v1 + harness-progress skill が Plans.md から進捗 HTML を生成します (test-harness-progress.sh)"
+else
+    fail_test "harness-progress の契約テストに失敗 — 'bash tests/test-harness-progress.sh' で詳細確認"
+fi
+
 echo ""
 echo "=========================================="
 echo "テスト結果サマリー"
