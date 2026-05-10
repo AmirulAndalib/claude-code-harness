@@ -796,6 +796,12 @@ else
     fail_test "progress-e2e の契約テストに失敗 — 'bash tests/test-progress-e2e.sh' で詳細確認"
 fi
 
+if bash "$PLUGIN_ROOT/tests/test-3-surface-e2e.sh" > /dev/null 2>&1; then
+    pass_test "Phase 65.5.1 統合 e2e: 3 surface (plan-brief / progress / accept) が同 user_request_hash + project で完全 trace (test-3-surface-e2e.sh)"
+else
+    fail_test "3-surface-e2e の契約テストに失敗 — 'bash tests/test-3-surface-e2e.sh' で詳細確認"
+fi
+
 echo ""
 echo "=========================================="
 echo "テスト結果サマリー"
