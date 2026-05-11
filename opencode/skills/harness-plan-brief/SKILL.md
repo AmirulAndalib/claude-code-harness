@@ -56,6 +56,7 @@ user-invocable: true
   "acceptance_criteria": [
     { "id": "string", "description": "string", "verifiable_by": "string" }
   ],
+  "tdd_required": "yes|no|skip:<reason>",
   "confidence": 0,
   "confidence_evidence": ["string"],
   "related_decisions": [
@@ -165,6 +166,7 @@ jq -n \
     acceptance_criteria: [],
     confidence: 0,
     confidence_evidence: ["(stub) 65.1.3 で算出ロジック実装"],
+    tdd_required: "no",
     related_decisions: [],
     similar_past_plans: [],
     project: $proj,
@@ -175,6 +177,9 @@ jq -n \
 ### Step 4: HTML を生成する
 
 `scripts/render-html.sh` (Phase 65.1.1) を `templates/html/plan-brief.html.template` で呼ぶ:
+
+HTML には TDD 判定を 1 行で表示する。
+形式は `tdd_required: yes`、`tdd_required: no`、または `tdd_required: skip:<reason>` のいずれかにする。
 
 ```bash
 bash scripts/render-html.sh \

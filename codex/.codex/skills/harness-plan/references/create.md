@@ -53,6 +53,40 @@ WebSearch:
 - メール通知
 - 決済機能
 
+## Step 4.4: 仕様正本チェック
+
+Plans.md は「やるべきこと」を固定する。仕様正本は「何が正しいか」を固定する。
+この 2 つを混ぜない。実装判断がぶれそうな場合は、Plans.md を作る前に project spec SSOT を作成または更新する。
+
+### 仕様正本を作る/更新する条件
+
+- ユーザーに見える振る舞いが増える、または変わる
+- API、データモデル、権限、課金、外部連携、tenant boundary を決める
+- 複数の実装案があり、選び方で product behavior が変わる
+- 過去または今回の会話で、仕様の曖昧さによる実装 drift が見えている
+- Plans.md には task があるが、project としての正解条件が文書化されていない
+
+### スキップしてよい条件
+
+- typo / format / lint のみ
+- dependency bump のみ
+- README / CHANGELOG のみ
+- 動作変更なしの狭い refactor
+- 既存 spec とテストで正解が明確
+
+### 保存先
+
+既存の project-level spec があればそこを更新する。
+なければ次を作る:
+
+```text
+docs/spec/00-project-spec.md
+```
+
+最初の spec は短くてよい。最低限、Purpose、Users And Workflows、Core Rules、Data And Contracts、Non-Goals、Open Decisions、Links を置く。
+
+詳細: `docs/plans/spec-ssot.md`
+
 ## Step 4.5: optional brief 生成
 
 必要なときだけ brief を添える。brief は Plans.md を置き換えず、実装の前提を短く固定する補助資料。

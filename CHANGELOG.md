@@ -6,6 +6,9 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+- (local trial) Phase 68: TDD enforcement L1+L2+L3+L4 introduced (not released).
+- Added the project spec SSOT workflow to `harness-plan`, `harness-work`, Worker, Scaffolder, and Reviewer so Plans.md stays the task ledger while product-level behavior is fixed in a stable spec when needed.
+
 ### Phase 67: Codex 0.130.0 stable upstream snapshot
 
 **Codex `0.130.0` stable (`rust-v0.130.0`, prerelease `false`, published `2026-05-08T23:09:55Z`) を Phase 67 として snapshot / Feature Table / CHANGELOG / upstream integration test に接続しました。**

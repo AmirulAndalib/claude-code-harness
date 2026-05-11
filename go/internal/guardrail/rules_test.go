@@ -1,6 +1,7 @@
 package guardrail
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Chachamaru127/claude-code-harness/go/pkg/hookproto"
@@ -689,6 +690,49 @@ func TestR13_WriteNormalFile(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Rule evaluation order: first match wins
 // ---------------------------------------------------------------------------
+
+func ruleIndex(id string) int {
+	for i, rule := range Rules {
+		if rule.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func TestR14_RegisteredBeforeOutsideRootAsk(t *testing.T) {
+	r02 := ruleIndex("R02:no-write-protected-paths")
+	r03 := ruleIndex("R03:no-bash-write-protected-paths")
+	r14 := ruleIndex("R14:test-required-for-src-write")
+	r04 := ruleIndex("R04:confirm-write-outside-project")
+
+	if r02 < 0 || r03 < 0 || r14 < 0 || r04 < 0 {
+		t.Fatalf("expected R02/R03/R14/R04 to be registered, got R02=%d R03=%d R14=%d R04=%d", r02, r03, r14, r04)
+	}
+	if !(r02 < r14 && r03 < r14 && r14 < r04) {
+		t.Fatalf("expected R14 after protected write basics and before outside-root ask, got R02=%d R03=%d R14=%d R04=%d", r02, r03, r14, r04)
+	}
+}
+
+func TestR14_TddBypassDoesNotBypassCodexWriteDeny(t *testing.T) {
+	ctx := makeCtx("Write", map[string]interface{}{
+		"file_path": "/project/src/app.go",
+		"content":   "package main\n",
+	})
+	ctx.CodexMode = true
+	ctx.TddEnforceLevel = tddEnforceLevelMax
+	ctx.TddHookEnabled = true
+	ctx.TddBypass = true
+
+	result := EvaluateRules(ctx)
+
+	if result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected TDD bypass to continue into Codex write deny, got %s", result.Decision)
+	}
+	if !strings.Contains(result.Reason, "Codex モード中") {
+		t.Fatalf("expected Codex write denial reason, got %q", result.Reason)
+	}
+}
 
 func TestFirstMatchWins(t *testing.T) {
 	// sudo rm -rf should be caught by R01 (sudo) before R05 (rm -rf)

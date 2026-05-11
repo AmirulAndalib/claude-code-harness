@@ -57,10 +57,39 @@ See [references/create.md](${CLAUDE_SKILL_DIR}/references/create.md)
 2. 何を作るか聞く（max 3問）
 3. 技術調査（WebSearch）
 4. 機能リスト抽出
-5. 優先度マトリクス（Required / Recommended / Optional）
-6. TDD 採用判断（テスト設計）
-7. Plans.md 生成（`cc:TODO` マーカー付き）
-8. 次のアクション案内
+5. **仕様正本チェック**（必要時だけ project spec SSOT を作成/更新）
+6. 優先度マトリクス（Required / Recommended / Optional）
+7. TDD 採用判断（テスト設計）
+8. Plans.md 生成（`cc:TODO` マーカー付き）
+9. 次のアクション案内
+
+### 仕様正本チェック（デフォルト）
+
+Plans.md は「やるべきこと」の正本、仕様正本は「何が正しいか」の正本として扱う。
+実装がぶれる可能性がある時は、Plans.md 生成前に project spec SSOT を作成または更新する。
+
+優先する保存先:
+
+1. 既存の project spec / architecture / product compass
+2. `docs/spec/00-project-spec.md`
+3. 既存規約がある repo では、その規約に沿った spec path
+
+作成/更新が必要な条件:
+
+- ユーザーに見える振る舞い、API、データモデル、権限、課金、外部連携を決める task
+- 複数の実装方針があり、選び方で product behavior が変わる task
+- 過去または今回の会話で「仕様が曖昧で実装がぶれた」兆候がある task
+- Plans.md には作業内容があるが、project としての正解条件が安定文書にない task
+
+不要な条件:
+
+- typo、format、dependency bump、README/CHANGELOG のみ
+- 動作変更なしの狭い refactor
+- 既存 spec とテストで正解が十分に固定されている修正
+
+参照:
+
+- `docs/plans/spec-ssot.md`
 
 ### create 完了時のセッション起動案内（必須）
 
@@ -217,18 +246,38 @@ node scripts/generate-sprint-contract.js --plan roadmap 9.1.1
 
 **Depends**: タスク間の依存関係。`-`（依存なし）、タスク番号（`N.1`）、カンマ区切り（`N.1, N.2`）、フェーズ依存（`Phase N`）。
 
+### TDD tags
+
+Plans.md の task には、TDD 判定を明示するタグを内容または DoD に書ける。
+
+| タグ | 意味 | `tdd_required` 推論 |
+|------|------|--------------------|
+| `[tdd:required]` | この task は先に失敗テストを書く必要がある | `true` |
+| `[tdd:skip:<reason>]` | この task は理由つきで TDD を省略する | `false`, `skip_tdd_reason=<reason>` |
+
+`<reason>` は空にしない。
+例: `[tdd:skip:docs-only]`、`[tdd:skip:no-test-framework-detected]`。
+
+タグがない場合の `tdd_required` は次の順で推論する。
+
+1. Plans.md tag: `[tdd:required]` / `[tdd:skip:<reason>]`
+2. files: `src/`, `app/`, `cmd/`, `lib/`, `pkg/`, `internal/`, `go/` など source 実装を含むなら required
+3. scaffolder 推論: docs-only や test framework なしなら skip reason を付けて not required
+
 ### optional briefs / manifest
 
 `harness-plan create` は、必要なときだけ brief を付ける。
 
+- project spec SSOT は project 全体の正解条件を固定する文書で、必要時だけ作る
 - UI を含むタスクでは `design brief`
 - API を含むタスクでは `contract brief`
-- brief は「何を作るか」を短く固定する補助資料で、Plans.md を置き換えない
+- brief は「何を作るか」を短く固定する補助資料で、Plans.md や spec SSOT を置き換えない
 - skill frontmatter の一覧は `scripts/generate-skill-manifest.sh` で machine-readable JSON にできる
 
 参照:
 
 - `docs/plans/briefs-manifest.md`
+- `docs/plans/spec-ssot.md`
 
 ### マーカー一覧
 

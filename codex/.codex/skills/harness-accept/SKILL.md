@@ -56,6 +56,7 @@ Phase 65.1.x (`harness-plan-brief`) の対構造として動作し、Plan Brief 
   "verified_criteria": [
     { "name": "string", "passed": true, "evidence": "string" }
   ],
+  "tdd_verified": "yes|no|not-required|skip:<reason>",
   "unverified_caveats": ["string"],
   "past_issue_patterns": [
     { "pattern_id": "P5", "title": "string", "verified_in_current_task": true }
@@ -169,6 +170,10 @@ Plan Brief 時の acceptance_criteria 各項目について、現タスクの状
 ユーザー (もしくは Claude) が「verify した evidence」を提示し、`evidence` 文字列を埋める。
 
 `evidence` が空文字列の場合、HTML 上で警告表示される (DoD c)。
+
+TDD が必要な task では、Acceptance Demo に `TDD verified: yes|no` の 1 行を必ず出す。
+TDD 不要または skip の場合は `TDD verified: not-required` または `TDD verified: skip:<reason>` と表示する。
+`yes` にできるのは `.claude/state/tdd-red-log/<task-id>.jsonl` の Red 証跡、または literal failing test output が確認できる時だけ。
 
 ### Step 5: recommendation を算出する
 

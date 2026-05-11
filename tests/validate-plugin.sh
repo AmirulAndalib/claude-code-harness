@@ -827,6 +827,139 @@ else
 fi
 
 echo ""
+echo "12. TDD compliance check (local trial)"
+echo "----------------------------------------"
+
+TDD_PATHS_FILE="$PLUGIN_ROOT/.claude/rules/tdd-paths.yaml"
+TDD_DETECT_SCRIPT="$PLUGIN_ROOT/scripts/detect-test-framework.sh"
+TDD_LOG_SCRIPT="$PLUGIN_ROOT/scripts/log-tdd-red.sh"
+SPRINT_CONTRACT_GO="$PLUGIN_ROOT/go/internal/hookhandler/sprint_contract.go"
+TDD_LOCAL_TRIAL_TEST="$PLUGIN_ROOT/tests/test-tdd-enforcement-l1l2l4.sh"
+CODEX_HARNESS_WORK_SKILL="$PLUGIN_ROOT/skills-codex/harness-work/SKILL.md"
+CODEX_HARNESS_WORK_MIRROR="$PLUGIN_ROOT/codex/.codex/skills/harness-work/SKILL.md"
+
+if [ -f "$TDD_PATHS_FILE" ] &&
+    grep -q "schema_version: tdd-paths.v1" "$TDD_PATHS_FILE" &&
+    grep -q "languages:" "$TDD_PATHS_FILE" &&
+    grep -q "src_patterns:" "$TDD_PATHS_FILE" &&
+    grep -q "test_patterns:" "$TDD_PATHS_FILE"; then
+    pass_test "TDD path SSOT has the expected tdd-paths.v1 shape"
+else
+    fail_test ".claude/rules/tdd-paths.yaml is missing or malformed"
+fi
+
+if [ -x "$TDD_DETECT_SCRIPT" ]; then
+    tmp_tdd_detect_dir="$(mktemp -d)"
+    printf 'module example.com/tdd\n' > "$tmp_tdd_detect_dir/go.mod"
+    tdd_detect_output="$(bash "$TDD_DETECT_SCRIPT" --project-root "$tmp_tdd_detect_dir" 2>/dev/null || true)"
+    rm -rf "$tmp_tdd_detect_dir" 2>/dev/null || true
+    if printf '%s' "$tdd_detect_output" | python3 -c 'import json,sys; data=json.load(sys.stdin); raise SystemExit(0 if data.get("framework") == "go" and data.get("command") == "go test ./..." else 1)' 2>/dev/null; then
+        pass_test "detect-test-framework.sh emits usable framework JSON"
+    else
+        fail_test "detect-test-framework.sh did not detect a Go framework fixture"
+    fi
+else
+    fail_test "scripts/detect-test-framework.sh is missing or not executable"
+fi
+
+if [ -x "$TDD_LOG_SCRIPT" ]; then
+    tmp_tdd_log_dir="$(mktemp -d)"
+    if PROJECT_ROOT="$tmp_tdd_log_dir" bash "$TDD_LOG_SCRIPT" --task-id validate-tdd --test-file tests/tdd_test.go --exit-code 1 --framework go >/dev/null 2>&1 &&
+        python3 - "$tmp_tdd_log_dir/.claude/state/tdd-red-log/validate-tdd.jsonl" <<'PY' >/dev/null 2>&1
+import json
+import sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.loads(f.readline())
+if data.get("task_id") != "validate-tdd" or data.get("test_file") != "tests/tdd_test.go" or data.get("exit_code") != 1:
+    raise SystemExit(1)
+PY
+    then
+        pass_test "log-tdd-red.sh writes the shared red-log JSONL signal"
+    else
+        fail_test "log-tdd-red.sh did not write a valid red-log JSONL fixture"
+    fi
+    rm -rf "$tmp_tdd_log_dir" 2>/dev/null || true
+else
+    fail_test "scripts/log-tdd-red.sh is missing or not executable"
+fi
+
+CONTRACT_TDD_STRINGS=(
+    "tdd_required"
+    "test_framework"
+    "test_todo_list"
+    "skip_tdd_reason"
+    "[tdd:required]"
+    "[tdd:skip:"
+    "no-test-framework-detected"
+    "docs-only"
+)
+for needle in "${CONTRACT_TDD_STRINGS[@]}"; do
+    if grep -Fq "$needle" "$SPRINT_CONTRACT_GO"; then
+        pass_test "sprint-contract TDD contract string: $needle"
+    else
+        fail_test "sprint-contract TDD contract string missing: $needle"
+    fi
+done
+
+CODEX_TDD_WORK_STRINGS=(
+    "--tdd-bypass"
+    "log-tdd-red.sh"
+    "HARNESS_TDD_BYPASS_REASON"
+)
+for file in "$CODEX_HARNESS_WORK_SKILL" "$CODEX_HARNESS_WORK_MIRROR"; do
+    if [ -f "$file" ]; then
+        if grep -Eq '^argument-hint: .*--tdd-bypass' "$file"; then
+            pass_test "Codex harness-work argument-hint exposes --tdd-bypass in $(basename "$(dirname "$file")")/$(basename "$file")"
+        else
+            fail_test "Codex harness-work argument-hint missing --tdd-bypass in $file"
+        fi
+        for needle in "${CODEX_TDD_WORK_STRINGS[@]}"; do
+            if grep -Fq -- "$needle" "$file"; then
+                pass_test "Codex harness-work TDD contract string in $(basename "$(dirname "$file")")/$(basename "$file"): $needle"
+            else
+                fail_test "Codex harness-work TDD contract string missing in $file: $needle"
+            fi
+        done
+    else
+        fail_test "Codex harness-work skill file missing: $file"
+    fi
+done
+
+if [ -x "$TDD_LOCAL_TRIAL_TEST" ]; then
+    pass_test "focused L1/L2/L4 TDD local trial test is executable"
+else
+    fail_test "tests/test-tdd-enforcement-l1l2l4.sh is missing or not executable"
+fi
+
+TDD_ENFORCE_ENABLED="$(
+    awk '
+      /^\[tdd\.enforce\]/ { in_section=1; next }
+      /^\[/ && in_section { exit }
+      in_section && /^[[:space:]]*enabled[[:space:]]*=/ {
+        gsub(/[[:space:]]/, "", $0)
+        sub(/^enabled=/, "", $0)
+        print $0
+        exit
+      }
+    ' "$PLUGIN_ROOT/harness.toml" 2>/dev/null
+)"
+if [ "${TDD_ENFORCE_ENABLED:-false}" = "false" ]; then
+    pass_test "TDD enforcement remains opt-in by default (enabled=false)"
+else
+    fail_test "TDD enforcement default must not require enabled=true"
+fi
+
+echo ""
+echo "13. Project spec SSOT workflow check"
+echo "----------------------------------------"
+
+if bash "$PLUGIN_ROOT/tests/test-spec-ssot-workflow.sh" > /dev/null 2>&1; then
+    pass_test "Plans.md task workflow includes project spec SSOT creation/update guard (test-spec-ssot-workflow.sh)"
+else
+    fail_test "project spec SSOT workflow contract failed — 'bash tests/test-spec-ssot-workflow.sh' で詳細確認"
+fi
+
+echo ""
 echo "=========================================="
 echo "テスト結果サマリー"
 echo "=========================================="
