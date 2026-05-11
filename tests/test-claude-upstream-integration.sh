@@ -1347,4 +1347,67 @@ grep -q 'B: 書いただけ' "${PHASE62_SNAPSHOT_DOC}" || {
   exit 1
 }
 
+# Phase 67.1.1 / 67.1.4: Codex 0.130.0 stable snapshot and upstream integration coverage
+PHASE67_SNAPSHOT_DOC="${ROOT_DIR}/docs/upstream-update-snapshot-2026-05-10.md"
+[ -f "${PHASE67_SNAPSHOT_DOC}" ] || {
+  echo "${PHASE67_SNAPSHOT_DOC} does not exist — Phase 67.1.1"
+  exit 1
+}
+for referencing_file in \
+  "${ROOT_DIR}/CHANGELOG.md" \
+  "${ROOT_DIR}/docs/CLAUDE-feature-table.md"; do
+  grep -q 'Phase 67' "${referencing_file}" || {
+    echo "${referencing_file} is missing the expected Phase 67 reference"
+    exit 1
+  }
+done
+grep_plans_or_archive 'Phase 67' || {
+  echo "Plans.md (or archive) is missing the expected Phase 67 reference"
+  exit 1
+}
+grep_plans_or_archive 'upstream-update-snapshot-2026-05-10' || {
+  echo "Plans.md (or archive) is missing the expected upstream-update-snapshot-2026-05-10 reference"
+  exit 1
+}
+grep -q 'Phase 67 Codex 0.130.0 stable snapshot' "${ROOT_DIR}/docs/CLAUDE-feature-table.md" || {
+  echo "Feature Table must include the Phase 67 Codex 0.130.0 stable snapshot row"
+  exit 1
+}
+grep -q 'Phase 67: Codex 0.130.0 stable upstream snapshot' "${ROOT_DIR}/CHANGELOG.md" || {
+  echo "CHANGELOG must include the Phase 67 Codex 0.130.0 stable upstream snapshot"
+  exit 1
+}
+for required_term in \
+  'rust-v0.130.0' \
+  'prerelease: `false`' \
+  '2026-05-08T23:09:55Z' \
+  'https://github.com/openai/codex/compare/rust-v0.129.0...rust-v0.130.0' \
+  'https://github.com/openai/codex/releases/tag/rust-v0.130.0' \
+  'A: 検証強化' \
+  'C: 自動継承' \
+  'P: Plans 化' \
+  'B: 書いただけ 0 件' \
+  'plugin details show bundled hooks' \
+  'plugin sharing exposes link metadata/discoverability controls' \
+  'codex remote-control' \
+  'Thread pagination APIs' \
+  'aws login' \
+  'view_image' \
+  'live threads from latest config snapshot' \
+  'turn diffs' \
+  'ThreadStore summaries/resume/fork improvements' \
+  'response.processed' \
+  'service_tier' \
+  'Windows sandbox runtime bin cache' \
+  'cargo install --locked' \
+  'OTel trace metadata' \
+  'built-in MCPs' \
+  'CODEX_HOME' \
+  'remove skills list extra roots'; do
+  grep -q "${required_term}" "${PHASE67_SNAPSHOT_DOC}" || {
+    echo "${PHASE67_SNAPSHOT_DOC} is missing ${required_term} — Phase 67.1.1"
+    exit 1
+  }
+done
+
 echo "OK"

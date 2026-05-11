@@ -6,6 +6,16 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Phase 67: Codex 0.130.0 stable upstream snapshot
+
+**Codex `0.130.0` stable (`rust-v0.130.0`, prerelease `false`, published `2026-05-08T23:09:55Z`) を Phase 67 として snapshot / Feature Table / CHANGELOG / upstream integration test に接続しました。**
+
+#### 1. `0.130.0` release metadata と A/C/P 分類を固定 (Phase 67.1.1)
+
+**Codex のアプデ**: `codex remote-control` が top-level command になり、plugin details show bundled hooks、plugin sharing exposes link metadata/discoverability controls、app-server Thread pagination APIs、Bedrock `aws login` profile credentials、selected-environment `view_image`、live threads from latest config snapshot、`apply_patch` 後の turn diffs、ThreadStore summaries/resume/fork improvements、remote compaction `response.processed`、Windows sandbox runtime bin cache、`cargo install --locked` docs、configurable OTel trace metadata、built-in MCPs first-class runtime servers、`CODEX_HOME` environments TOML provider、remove skills list extra roots が入った。
+
+**Harness での活用**: `docs/upstream-update-snapshot-2026-05-10.md` に release URL / compare URL / published_at / A/C/P 判定を保存。plugin / app-server / Bedrock / `view_image` / OTel / MCP / environments TOML は Phase 67.1.2-67.1.3 に Plans 化し、turn diff accuracy・ThreadStore・remote compaction・Windows sandbox・skills list cleanup は `C: 自動継承` として二重 workaround を作らない。`B: 書いただけ 0 件` を明記し、説明だけで終わる項目を残さない。
+
 ### Phase 66: Open GitHub Issue closeout (#128, #123, #126, #124, #67)
 
 #### SemVer 判定根拠 (next minor: 4.9.0 → 4.10.0)
