@@ -36,6 +36,8 @@ Harness の統合プランニングスキル。
 | "今どこ？" / `/harness-plan sync` | `sync` | 実装とPlans.mdを照合・同期 |
 | `/harness-sync` | `sync` | 進捗確認（独立 sync surface と同等） |
 | `/harness-plan create` | `create` | 計画作成 |
+| `/harness-plan list` | `list` | `plans/manifest.json` の named Plans を一覧 |
+| `/harness-plan switch <name>` | `switch` | active plan を `.claude/state/active-plan.json` に保存 |
 
 ## Literal companion commands（CC 2.1.108+）
 
@@ -169,6 +171,27 @@ Plans.md は正本のまま維持し、GitHub Issue 連携は opt-in の team mo
 参照:
 
 - `docs/plans/team-mode.md`
+
+### named Plans
+
+複数の Plans.md を使う場合は `plans/manifest.json` を正本にして、名前で選択する。
+
+```bash
+scripts/plan-registry.sh list
+scripts/plan-registry.sh switch roadmap
+scripts/plans-issue-bridge.sh --plan roadmap --format markdown
+node scripts/generate-sprint-contract.js --plan roadmap 9.1.1
+```
+
+運用ルール:
+
+- 1 run では 1 つの named plan だけを使う
+- long-running / CI / issue bridge では active pointer に頼らず `--plan <name>` を渡す
+- manifest path は project root 相対のみ。絶対パス、`..`、repo 外 symlink は拒否される
+
+参照:
+
+- `docs/plans/named-plans.md`
 
 ## Plans.md フォーマット規約
 

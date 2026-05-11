@@ -459,6 +459,12 @@ else
     fail_test "Plans.md status marker protocol の互換性に問題があります"
 fi
 
+if bash "$PLUGIN_ROOT/tests/test-named-plans.sh" >/dev/null 2>&1; then
+    pass_test "Named Plans registry は manifest / active pointer / --plan を安全に解決します"
+else
+    fail_test "Named Plans registry の契約テストに失敗 — 'bash tests/test-named-plans.sh' で詳細確認"
+fi
+
 echo ""
 echo "6. スクリプトの検証"
 echo "----------------------------------------"

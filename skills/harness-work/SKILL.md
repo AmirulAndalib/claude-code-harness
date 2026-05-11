@@ -38,6 +38,7 @@ Harness の統合実行スキル。
 | `/harness-work --parallel 5` | parallel | 5ワーカーで並列実行（強制） |
 | `/harness-work --codex` | codex | Codex CLI に委託（明示時のみ） |
 | `/harness-work --breezing` | breezing | チーム実行を強制 |
+| `/harness-work 3 --plan roadmap` | solo | named Plans の `roadmap` からタスク3を実行 |
 
 ## Execution Mode Auto Selection（フラグなし時の自動判定）
 
@@ -68,6 +69,7 @@ Harness の統合実行スキル。
 | `--parallel N` | 並列ワーカー数 | auto |
 | `--sequential` | 直列実行強制 | - |
 | `--codex` | Codex CLI で実装委託（明示時のみ、自動選択しない） | false |
+| `--plan NAME` | `plans/manifest.json` の named plan を使う | active/default |
 | `--no-commit` | 自動コミット抑制 | false |
 | `--resume <id\|latest>` | 前回セッション再開。長く空いた後は `/recap` 併用を推奨 | - |
 | `--breezing` | Lead/Worker/Reviewer のチーム実行 | false |
@@ -94,6 +96,7 @@ Harness の統合実行スキル。
 - critical / major review finding が残っている時は完了にしない。
 - テストを弱める、skip する、期待値を実装に合わせて緩める形では解決しない。
 - helper script は host project の `scripts/` ではなく `${HARNESS_PLUGIN_ROOT}/scripts/` から呼ぶ。
+- 複数 Plans.md がある場合は、1 run の中で plan を切り替えない。必要なら `--plan NAME` を明示して新しい run を開始する。
 
 > **Token Optimization (v2.1.69+)**: git 操作を伴わない軽量タスクでは
 > plugin settings の `includeGitInstructions: false` を有効にして

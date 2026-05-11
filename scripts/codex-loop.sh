@@ -64,7 +64,7 @@ fi
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/codex-loop.sh start <all|N|N-M> [--max-cycles N] [--pacing worker|ci|plateau|night] [--executor breezing|task] [--max-workers N|max]
+  scripts/codex-loop.sh start <all|N|N-M> [--plan NAME] [--max-cycles N] [--pacing worker|ci|plateau|night] [--executor breezing|task] [--max-workers N|max]
   scripts/codex-loop.sh status [--json]
   scripts/codex-loop.sh stop
   scripts/codex-loop.sh run --run-id <id>
@@ -189,6 +189,14 @@ append_jsonl() {
 }
 
 plans_file_path() {
+  if [ -n "${HARNESS_PLAN_FILE:-}" ]; then
+    case "${HARNESS_PLAN_FILE}" in
+      /*) printf '%s\n' "${HARNESS_PLAN_FILE}" ;;
+      *) printf '%s\n' "${PROJECT_ROOT}/${HARNESS_PLAN_FILE}" ;;
+    esac
+    return 0
+  fi
+
   local plans_file=""
   if [ -f "${CONFIG_UTILS}" ]; then
     plans_file="$(
@@ -2468,8 +2476,17 @@ cmd_start() {
   local pacing="worker"
   local executor="breezing"
   local max_workers="max"
+  local plan_name=""
   while [ $# -gt 0 ]; do
     case "$1" in
+      --plan)
+        if [ $# -lt 2 ] || [[ "${2:-}" == --* ]]; then
+          echo "--plan requires a plan name" >&2
+          exit 2
+        fi
+        plan_name="${2:-}"
+        shift 2
+        ;;
       --max-cycles)
         max_cycles="${2:-}"
         shift 2
@@ -2523,9 +2540,12 @@ cmd_start() {
   fi
 
   local plans_file
+  if [ -n "${plan_name}" ]; then
+    export HARNESS_PLAN_NAME="${plan_name}"
+  fi
   plans_file="$(plans_file_path)"
   [ -f "${plans_file}" ] || {
-    echo "Plans.md not found under ${PROJECT_ROOT}" >&2
+    echo "Plans.md not found under ${PROJECT_ROOT}${plan_name:+ for plan ${plan_name}}" >&2
     exit 1
   }
 
@@ -2572,6 +2592,7 @@ cmd_start() {
   "started_at": "$(timestamp_utc)",
   "updated_at": "$(timestamp_utc)",
   "project_root": "$(printf '%s' "${PROJECT_ROOT}")",
+  "plan_name": "$(printf '%s' "${plan_name:-default}")",
   "plans_file": "$(printf '%s' "${plans_file}")"
 }
 EOF
@@ -2892,13 +2913,13 @@ EOF
     local cycle_status=0
     if [ "${executor}" = "breezing" ]; then
       if [[ "${batch_ids}" == *,* ]]; then
-        bash "${SELF_SCRIPT}" run-cycle --run-id "${run_id}" --task-id "${batch_ids}" --cycle "${next_cycle}" --executor breezing --max-workers "${max_workers}" || cycle_status=$?
+        HARNESS_PLAN_FILE="${plans_file}" bash "${SELF_SCRIPT}" run-cycle --run-id "${run_id}" --task-id "${batch_ids}" --cycle "${next_cycle}" --executor breezing --max-workers "${max_workers}" || cycle_status=$?
       else
         log_line "cycle ${next_cycle} starting executor=breezing batch=${batch_ids} max_workers=${max_workers}"
-        bash "${SELF_SCRIPT}" run-cycle --run-id "${run_id}" --task-id "${batch_ids}" --cycle "${next_cycle}" --executor task || cycle_status=$?
+        HARNESS_PLAN_FILE="${plans_file}" bash "${SELF_SCRIPT}" run-cycle --run-id "${run_id}" --task-id "${batch_ids}" --cycle "${next_cycle}" --executor task || cycle_status=$?
       fi
     else
-      bash "${SELF_SCRIPT}" run-cycle --run-id "${run_id}" --task-id "${task_id}" --cycle "${next_cycle}" --executor task || cycle_status=$?
+      HARNESS_PLAN_FILE="${plans_file}" bash "${SELF_SCRIPT}" run-cycle --run-id "${run_id}" --task-id "${task_id}" --cycle "${next_cycle}" --executor task || cycle_status=$?
     fi
     if [ "${cycle_status}" -ne 0 ]; then
       case "${cycle_status}" in
