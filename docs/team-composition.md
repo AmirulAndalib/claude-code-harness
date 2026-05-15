@@ -140,6 +140,26 @@ Claude Code の plugin agent では agent-local `permissionMode` が無視され
 `--auto-mode` は rollout 用の opt-in。
 既定値にはしない。
 
+### background permission mode 保持 (CC 2.1.141+)
+
+`/bg` / `←←` / `claude agents` で teammate を background 化した場合、
+CC 2.1.141 以降は起動時の permission mode が保持される (default に戻らない)。
+
+- Lead は `claude agents --permission-mode <mode>` で明示した mode が
+  background 化後も維持される前提で運用する。
+- breezing teammate の permission mode 再注入は不要。
+  従来 `--auto-mode` で扱っていた特殊起動も CC 本体が mode 保持を保証する。
+- 例外: `bypassPermissions` で起動した teammate も `.claude-plugin/settings.json` の
+  `permissions.deny` / `autoMode.hard_deny` を override しない (多層防御は維持)。
+
+### `claude agents` 経由の dispatched session (CC 2.1.142+)
+
+Lead が `claude agents --add-dir / --settings / --mcp-config / --plugin-dir /
+--permission-mode / --model / --effort / --dangerously-skip-permissions` で
+dispatched background session を起動する場合は、`docs/agent-view-policy.md` の
+flag 利用条件を参照する。teammate spawn workflow (breezing skill / Agent tool) との
+分離が前提。
+
 ## チームサイズ
 
 - 標準は 3 から 5 teammate

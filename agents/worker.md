@@ -215,6 +215,21 @@ skills:
   - 最後のエラーメッセージ
   - 試した修正の要約 3 行以内
 
+## Background permission mode 保持 (CC 2.1.141+)
+
+`/bg` / `←←` / `claude agents` で Worker を background 化した場合、
+CC 2.1.141 以降は **起動時の permission mode を保持**する (default に戻らない)。
+
+Worker 側の期待値:
+
+1. Worker は自分の permission mode を再注入する必要はない (CC 本体が保証)。
+2. Lead が `claude agents --permission-mode <mode>` で明示した mode は background 化後も維持される。
+3. `mode == breezing` の Worker は teammate launch 時の mode (通常 `acceptEdits` か `default`) が維持される前提で動く。
+4. permission mode の確認は preflight (step 4) で 1 回だけ行い、turn 中に再確認しない。
+5. `bypassPermissions` mode で起動された Worker は protected branch (`main`/`master`) でも guard rail (R12) を尊重する。CC permission mode が deny を上書きしない (settings.json `permissions.deny` が常時優先)。
+
+詳細: `docs/agent-view-policy.md`
+
 ## Stall 検出 — 2 層防御 (CC 2.1.113+)
 
 長時間 stream 中に Worker が応答停止した場合の防御は次の 2 層に分ける。

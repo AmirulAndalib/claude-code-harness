@@ -988,6 +988,16 @@ else
 fi
 
 echo ""
+echo "15. Phase 69 (CC 2.1.133-2.1.142) terminalSequence / hooks 契約"
+echo "----------------------------------------"
+
+if bash "$PLUGIN_ROOT/tests/test-terminal-notify.sh" > /dev/null 2>&1; then
+    pass_test "Phase 69 hook terminalSequence / rules / template baseline 契約を満たします"
+else
+    fail_test "Phase 69 terminalSequence contract failed — 'bash tests/test-terminal-notify.sh' で詳細確認"
+fi
+
+echo ""
 echo "=========================================="
 echo "テスト結果サマリー"
 echo "=========================================="

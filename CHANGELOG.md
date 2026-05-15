@@ -11,6 +11,108 @@ Change history for claude-code-harness.
 - Added a local plugin inventory gate so ignored private/dev-only skills cannot sit under public `skills/` surfaces and appear via `claude --plugin-dir .`.
 - Updated OpenCode mirror generation and validation so OpenCode skills use lowercase kebab-case names and only supported skill frontmatter fields.
 
+### Phase 69: Claude Code 2.1.133-2.1.142 後続活用 (10 バージョン分の A/C/P 完全分類)
+
+**Claude Code `2.1.133`-`2.1.142` (Phase 62 完了点 `2.1.132` 以降の 10 バージョン分) を Phase 69 として `docs/upstream-update-snapshot-2026-05-15.md` に snapshot し、Tier 1 5 件 (実装) + Tier 2 5 件 (policy / docs / agent contract) に分解しました。`B: 書いただけ` は 0 件です。**
+
+#### Before / After
+
+| 項目 | Before | After |
+|------|--------|-------|
+| worktree 起点 | `EnterWorktree` / `--worktree` / agent-isolation worktree の起点が CC 2.1.128 で local `HEAD` 既定に変わり、unpushed commits が無自覚に持ち込まれていた | `templates/claude/settings.security.json.template` に `worktree.baseRef: "fresh"` を baseline として明示し、`origin/<default>` 起点を SSOT 化。`head` を選びたい team は project-level で opt-in できる。Plugin 本体 `.claude-plugin/settings.json` への反映は release operator の手動マージ作業 (self-write deny) |
+| Auto Mode の deny 強度 | Auto Mode 利用時に classifier が「許可意図優先」で deny を緩める余地があった | `settings.autoMode.hard_deny` baseline 7 件 (`Bash(sudo:*)` / `rm -rf` / `git push -f` / `git reset --hard` / `mcp__codex__*` 等) を template に追加し、Auto Mode 中も無条件 deny を維持。Plugin 本体 `.claude-plugin/settings.json` への反映は release operator の手動マージ作業 |
+| hook が effort を見られない | hook handler は現在の effort を知らずに同一挙動を返していた | hook stdin の `effort.level` と `$CLAUDE_EFFORT` env を「観測のみ可、guard rail の effort 緩和は禁止」として `.claude/rules/hooks-2.1.139-plus.md` に rule 化 |
+| hook の shell injection 余地 | path placeholder を含む hook で quoting 漏れがあった場合 shell injection の余地があった | `args: string[]` exec form (CC 2.1.139) の利用条件を rule 化。path placeholder のみのケースは exec form を優先、shell 制御が必要な箇所のみ既存 `command` を維持 |
+| PostToolUse の deny フィードバック | hook が deny した時に Claude が修正リトライできず turn が終了していた | `continueOnBlock` (CC 2.1.139) の利用条件を rule 化。diagnostic feedback には `true`、R01-R13 / secret / protected config では `false` を必須化 |
+| Background での通知不能 | `--bg` / `claude agents` で起動した session は controlling terminal なしで desktop 通知を出せなかった | `terminalSequence` (CC 2.1.141) を `webhook-notify.sh` / `notification-handler.sh` に opt-in 実装。`HARNESS_TERMINAL_NOTIFY=osc9` 等で BEL / window title / OSC 9 popup / OSC 777 desktop notification を選択 |
+| background permission mode | CC 2.1.140 以前は `/bg` から復帰時に default に戻る挙動が紛れていた | CC 2.1.141 で permission mode が保持されるようになったため、Worker / breezing teammate は再注入不要であることを `agents/worker.md` / `docs/team-composition.md` で明文化 |
+| `claude agents` 9 flag の Harness 安全運用 | `--add-dir`, `--settings`, `--mcp-config`, `--plugin-dir`, `--permission-mode`, `--model`, `--effort`, `--dangerously-skip-permissions`, `--cwd` の利用ルールが不明確だった | `docs/agent-view-policy.md` を新設し、各 flag の許可条件と禁止条件、teammate spawn workflow との分離、protected branch 上での `--dangerously-skip-permissions` 禁止を明文化 |
+| CC native `/goal` と Plans.md SSOT | `/goal` を持続性のある goal として誤用すると Plans.md と二重管理になる懸念があった | Codex `/goal` policy (`docs/codex-plugin-workflows-policy.md`) を拡張し、CC native `/goal` も「session continuation memo 限定」「acceptance criteria を `/goal` だけに置かない」「completion condition を Plans.md DoD と矛盾させない」の 3 規則を統合 |
+| SessionStart 等で LLM 型 hook 設定誤り | CC 2.1.142 で bootstrap hook (SessionStart / Setup / SubagentStart) に prompt / agent 型 hook を設定するとエラー化される仕様変更 | `.claude/rules/hooks-2.1.139-plus.md` に「SessionStart / Setup / SubagentStart は `type: "command"` 限定」を grep-able に明示し、Harness hooks.json 編集時の checklist 項目に追加 |
+
+---
+
+#### 1. `worktree.baseRef` を baseline で明示 (Phase 69.1.1)
+
+**CC のアプデ**: CC 2.1.133 で `worktree.baseRef` 設定 (`fresh` | `head`) が追加され、`--worktree` / `EnterWorktree` / agent-isolation worktree の起点を選べるようになった。default は `fresh` で `origin/<default>` 起点。
+
+**Harness での活用**: `templates/claude/settings.security.json.template` に `"worktree": {"baseRef": "fresh"}` を baseline 追加し、Harness の breezing / Worker isolation worktree が常に `origin/<default>` から枝分かれする SSOT を確立。unpushed commits を意図的に持ち込みたい team は project-level の `.claude/settings.local.json` で `head` を opt-in する。Plugin 本体 `.claude-plugin/settings.json` への反映は self-write guardrail のため release operator が手動でマージする (snapshot doc の "Operator action item" 参照)。
+
+#### 2. hook が `$CLAUDE_EFFORT` / `effort.level` を観測できるルール化 (Phase 69.1.2)
+
+**CC のアプデ**: CC 2.1.133 で hook stdin JSON に `effort: { level }` が追加され、hook subprocess と Bash 子プロセスに `$CLAUDE_EFFORT` 環境変数が exported される。
+
+**Harness での活用**: `.claude/rules/hooks-2.1.139-plus.md` (Phase 69 で新設) に「観測のみ可」「effort で deny → ask に降格する hook は禁止」「空文字列 fallback は別 effort と扱わない」を rule 化。任意の hook handler が effort をログに含められるが、guard rail (R01-R13) の判断軸を effort で緩めることは不可。
+
+#### 3. `autoMode.hard_deny` baseline 7 件 (Phase 69.1.3)
+
+**CC のアプデ**: CC 2.1.136 で `settings.autoMode.hard_deny` 配列が追加され、Auto Mode classifier に「許可意図に関わらず無条件 deny」を渡せるようになった。
+
+**Harness での活用**: `templates/claude/settings.security.json.template` に baseline 7 件 (`Bash(sudo:*)` / `Bash(rm -rf:*)` / `Bash(rm -fr:*)` / `Bash(git push -f:*)` / `Bash(git push --force:*)` / `Bash(git reset --hard:*)` / `mcp__codex__*`) を追加。既存 `permissions.deny` の super-set ではなく **必須コア 7 件のみ**にして、Auto Mode 未使用 project では参照されず影響ゼロを保つ。Plugin 本体 `.claude-plugin/settings.json` への反映は self-write guardrail のため release operator が手動でマージする。
+
+#### 4. hook `args` exec form + `continueOnBlock` + SessionStart command-only (Phase 69.1.4)
+
+**CC のアプデ**: CC 2.1.139 で hook 定義に `args: string[]` (exec form, shell を介さず直接 spawn) と `continueOnBlock` (PostToolUse の deny を Claude に feedback して turn 継続) が追加。CC 2.1.142 で SessionStart / Setup / SubagentStart に prompt / agent 型 hook を設定するとエラー化される仕様変更が入った。
+
+**Harness での活用**: `.claude/rules/hooks-2.1.139-plus.md` に 3 ルールを集約。
+
+- **exec form**: path placeholder (`${CLAUDE_PROJECT_DIR}/...`) のみのケースは exec form を優先、shell 制御 (`&&` / pipe / heredoc) が必要な箇所のみ既存 `command` を維持。
+- **`continueOnBlock`**: diagnostic feedback (lint hint 等) には `true`、guard rail (R01-R13) / secret detection / protected config (`.eslintrc*` 等) では **`false` 必須**。
+- **SessionStart / Setup / SubagentStart**: `type: "command"` 限定。LLM 判断が必要な箇所は `PreToolUse` で受ける。
+
+#### 5. hook `terminalSequence` の opt-in 実装 (Phase 69.1.5)
+
+**CC のアプデ**: CC 2.1.141 で hook stdout JSON に `terminalSequence` フィールドが追加され、controlling terminal なしで desktop 通知 / window title / bell を発火できるようになった。
+
+**Harness での活用**: ランタイム (Go バイナリ) とシェル両方に実装:
+- `go/internal/hookhandler/terminal_notify.go` (`BuildTerminalSequence` / `AugmentWithTerminalSequence`) を新設
+- `go/internal/hookhandler/notification_handler.go` の Notification hook で既知 4 種 (`permission_prompt` / `elicitation_dialog` / `idle_prompt` / `auth_success`) に terminalSequence を付与
+- `go/internal/hookhandler/task_completed.go` の全応答 path (停止 / 全完了 / プログレス / 通常承認) に terminalSequence を augment
+- シェル参照実装: 新規 `scripts/lib/terminal-notify.sh` + `webhook-notify.sh` / `notification-handler.sh` 拡張
+
+`HARNESS_TERMINAL_NOTIFY` env で opt-in:
+
+- `unset` / `0`: 出力しない (default)
+- `1` / `bell`: BEL (\x07)
+- `title`: OSC 0 window title
+- `osc9`: OSC 9 macOS / iTerm 通知 popup
+- `notify`: OSC 777 KDE/GNOME desktop notification
+
+secret 流出防止のため payload は ASCII + 印字可能文字に限定 (`tr -d` で制御文字除去)。既存 `HARNESS_WEBHOOK_URL` と独立に動作するため、外部 webhook なしでも local 通知だけ受け取る運用が可能。
+
+#### 6. CC native `/goal` を Plans.md SSOT に従わせる (Phase 69.2.1)
+
+**CC のアプデ**: CC 2.1.139 で `/goal` command が追加され、completion condition を turn 超えで保持できるようになった。interactive / `-p` / Remote Control で動作し、elapsed / turns / tokens を overlay 表示する。
+
+**Harness での活用**: `docs/codex-plugin-workflows-policy.md` を拡張し、CC native `/goal` も Codex `/goal` と同じ運用に統合。
+
+- **使ってよい**: 次の 1 turn の sub-goal、`-p` の 1 ターン完了条件、Remote Control の operator hand-off メモ
+- **禁止**: Plans.md `cc:WIP` を `/goal` 側で書き換える、Plans.md と独立した DoD を `/goal` だけに置く、Plans.md acceptance criteria と矛盾した `/goal` で turn 継続する
+
+#### 7. `claude agents` agent-view + 9 flag 利用条件 (Phase 69.2.2)
+
+**CC のアプデ**: CC 2.1.139 で `claude agents` (agent view, Research Preview) が追加。CC 2.1.141 で `--cwd <path>`、CC 2.1.142 で `--add-dir`, `--settings`, `--mcp-config`, `--plugin-dir`, `--permission-mode`, `--model`, `--effort`, `--dangerously-skip-permissions` の 8 flag が追加され、dispatched background session を宣言的に構成できる。
+
+**Harness での活用**: `docs/agent-view-policy.md` を新設し、`claude agents` を Lead (operator) が複数 session を一覧監視する **独立 entrypoint** として位置付け。Harness 内の teammate spawn workflow (breezing skill / Agent tool) と分離。各 flag に許可条件・禁止条件を明示 (例: `--dangerously-skip-permissions` は protected branch / credentials 読込 / production deployment では禁止)。
+
+#### 8. Background agent の permission mode 保持 (Phase 69.2.3)
+
+**CC のアプデ**: CC 2.1.141 で `/bg` / `←←` / `claude agents` で background 化した agent が起動時の permission mode を保持するようになった (従来は default に戻ることがあった)。
+
+**Harness での活用**: `agents/worker.md` と `docs/team-composition.md` に「Worker は permission mode を再注入しない」「`bypassPermissions` で起動した teammate も `permissions.deny` と `autoMode.hard_deny` を override しない (多層防御は維持)」期待値を明文化。breezing teammate の起動契約はそのまま使える。
+
+#### 9. `claude plugin details` の CI 補助情報化 (Phase 69.2.4)
+
+**CC のアプデ**: CC 2.1.139 で `claude plugin details <name>` command が追加され、plugin の component 内訳と projected per-session token cost が見える。CC 2.1.142 で LSP servers も表示されるようになった。
+
+**Harness での活用**: `docs/agent-view-policy.md` および snapshot doc に「`claude plugin details` は plugin が session 予算閾値を越えた時の対応 step に使う補助情報」として位置付け。CI で自動 enforce はしないが、`scripts/ci/check-consistency.sh` および `bin/harness doctor` ユーザー向けに参照情報として記録。
+
+#### 10. Phase 69 rule SSOT の新設 (Phase 69.2.5)
+
+**CC のアプデ**: 2.1.133-2.1.142 で hook / setting / agent surface に変更が複数入ったため、横断 SSOT が必要になった。
+
+**Harness での活用**: `.claude/rules/hooks-2.1.139-plus.md` を新設し、`$CLAUDE_EFFORT` / `args` exec form / `continueOnBlock` / `terminalSequence` / SessionStart command-only の 5 ルールを集約。既存 `opus-4-7-prompt-audit.md` / `skill-editing.md` / `commit-safety.md` と直交 (orthogonal addition) で衝突なし。`docs/agent-view-policy.md` と合わせて Phase 69 SSOT を 2 ファイルに整理。
+
 ## [4.10.0] - 2026-05-12
 
 - Phase 68 local trial: TDD enforcement L1+L2+L3+L4 introduced as an opt-in workflow surface; global enforcement remains disabled by default.
