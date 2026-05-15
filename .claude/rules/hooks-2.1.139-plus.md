@@ -51,7 +51,7 @@ shell を介さず直接 spawn するため、path placeholder (例: `${CLAUDE_P
 | ケース | 推奨 form | 理由 |
 |--------|-----------|------|
 | `${CLAUDE_PROJECT_DIR}` / `${CLAUDE_PLUGIN_DATA}` 単純展開のみ | exec form (`args`) | quoting 漏れによる shell injection を排除 |
-| `bash -c` 経由で複数コマンド連結が必要 | 既存 `command` (shell form) | `&&` / `||` / pipe / heredoc が必要なため |
+| `bash -c` 経由で複数コマンド連結が必要 | 既存 `command` (shell form) | `&&` / OR-shell / pipe / heredoc が必要なため |
 | `if`/`for` 等 shell 制御構文が必要 | 既存 `command` (shell form) | 同上 |
 | 引数に空白 / 環境変数展開 (`$VAR`) を含むユーザー入力 | exec form (`args`) | shell injection 防止 |
 
@@ -101,19 +101,23 @@ hook の stdout JSON に `terminalSequence` を含めると、Claude Code が co
 持たない状態 (background session, `--bg`) でも desktop notification / window title / bell を
 発火できる。
 
+payload は **ESC (0x1B) + `]` + 番号 + `;` + 内容 + BEL (0x07)** の OSC (Operating System Command)
+sequence。JSON では unicode escape (`\u001b` / `\u0007`) を使う:
+
 ```json
 {
   "decision": "approve",
-  "terminalSequence": "]9;Build complete"
+  "terminalSequence": "\u001b]9;Build complete\u0007"
 }
 ```
 
-主な OSC sequence:
+主な OSC sequence (`<ESC>` = 0x1B = `\u001b`, `<BEL>` = 0x07 = `\u0007`):
 
-- `OSC 9` (`]9;<text>`): macOS Terminal / iTerm 通知 (popup)
-- `OSC 0`/`OSC 2` (`]0;<title>`): window title
-- `OSC 777;notify` (`]777;notify;<title>;<body>`): KDE/GNOME 通知
-- `BEL` (``): bell
+- `OSC 9`: `<ESC>]9;<text><BEL>` — macOS Terminal / iTerm 通知 (popup)
+- `OSC 0`: `<ESC>]0;<title><BEL>` — window title
+- `OSC 2`: `<ESC>]2;<title><BEL>` — window title (代替表記)
+- `OSC 777;notify`: `<ESC>]777;notify;<title>;<body><BEL>` — KDE/GNOME desktop notification
+- `BEL` alone: `<BEL>` (0x07) — terminal bell のみ
 
 ### Harness 利用条件
 
@@ -124,7 +128,7 @@ hook の stdout JSON に `terminalSequence` を含めると、Claude Code が co
   - `osc9`: OSC 9 popup notification
   - `notify`: OSC 777 (Linux desktop notification)
 - **payload 制約**: `terminalSequence` の payload は ASCII 文字 + 印字可能 unicode に限る。
-  bell 文字 (``) と OSC terminator 以外の制御文字を含めない (terminal corruption 防止)。
+  bell 文字 (`\u0007`) と OSC terminator 以外の制御文字を含めない (terminal corruption 防止)。
 - **secrets を含めない**: hook payload (PR タイトル等) を `terminalSequence` に転記する前に
   redact rules (`.claude/rules/cross-repo-handoff.md` の Layer 2/3) を適用する。
 

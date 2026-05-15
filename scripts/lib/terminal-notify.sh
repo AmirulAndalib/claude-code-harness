@@ -44,8 +44,9 @@ build_terminal_sequence() {
     ''|0) return 0 ;;
   esac
 
-  # title が空のときは sequence を生成しない
-  if [ -z "${title}" ]; then
+  # bell は title を使わないので空でも発火する。
+  # それ以外の mode は title が空なら sequence を生成しない。
+  if [ "${mode}" != "1" ] && [ "${mode}" != "bell" ] && [ -z "${title}" ]; then
     return 0
   fi
 

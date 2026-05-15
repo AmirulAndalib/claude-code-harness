@@ -117,7 +117,7 @@ Harness の Tier 1 5 件 + Tier 2 5 件として実装した記録です。
 | Test | 場所 | 期待 |
 |------|------|------|
 | settings baseline | `tests/validate-plugin.sh` のセクション 4 (settings) | `worktree.baseRef` と `autoMode.hard_deny` の存在を assert |
-| hook terminalSequence | `tests/test-webhook-notify.sh` (新規) | `HARNESS_TERMINAL_NOTIFY=osc9` で `terminalSequence` フィールドが出力される |
+| hook terminalSequence | `tests/test-terminal-notify.sh` (新規) | `HARNESS_TERMINAL_NOTIFY=osc9` で `terminalSequence` フィールドが出力される |
 | rule grep gate | `tests/test-rule-presence.sh` (新規 or 既存 extend) | `.claude/rules/hooks-2.1.139-plus.md` の必須 anchors 5 件が存在 |
 | `/goal` SSOT gate | `tests/test-rule-presence.sh` | `docs/codex-plugin-workflows-policy.md` または同等 doc に「`/goal` (CC native) を Plans.md SSOT に使わない」記述が存在 |
 

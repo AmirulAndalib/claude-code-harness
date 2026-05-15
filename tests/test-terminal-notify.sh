@@ -121,13 +121,32 @@ else
   fail "1.8 unknown mode で出力が出た"
 fi
 
-# Test 9: empty title → empty
+# Test 9: empty title (osc9) → empty
 export HARNESS_TERMINAL_NOTIFY=osc9
 out="$(build_terminal_sequence "" "body only")"
 if [ -z "${out}" ]; then
-  pass "1.9 title 空 → 空文字列"
+  pass "1.9 title 空 (osc9) → 空文字列"
 else
-  fail "1.9 title 空でも出力が出た"
+  fail "1.9 title 空 (osc9) でも出力が出た"
+fi
+
+# Test 9.5: empty title (bell) → BEL (bell は title 不要)
+export HARNESS_TERMINAL_NOTIFY=bell
+out="$(build_terminal_sequence "")"
+expected="$(printf '\x07')"
+if [ "${out}" = "${expected}" ]; then
+  pass "1.9.5 title 空でも bell mode は BEL を発火"
+else
+  fail "1.9.5 bell mode が title 空のときに発火しなかった (空タイトル ガード過剰)"
+fi
+
+# Test 9.6: empty title (mode=1, alias for bell) → BEL
+export HARNESS_TERMINAL_NOTIFY=1
+out="$(build_terminal_sequence "")"
+if [ "${out}" = "${expected}" ]; then
+  pass "1.9.6 title 空でも mode=1 alias は BEL を発火"
+else
+  fail "1.9.6 mode=1 alias が title 空のときに発火しなかった"
 fi
 
 # Test 10: control chars stripped
@@ -343,13 +362,33 @@ echo "6. Template baseline チェック"
 
 template_file="${REPO_ROOT}/templates/claude/settings.security.json.template"
 if [ -f "${template_file}" ]; then
-  if grep -q '"baseRef"' "${template_file}" && grep -q '"hard_deny"' "${template_file}"; then
-    pass "6.1 template に worktree.baseRef と autoMode.hard_deny が存在"
+  # JSON parse して値を厳密に検証 (key 存在だけではなく中身まで)
+  if python3 - "${template_file}" >/dev/null 2>&1 <<'PY'
+import json, sys
+expected_hard_deny = {
+    "Bash(sudo:*)",
+    "Bash(rm -rf:*)",
+    "Bash(rm -fr:*)",
+    "Bash(git push -f:*)",
+    "Bash(git push --force:*)",
+    "Bash(git reset --hard:*)",
+    "mcp__codex__*",
+}
+with open(sys.argv[1], 'r', encoding='utf-8') as f:
+    data = json.load(f)
+assert data.get('worktree', {}).get('baseRef') == 'fresh', \
+    f"worktree.baseRef expected 'fresh', got {data.get('worktree', {}).get('baseRef')!r}"
+actual = set(data.get('autoMode', {}).get('hard_deny', []))
+assert actual == expected_hard_deny, \
+    f"autoMode.hard_deny mismatch: missing={expected_hard_deny - actual}, extra={actual - expected_hard_deny}"
+PY
+  then
+    pass "6.1 template の worktree.baseRef='fresh' + autoMode.hard_deny baseline 7 件が期待値どおり"
   else
-    fail "6.1 template に worktree.baseRef / autoMode.hard_deny が無い"
+    fail "6.1 template の worktree.baseRef または autoMode.hard_deny baseline が期待値と一致しない"
   fi
 
-  # JSON validity
+  # JSON validity (redundant with above but keeps a discrete check)
   if python3 -m json.tool "${template_file}" >/dev/null 2>&1; then
     pass "6.2 template が valid JSON"
   else

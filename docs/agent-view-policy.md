@@ -76,7 +76,7 @@ Harness はこれを **Lead (operator) が複数の Worker / Reviewer / Scaffold
 | Worker subagent が `claude agents` を呼んで別 session spawn | 権限境界の崩壊 (Lead だけが spawn) | Worker の手順から `claude agents` 呼び出しを削除 |
 | protected branch (`main`) 上で `claude agents ... --dangerously-skip-permissions` | guard rail (R12 ask) bypass | `--permission-mode default` または `acceptEdits` を使う |
 | `.claude-plugin/settings.json` を `--settings` で agent ごとに上書き | settings SSOT 崩壊 | project-level `.claude/settings.local.json` に変更を一元化 |
-| `--dangerously-skip-permissions` を `claude-mem` 等 credential を扱う session で使用 | secrets 流出リスク | 該当 flag を外す |
+| `--dangerously-skip-permissions` を `harness-mem` 等 credential を扱う session で使用 | secrets 流出リスク | 該当 flag を外す |
 
 ## CI / gate
 
@@ -88,7 +88,7 @@ Harness はこれを **Lead (operator) が複数の Worker / Reviewer / Scaffold
 
 ## 関連
 
-- `agents/team-composition.md` — teammate spawn と並列度の SSOT
+- `docs/team-composition.md` — teammate spawn と並列度の SSOT
 - `agents/worker.md` — Worker 契約
 - `.claude/rules/opus-4-7-prompt-audit.md` — agent 契約 audit ルール (Lead 限定 spawn を明記)
 - `docs/upstream-update-snapshot-2026-05-15.md` — Phase 69 snapshot
