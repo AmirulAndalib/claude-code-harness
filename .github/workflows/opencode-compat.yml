@@ -13,6 +13,7 @@ on:
       - 'opencode/README.md'
       - 'docs/architecture/hokage-core.md'
       - 'docs/bootstrap-routing-contract.md'
+      - 'docs/hokage-spin-off-readiness.md'
       - 'docs/skill-orchestration-design-contract.md'
       - 'docs/tool-capability-matrix.md'
       - 'scripts/build-opencode.js'
@@ -22,6 +23,7 @@ on:
       - 'scripts/sync-skill-mirrors.sh'
       - 'scripts/validate-opencode.js'
       - 'tests/test-bootstrap-routing-contract.sh'
+      - 'tests/test-hokage-spin-off-readiness.sh'
       - 'tests/test-opencode-setup.sh'
       - 'tests/test-skill-design-contract.sh'
       - 'tests/test-tool-capability-matrix.sh'
@@ -36,6 +38,7 @@ on:
       - 'opencode/README.md'
       - 'docs/architecture/hokage-core.md'
       - 'docs/bootstrap-routing-contract.md'
+      - 'docs/hokage-spin-off-readiness.md'
       - 'docs/skill-orchestration-design-contract.md'
       - 'docs/tool-capability-matrix.md'
       - 'scripts/build-opencode.js'
@@ -45,6 +48,7 @@ on:
       - 'scripts/sync-skill-mirrors.sh'
       - 'scripts/validate-opencode.js'
       - 'tests/test-bootstrap-routing-contract.sh'
+      - 'tests/test-hokage-spin-off-readiness.sh'
       - 'tests/test-opencode-setup.sh'
       - 'tests/test-skill-design-contract.sh'
       - 'tests/test-tool-capability-matrix.sh'
@@ -87,6 +91,7 @@ jobs:
         run: |
           bash tests/test-tool-capability-matrix.sh
           bash tests/test-bootstrap-routing-contract.sh
+          bash tests/test-hokage-spin-off-readiness.sh
           bash tests/test-skill-design-contract.sh
 
       - name: Check opencode mirror sync

@@ -26,8 +26,10 @@ require_fixed "no adapter path changes or release adapter claim" "scripts/releas
 require_fixed "use --check-adapters to force" "scripts/release-preflight.sh"
 
 require_fixed "docs/architecture/hokage-core.md" ".github/workflows/opencode-compat.yml"
+require_fixed "docs/hokage-spin-off-readiness.md" ".github/workflows/opencode-compat.yml"
 require_fixed "docs/skill-orchestration-design-contract.md" ".github/workflows/opencode-compat.yml"
 require_fixed "scripts/generate-skill-manifest.sh" ".github/workflows/opencode-compat.yml"
+require_fixed "tests/test-hokage-spin-off-readiness.sh" ".github/workflows/opencode-compat.yml"
 require_fixed "tests/test-skill-design-contract.sh" ".github/workflows/opencode-compat.yml"
 
 call_line="$(rg -n '^check_release_mirror_drift$' scripts/release-preflight.sh | cut -d: -f1)"

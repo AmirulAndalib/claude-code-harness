@@ -24,15 +24,30 @@ Cursor, Gemini, and Copilot are not public cross-host support claims in this pha
 
 ## Claude/Codex/OpenCode Gate Status
 
-| Gate | Current result | Evidence available | Blocking reason |
+| Gate | Current result | Verification evidence | Remaining blocker |
 |---|---|---|---|
-| Claude Code adapter | FAIL | Claude-first product surface exists; plugin validation already covers the current product baseline | Hokage Core contract checks are not yet part of `tests/validate-plugin.sh` |
-| Codex adapter | FAIL | Codex skills and package tests exist as a compatibility surface | Codex bootstrap routing for Hokage Core has not been documented and tested as a spin-off gate |
-| OpenCode adapter | FAIL | OpenCode mirror generation and `node scripts/validate-opencode.js` exist | Stale command/MCP setup surfaces must be cleaned before OpenCode can be treated as first-class adapter parity |
-| Capability matrix | FAIL | Existing docs describe Claude/Codex hardening differences | Claude/Codex/OpenCode capability rows still need a dedicated test-backed matrix |
-| Bootstrap routing | FAIL | Skill routing exists per host surface | Golden prompt routing has not been turned into a test-backed contract |
-| Release preflight | FAIL | Release preflight already checks existing package drift | Adapter drift gates are not yet tied to release claims for Hokage Core |
+| Claude Code adapter | PARTIAL | `./tests/validate-plugin.sh` passes the current Claude-first plugin baseline; Hokage Core docs/tests exist separately | Public spin-off requires the Hokage Core contract checks to be part of the Claude adapter release gate, not only separate local tests |
+| Codex adapter | PASS | `bash tests/test-codex-package.sh` passes; `docs/bootstrap-routing-contract.md` documents the Codex `AGENTS.md` route | None for the Phase 70 internal gate |
+| OpenCode adapter | PASS | `node scripts/build-opencode.js`, `node scripts/validate-opencode.js`, and `bash scripts/sync-skill-mirrors.sh --check` pass with skills-primary setup and development-only MCP wording | None for the Phase 70 internal gate |
+| Capability matrix | PASS | `docs/tool-capability-matrix.md` and `bash tests/test-tool-capability-matrix.sh` cover Claude/Codex/OpenCode differences and future-only hosts | None for the Phase 70 internal gate |
+| Bootstrap routing | PASS | `docs/bootstrap-routing-contract.md` and `bash tests/test-bootstrap-routing-contract.sh` define static golden prompt routing and unsupported-host behavior | Runtime auto-routing proof is explicitly out of scope for this phase |
+| Release preflight | PASS | `bash scripts/release-preflight.sh` includes adapter gates when adapter paths changed, release claims adapter support, or `--check-adapters` is used | CI run evidence still requires pushing the branch before a release tag |
 | Positioning | PASS | README / README_ja use conservative extraction wording | Keep this wording until the other gates pass |
+
+## Last Verification Snapshot
+
+Local verification for this readiness decision:
+
+| Command | Result |
+|---|---|
+| `./tests/validate-plugin.sh` | PASS |
+| `bash tests/test-codex-package.sh` | PASS |
+| `node scripts/build-opencode.js` | PASS |
+| `node scripts/validate-opencode.js` | PASS |
+| `bash scripts/sync-skill-mirrors.sh --check` | PASS |
+| `bash tests/test-tool-capability-matrix.sh` | PASS |
+| `bash tests/test-bootstrap-routing-contract.sh` | PASS |
+| `bash scripts/release-preflight.sh` | PASS locally with non-blocking warnings for env/health/CI availability and existing residual-scan candidates |
 
 ## Unsupported Host Reasons
 
@@ -46,8 +61,8 @@ Cursor, Gemini, and Copilot are not public cross-host support claims in this pha
 
 | Candidate | Why it is next | Required proof before support claim |
 |---|---|---|
-| OpenCode | It already has generated mirrors and validation scripts, so the remaining work is bounded | Remove stale setup/docs assumptions, pass mirror sync, pass `node scripts/validate-opencode.js`, and document unsupported capabilities |
-| Codex | It already has native skill surfaces and package tests | Document bootstrap routing, pass `bash tests/test-codex-package.sh`, and prove where Codex gates differ from Claude hooks |
+| OpenCode | It now has skills-primary setup, mirror generation, validation, and stale command/MCP cleanup | Add runtime bootstrap proof or keep support wording limited to packaging/static contract validation |
+| Codex | It already has native skill surfaces, package tests, and documented bootstrap routing | Decide whether Codex adapter support is a public claim or remains an internal compatibility surface |
 | Cursor | It has existing 2-agent workflow docs, but not adapter parity | Define whether it is a handoff integration or a real adapter before adding any support claim |
 
 ## Allowed Public Wording

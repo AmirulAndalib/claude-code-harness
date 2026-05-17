@@ -413,6 +413,7 @@ adapter_gate_paths=(
   "docs/architecture/hokage-core.md"
   "docs/distribution-scope.md"
   "docs/hardening-parity.md"
+  "docs/hokage-spin-off-readiness.md"
   "docs/skill-orchestration-design-contract.md"
   "scripts/build-opencode.js"
   "scripts/generate-skill-manifest.sh"
@@ -420,6 +421,7 @@ adapter_gate_paths=(
   "scripts/validate-opencode.js"
   "tests/test-codex-package.sh"
   "tests/test-distribution-archive.sh"
+  "tests/test-hokage-spin-off-readiness.sh"
   "tests/test-skill-design-contract.sh"
 )
 
@@ -620,6 +622,17 @@ check_release_mirror_drift() {
     fi
   else
     warn "bootstrap routing gate skipped"
+  fi
+
+  if [ -f tests/test-hokage-spin-off-readiness.sh ]; then
+    if bash tests/test-hokage-spin-off-readiness.sh >"$output_file" 2>&1; then
+      pass "hokage spin-off readiness gate"
+    else
+      fail "hokage spin-off readiness gate"
+      sed 's/^/  /' "$output_file"
+    fi
+  else
+    warn "hokage spin-off readiness gate skipped"
   fi
 
   rm -f "$output_file"
