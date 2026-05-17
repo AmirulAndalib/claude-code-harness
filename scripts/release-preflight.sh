@@ -11,6 +11,7 @@ PROJECT_ROOT="${HARNESS_RELEASE_PROJECT_ROOT:-$DEFAULT_ROOT}"
 if [ "${1:-}" = "--help" ]; then
   cat <<'EOF'
 Usage: scripts/release-preflight.sh [--root PATH] [--dry-run]
+       scripts/release-preflight.sh [--root PATH] [--check-adapters|--skip-adapters]
 
 Checks:
   - git worktree cleanliness
@@ -18,11 +19,13 @@ Checks:
   - env parity / healthcheck
   - runtime residual scan
   - sprint-contract schema
-  - opencode / skill mirror drift
+  - opencode / skill mirror drift when adapter paths, release claims, or explicit flags require it
   - CI status when available
 EOF
   exit 0
 fi
+
+CHECK_ADAPTERS_MODE="${HARNESS_RELEASE_CHECK_ADAPTERS:-auto}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -37,12 +40,36 @@ while [ "$#" -gt 0 ]; do
     --dry-run)
       shift
       ;;
+    --check-adapters)
+      CHECK_ADAPTERS_MODE="always"
+      shift
+      ;;
+    --skip-adapters)
+      CHECK_ADAPTERS_MODE="never"
+      shift
+      ;;
     *)
       echo "error: unknown argument: $1" >&2
       exit 2
       ;;
   esac
 done
+
+case "$CHECK_ADAPTERS_MODE" in
+  1|true|TRUE|yes|YES|always)
+    CHECK_ADAPTERS_MODE="always"
+    ;;
+  0|false|FALSE|no|NO|never)
+    CHECK_ADAPTERS_MODE="never"
+    ;;
+  ""|auto)
+    CHECK_ADAPTERS_MODE="auto"
+    ;;
+  *)
+    echo "error: invalid adapter check mode: $CHECK_ADAPTERS_MODE" >&2
+    exit 2
+    ;;
+esac
 
 if [ ! -d "$PROJECT_ROOT" ]; then
   echo "error: project root not found: $PROJECT_ROOT" >&2
@@ -377,7 +404,119 @@ NODE
   rm -f "$output_file"
 }
 
+adapter_gate_paths=(
+  "adapters/"
+  "codex/"
+  "skills-codex/"
+  "opencode/"
+  ".github/workflows/opencode-compat.yml"
+  "docs/architecture/hokage-core.md"
+  "docs/distribution-scope.md"
+  "docs/hardening-parity.md"
+  "docs/hokage-spin-off-readiness.md"
+  "docs/skill-orchestration-design-contract.md"
+  "scripts/build-opencode.js"
+  "scripts/generate-skill-manifest.sh"
+  "scripts/sync-skill-mirrors.sh"
+  "scripts/validate-opencode.js"
+  "tests/test-codex-package.sh"
+  "tests/test-distribution-archive.sh"
+  "tests/test-hokage-spin-off-readiness.sh"
+  "tests/test-skill-design-contract.sh"
+)
+
+normalize_changed_paths() {
+  local output_file="$1"
+  local sorted_file
+  sorted_file="$(mktemp)"
+  sort -u "$output_file" >"$sorted_file"
+  mv "$sorted_file" "$output_file"
+}
+
+append_changed_paths() {
+  local output_file="$1"
+  shift
+  git "$@" -- "${adapter_gate_paths[@]}" >>"$output_file" 2>/dev/null || true
+}
+
+adapter_paths_changed() {
+  local output_file="$1"
+  : >"$output_file"
+
+  append_changed_paths "$output_file" diff --name-only
+  append_changed_paths "$output_file" diff --name-only --cached
+  append_changed_paths "$output_file" ls-files --others --exclude-standard
+
+  local base_ref="${HARNESS_RELEASE_ADAPTER_BASE_REF:-}"
+  if [ -z "$base_ref" ]; then
+    base_ref="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+  fi
+  if [ -z "$base_ref" ] && git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+    base_ref="origin/main"
+  fi
+  if [ -n "$base_ref" ] && git rev-parse --verify --quiet "${base_ref}^{commit}" >/dev/null 2>&1; then
+    append_changed_paths "$output_file" diff --name-only "${base_ref}...HEAD"
+  fi
+
+  normalize_changed_paths "$output_file"
+  [ -s "$output_file" ]
+}
+
+release_claims_adapter_support() {
+  if [ "${HARNESS_RELEASE_CLAIMS_ADAPTERS:-}" = "1" ] || [ "${HARNESS_RELEASE_CLAIMS_ADAPTERS:-}" = "true" ]; then
+    return 0
+  fi
+
+  if [ ! -f CHANGELOG.md ]; then
+    return 1
+  fi
+
+  local unreleased
+  unreleased="$(awk '
+    /^## \[Unreleased\]/ { in_unreleased=1; next }
+    /^## \[/ { in_unreleased=0 }
+    in_unreleased { print }
+  ' CHANGELOG.md)"
+
+  printf '%s\n' "$unreleased" | grep -Eiq 'OpenCode|Codex|adapter|mirror|multi-harness|Hokage Core|capability matrix'
+}
+
+should_run_adapter_gates() {
+  case "$CHECK_ADAPTERS_MODE" in
+    always)
+      echo "[INFO] adapter gates enabled by explicit flag"
+      return 0
+      ;;
+    never)
+      warn "release mirror drift skipped by explicit adapter gate flag"
+      return 1
+      ;;
+  esac
+
+  local changed_paths
+  changed_paths="$(mktemp)"
+  if adapter_paths_changed "$changed_paths"; then
+    echo "[INFO] adapter gates enabled by adapter-relevant paths"
+    sed -n '1,20p' "$changed_paths" | sed 's/^/  /'
+    rm -f "$changed_paths"
+    return 0
+  fi
+  rm -f "$changed_paths"
+
+  if release_claims_adapter_support; then
+    echo "[INFO] adapter gates enabled by release adapter claim"
+    return 0
+  fi
+
+  warn "release mirror drift skipped (no adapter path changes or release adapter claim; use --check-adapters to force)"
+  return 1
+}
+
 check_release_mirror_drift() {
+  if ! should_run_adapter_gates; then
+    return
+  fi
+
   local has_mirror_surface=0
   [ -d opencode ] && has_mirror_surface=1
   [ -d skills-codex ] && has_mirror_surface=1
@@ -438,6 +577,65 @@ check_release_mirror_drift() {
     fail "release mirror drift"
     git diff --stat -- "${diff_paths[@]}" | sed 's/^/  /'
   fi
+
+  output_file="$(mktemp)"
+
+  if [ -f tests/test-codex-package.sh ]; then
+    if bash tests/test-codex-package.sh >"$output_file" 2>&1; then
+      pass "codex package gate"
+    else
+      fail "codex package gate"
+      sed 's/^/  /' "$output_file"
+    fi
+  else
+    warn "codex package gate skipped"
+  fi
+
+  if [ -f tests/test-distribution-archive.sh ]; then
+    if bash tests/test-distribution-archive.sh >"$output_file" 2>&1; then
+      pass "distribution archive gate"
+    else
+      fail "distribution archive gate"
+      sed 's/^/  /' "$output_file"
+    fi
+  else
+    warn "distribution archive gate skipped"
+  fi
+
+  if [ -f tests/test-tool-capability-matrix.sh ]; then
+    if bash tests/test-tool-capability-matrix.sh >"$output_file" 2>&1; then
+      pass "tool capability matrix gate"
+    else
+      fail "tool capability matrix gate"
+      sed 's/^/  /' "$output_file"
+    fi
+  else
+    warn "tool capability matrix gate skipped"
+  fi
+
+  if [ -f tests/test-bootstrap-routing-contract.sh ]; then
+    if bash tests/test-bootstrap-routing-contract.sh >"$output_file" 2>&1; then
+      pass "bootstrap routing gate"
+    else
+      fail "bootstrap routing gate"
+      sed 's/^/  /' "$output_file"
+    fi
+  else
+    warn "bootstrap routing gate skipped"
+  fi
+
+  if [ -f tests/test-hokage-spin-off-readiness.sh ]; then
+    if bash tests/test-hokage-spin-off-readiness.sh >"$output_file" 2>&1; then
+      pass "hokage spin-off readiness gate"
+    else
+      fail "hokage spin-off readiness gate"
+      sed 's/^/  /' "$output_file"
+    fi
+  else
+    warn "hokage spin-off readiness gate skipped"
+  fi
+
+  rm -f "$output_file"
 }
 
 check_ci_status() {

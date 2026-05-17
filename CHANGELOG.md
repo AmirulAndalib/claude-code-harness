@@ -6,6 +6,16 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Phase 70: Hokage Core extraction positioning (docs-only)
+
+#### Before / After
+
+| 観点 | Before | After |
+|------|--------|-------|
+| Public positioning | v4 "Hokage" runtime wording could be mistaken for a cross-host product claim | README / README_ja now state that Claude Code Harness remains Claude-first and that Hokage Core extraction is underway only |
+| Spin-off readiness | No single public-readiness checklist explained why `Hokage Harness` is not yet a product claim | `docs/hokage-spin-off-readiness.md` records Claude/Codex/OpenCode gate status, unsupported host reasons, next adapter candidates, and the conclusion `No public spin-off yet` |
+| Unsupported hosts | Cursor/Gemini/Copilot risked being read as cross-host support targets | They are documented as not part of the public spin-off claim until the Claude/Codex/OpenCode gates are green |
+
 ### Before / After
 
 | 観点 | Before | After |

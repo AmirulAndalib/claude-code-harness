@@ -52,9 +52,9 @@ resolve_plugin_dir() {
   local candidate
   for candidate in "${candidates[@]}"; do
     [ -n "$candidate" ] || continue
-    if [ -d "$candidate/opencode/commands" ]; then
+    if [ -d "$candidate/opencode/skills" ]; then
       [ -z "$fallback" ] && fallback="$candidate"
-      if [ -d "$candidate/opencode/skills" ]; then
+      if [ -f "$candidate/opencode/AGENTS.md" ] && [ -f "$candidate/opencode/opencode.json" ]; then
         echo "$candidate"
         return 0
       fi
@@ -76,25 +76,50 @@ fi
 
 echo "Using Harness plugin: $PLUGIN_DIR"
 
-mkdir -p "$PROJECT_DIR/.opencode/commands/core"
-mkdir -p "$PROJECT_DIR/.opencode/commands/optional"
-mkdir -p "$PROJECT_DIR/.opencode/commands/pm"
-mkdir -p "$PROJECT_DIR/.opencode/commands/handoff"
-mkdir -p "$PROJECT_DIR/.claude/skills"
+copy_dir_contents() {
+  local src="$1"
+  local dest="$2"
+  local label="$3"
+  local required="${4:-required}"
 
-if [ -d "$PROJECT_DIR/.claude/skills" ] && [ "$(ls -A "$PROJECT_DIR/.claude/skills" 2>/dev/null)" ]; then
-  backup_dir="$PROJECT_DIR/.claude/skills.backup.$(date +%Y%m%d%H%M%S)"
-  mv "$PROJECT_DIR/.claude/skills" "$backup_dir"
-  mkdir -p "$PROJECT_DIR/.claude/skills"
-  echo "Backed up existing .claude/skills to: $backup_dir"
-fi
+  if [ ! -d "$src" ]; then
+    if [ "$required" = "required" ]; then
+      fail "$label not found in Harness plugin source"
+    fi
+    echo "Warning: $label not found in plugin source."
+    return
+  fi
 
-cp -r "$PLUGIN_DIR/opencode/commands/"* "$PROJECT_DIR/.opencode/commands/"
-if [ -d "$PLUGIN_DIR/opencode/skills" ]; then
-  cp -r "$PLUGIN_DIR/opencode/skills/"* "$PROJECT_DIR/.claude/skills/"
-else
-  echo "Warning: opencode/skills not found in plugin source."
-fi
+  if [ -z "$(find "$src" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+    if [ "$required" = "required" ]; then
+      fail "$label is empty in Harness plugin source"
+    fi
+    echo "Warning: $label is empty in plugin source."
+    return
+  fi
+
+  mkdir -p "$dest"
+  cp -R "$src/." "$dest/"
+  echo "Copied $label to: $dest"
+}
+
+backup_dir_if_nonempty() {
+  local dir="$1"
+  local label="$2"
+
+  if [ -d "$dir" ] && [ -n "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+    backup_dir="$dir.backup.$(date +%Y%m%d%H%M%S)"
+    mv "$dir" "$backup_dir"
+    mkdir -p "$dir"
+    echo "Backed up existing $label to: $backup_dir"
+  fi
+}
+
+mkdir -p "$PROJECT_DIR/.opencode/skills"
+backup_dir_if_nonempty "$PROJECT_DIR/.opencode/skills" ".opencode/skills"
+copy_dir_contents "$PLUGIN_DIR/opencode/skills" "$PROJECT_DIR/.opencode/skills" "OpenCode skills"
+
+copy_dir_contents "$PLUGIN_DIR/opencode/commands" "$PROJECT_DIR/.opencode/commands" "OpenCode compatibility commands" "optional"
 
 if [ -f "$PROJECT_DIR/AGENTS.md" ]; then
   backup_agents="$PROJECT_DIR/AGENTS.md.backup.$(date +%Y%m%d%H%M%S)"
@@ -104,6 +129,26 @@ fi
 
 if [ -f "$PLUGIN_DIR/opencode/AGENTS.md" ]; then
   cp "$PLUGIN_DIR/opencode/AGENTS.md" "$PROJECT_DIR/AGENTS.md"
+else
+  fail "opencode/AGENTS.md not found in Harness plugin source"
 fi
 
-echo "Copied opencode commands, skills, and AGENTS.md."
+if [ -f "$PROJECT_DIR/opencode.json" ]; then
+  echo "opencode.json already exists, skipping."
+elif [ -f "$PLUGIN_DIR/opencode/opencode.json" ]; then
+  cp "$PLUGIN_DIR/opencode/opencode.json" "$PROJECT_DIR/opencode.json"
+else
+  fail "opencode/opencode.json not found in Harness plugin source"
+fi
+
+first_skill="$(find "$PROJECT_DIR/.opencode/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -print -quit 2>/dev/null || true)"
+[ -n "$first_skill" ] || fail "No OpenCode skills installed under .opencode/skills/"
+[ -f "$PROJECT_DIR/AGENTS.md" ] || fail "AGENTS.md was not created"
+[ -f "$PROJECT_DIR/opencode.json" ] || fail "opencode.json was not created"
+
+if command -v node >/dev/null 2>&1; then
+  node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$PROJECT_DIR/opencode.json" \
+    || fail "opencode.json is not valid JSON"
+fi
+
+echo "Copied OpenCode-native skills, AGENTS.md, opencode.json, and optional compatibility commands."

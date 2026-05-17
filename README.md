@@ -83,6 +83,20 @@ Just update the plugin — no configuration changes needed:
 
 ---
 
+## Hokage Core Extraction Status
+
+Claude Code Harness remains a Claude-first product. "Hokage" currently names
+the v4 Go-native runtime line, not a separate product claim.
+
+Hokage Core extraction underway: the shared workflow contract is being separated
+from host-specific adapters, while public support claims stay limited to the
+gates that are already proven. No public `Hokage Harness` spin-off is claimed
+until the Claude/Codex/OpenCode readiness gates pass.
+
+Current gate status: [Hokage Spin-Off Readiness](docs/hokage-spin-off-readiness.md).
+
+---
+
 ## Why Harness?
 
 Claude Code is powerful. Harness turns that raw capability into a delivery loop that is easier to trust and harder to derail.
@@ -483,6 +497,7 @@ Full technical list (19 features): [docs/CLAUDE-feature-table.md](docs/CLAUDE-fe
 | [Benchmark Rubric](docs/benchmark-rubric.md) | Static vs executed evidence scoring |
 | [Weak-Supervision Harness](docs/sandbagging-aware-weak-supervision.md) | Schemas, privacy tags, and evidence flow for sandbagging-aware review |
 | [Positioning Notes](docs/positioning-notes.md) | Public-facing differentiation language |
+| [Hokage Spin-Off Readiness](docs/hokage-spin-off-readiness.md) | Conservative gate status for Hokage Core extraction |
 | [Content Layout](docs/content-layout.md) | Source docs vs generated outputs convention |
 
 ---

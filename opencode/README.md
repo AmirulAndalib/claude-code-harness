@@ -16,6 +16,10 @@ opt-in path.
 
 ## Setup
 
+Skills-Primary setup means OpenCode loads Harness workflows from
+`.opencode/skills/<name>/SKILL.md`. The `.opencode/commands/` directory is
+compatibility-only for older slash-command flows.
+
 ### Option 1: One-Command Setup (Recommended)
 
 You can set up OpenCode support even if Claude Code is not installed:
@@ -47,24 +51,29 @@ If you already use Claude Code Harness, run:
 # Clone Harness
 git clone https://github.com/Chachamaru127/claude-code-harness.git
 
-# Copy OpenCode commands
-cp -r claude-code-harness/opencode/commands/ your-project/.opencode/commands/
+# Copy OpenCode-native skills (Skills-Primary setup)
+mkdir -p your-project/.opencode/skills
+cp -r claude-code-harness/opencode/skills/* your-project/.opencode/skills/
+
+# Copy project rules and config
 cp claude-code-harness/opencode/AGENTS.md your-project/AGENTS.md
+cp claude-code-harness/opencode/opencode.json your-project/opencode.json
+
+# Optional compatibility commands, if you still use slash-command workflows
+mkdir -p your-project/.opencode/commands
+cp -r claude-code-harness/opencode/commands/* your-project/.opencode/commands/
 ```
 
-## MCP Server Setup (Optional)
+## MCP Server Status
 
-MCP servers let OpenCode call Harness workflow tools directly.
+`mcp-server/` is development-only and distribution-excluded. It may exist in
+source checkouts for experiments and maintenance, but it is not part of the
+default OpenCode consumer setup.
 
-```bash
-# Build the MCP server
-cd claude-code-harness/mcp-server
-npm install
-npm run build
-
-# Copy opencode.json into your project and adjust paths
-cp claude-code-harness/opencode/opencode.json your-project/
-```
+The default `opencode.json` enables OpenCode's native skill discovery and does
+not point at a Harness MCP server path. Only add an MCP entry if you are
+developing that optional server from a source checkout and can provide the
+actual command path yourself.
 
 If you also use the unified memory daemon:
 
@@ -83,6 +92,9 @@ You can also run diagnostics through `harness-mem`:
 ```
 
 ## Available Commands
+
+Skills are the primary OpenCode surface. Commands are compatibility helpers for
+older or PM-oriented slash-command workflows.
 
 | Command | Description |
 |---------|-------------|
@@ -121,9 +133,10 @@ OpenCode (PM)                    Claude Code (Impl)
     |    `-- request_changes --------> |
 ```
 
-## MCP Tools
+## Development-Only MCP Tools
 
-The MCP server exposes these tools:
+The optional development-only MCP server can expose these tools when a source
+checkout owner builds and wires it manually:
 
 | Tool | Description |
 |------|-------------|
@@ -144,10 +157,10 @@ The MCP server exposes these tools:
 cd your-project
 opencode
 
-# Run commands
-/plan-with-agent  # Create a plan
-/work             # Execute tasks
-/harness-review   # Review code
+# Ask OpenCode to use the installed skills
+Use the harness-plan skill to create a plan
+Use the harness-work skill to execute the next task
+Use the harness-review skill to review code
 ```
 
 ## Limitations
@@ -159,6 +172,8 @@ opencode
   `name` and `description` are required, while bilingual
   `description-en` / `description-ja` metadata stays in the Claude Code and
   Codex source surfaces.
+- OpenCode discovers the installed skills from
+  `.opencode/skills/<name>/SKILL.md`.
 
 ## Links
 

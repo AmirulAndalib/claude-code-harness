@@ -267,7 +267,7 @@ test_preflight_pass_and_fail() {
   HARNESS_RELEASE_PROJECT_ROOT="$repo" \
   HARNESS_RELEASE_HEALTHCHECK_CMD='true' \
   HARNESS_RELEASE_CI_STATUS_CMD='true' \
-    "$PROJECT_ROOT/scripts/release-preflight.sh" >"$success_output"
+    "$PROJECT_ROOT/scripts/release-preflight.sh" --check-adapters >"$success_output"
 
   assert_contains "$success_output" "\\[PASS\\] working tree clean"
   assert_contains "$success_output" "\\[PASS\\] CHANGELOG.md has \\[Unreleased\\]"
@@ -287,7 +287,7 @@ test_preflight_pass_and_fail() {
   if HARNESS_RELEASE_PROJECT_ROOT="$repo" \
     HARNESS_RELEASE_HEALTHCHECK_CMD='true' \
     HARNESS_RELEASE_CI_STATUS_CMD='true' \
-      "$PROJECT_ROOT/scripts/release-preflight.sh" >"$failure_output" 2>&1; then
+      "$PROJECT_ROOT/scripts/release-preflight.sh" --check-adapters >"$failure_output" 2>&1; then
     fail "preflight should fail on dirty tree"
   fi
 
@@ -316,7 +316,7 @@ test_preflight_fails_on_opencode_mirror_drift() {
   if HARNESS_RELEASE_PROJECT_ROOT="$repo" \
     HARNESS_RELEASE_HEALTHCHECK_CMD='true' \
     HARNESS_RELEASE_CI_STATUS_CMD='true' \
-      "$PROJECT_ROOT/scripts/release-preflight.sh" >"$output" 2>&1; then
+      "$PROJECT_ROOT/scripts/release-preflight.sh" --check-adapters >"$output" 2>&1; then
     fail "preflight should fail on generated opencode mirror drift"
   fi
 

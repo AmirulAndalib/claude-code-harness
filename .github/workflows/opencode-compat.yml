@@ -10,9 +10,23 @@ on:
       - 'skills-codex/**'
       - 'codex/.codex/skills/**'
       - 'opencode/skills/**'
+      - 'opencode/README.md'
+      - 'docs/architecture/hokage-core.md'
+      - 'docs/bootstrap-routing-contract.md'
+      - 'docs/hokage-spin-off-readiness.md'
+      - 'docs/skill-orchestration-design-contract.md'
+      - 'docs/tool-capability-matrix.md'
       - 'scripts/build-opencode.js'
+      - 'scripts/generate-skill-manifest.sh'
+      - 'scripts/opencode-setup-local.sh'
+      - 'scripts/setup-opencode.sh'
       - 'scripts/sync-skill-mirrors.sh'
       - 'scripts/validate-opencode.js'
+      - 'tests/test-bootstrap-routing-contract.sh'
+      - 'tests/test-hokage-spin-off-readiness.sh'
+      - 'tests/test-opencode-setup.sh'
+      - 'tests/test-skill-design-contract.sh'
+      - 'tests/test-tool-capability-matrix.sh'
   pull_request:
     paths:
       - '.github/workflows/opencode-compat.yml'
@@ -21,9 +35,23 @@ on:
       - 'skills-codex/**'
       - 'codex/.codex/skills/**'
       - 'opencode/skills/**'
+      - 'opencode/README.md'
+      - 'docs/architecture/hokage-core.md'
+      - 'docs/bootstrap-routing-contract.md'
+      - 'docs/hokage-spin-off-readiness.md'
+      - 'docs/skill-orchestration-design-contract.md'
+      - 'docs/tool-capability-matrix.md'
       - 'scripts/build-opencode.js'
+      - 'scripts/generate-skill-manifest.sh'
+      - 'scripts/opencode-setup-local.sh'
+      - 'scripts/setup-opencode.sh'
       - 'scripts/sync-skill-mirrors.sh'
       - 'scripts/validate-opencode.js'
+      - 'tests/test-bootstrap-routing-contract.sh'
+      - 'tests/test-hokage-spin-off-readiness.sh'
+      - 'tests/test-opencode-setup.sh'
+      - 'tests/test-skill-design-contract.sh'
+      - 'tests/test-tool-capability-matrix.sh'
 
 permissions:
   contents: read
@@ -56,10 +84,20 @@ jobs:
       - name: Validate opencode format
         run: node scripts/validate-opencode.js
 
+      - name: Validate OpenCode setup contract
+        run: bash tests/test-opencode-setup.sh
+
+      - name: Validate Hokage Core contracts
+        run: |
+          bash tests/test-tool-capability-matrix.sh
+          bash tests/test-bootstrap-routing-contract.sh
+          bash tests/test-hokage-spin-off-readiness.sh
+          bash tests/test-skill-design-contract.sh
+
       - name: Check opencode mirror sync
         run: |
           if ! git diff --quiet opencode/; then
-            echo "::error::opencode/ is out of sync with commands/"
+            echo "::error::opencode/ is out of sync with skills/templates"
             echo "Run 'node scripts/build-opencode.js' and commit the changes."
             git diff --stat opencode/
             exit 1

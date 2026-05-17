@@ -63,6 +63,45 @@ warn() {
     echo -e "${YELLOW}⚠ $1${NC}"
 }
 
+copy_dir_contents() {
+    local src="$1"
+    local dest="$2"
+    local label="$3"
+    local required="${4:-required}"
+
+    if [ ! -d "$src" ]; then
+        if [ "$required" = "required" ]; then
+            error "$label not found in Harness"
+        fi
+        warn "$label not found in Harness (optional)"
+        return
+    fi
+
+    if [ -z "$(find "$src" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+        if [ "$required" = "required" ]; then
+            error "$label is empty in Harness"
+        fi
+        warn "$label is empty in Harness (optional)"
+        return
+    fi
+
+    mkdir -p "$dest"
+    cp -R "$src/." "$dest/"
+    success "$label copied to ${dest#$PROJECT_DIR/}"
+}
+
+backup_dir_if_nonempty() {
+    local dir="$1"
+    local label="$2"
+
+    if [ -d "$dir" ] && [ -n "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+        local backup_dir="${dir}.backup.$(date +%Y%m%d%H%M%S)"
+        warn "$label already has content, creating backup"
+        mv "$dir" "$backup_dir"
+        mkdir -p "$dir"
+    fi
+}
+
 # 前提条件チェック
 check_requirements() {
     info "Checking requirements..."
@@ -88,32 +127,13 @@ clone_harness() {
 copy_opencode_files() {
     info "Setting up opencode files..."
 
-    # .opencode/commands/ を作成
-    mkdir -p "$PROJECT_DIR/.opencode/commands"
+    # .opencode/skills/ is the OpenCode-native primary surface.
+    mkdir -p "$PROJECT_DIR/.opencode/skills"
+    backup_dir_if_nonempty "$PROJECT_DIR/.opencode/skills" ".opencode/skills/"
+    copy_dir_contents "$TEMP_DIR/harness/opencode/skills" "$PROJECT_DIR/.opencode/skills" "OpenCode skills"
 
-    # コマンドをコピー
-    if [ -d "$TEMP_DIR/harness/opencode/commands" ]; then
-        cp -r "$TEMP_DIR/harness/opencode/commands/"* "$PROJECT_DIR/.opencode/commands/"
-        success "Commands copied to .opencode/commands/"
-    else
-        error "opencode/commands not found in Harness"
-    fi
-
-    # .claude/skills/ を作成してスキルをコピー
-    mkdir -p "$PROJECT_DIR/.claude/skills"
-
-    if [ -d "$PROJECT_DIR/.claude/skills" ] && [ "$(ls -A "$PROJECT_DIR/.claude/skills" 2>/dev/null)" ]; then
-        warn ".claude/skills/ already has content, creating backup"
-        mv "$PROJECT_DIR/.claude/skills" "$PROJECT_DIR/.claude/skills.backup.$(date +%Y%m%d%H%M%S)"
-        mkdir -p "$PROJECT_DIR/.claude/skills"
-    fi
-
-    if [ -d "$TEMP_DIR/harness/opencode/skills" ]; then
-        cp -r "$TEMP_DIR/harness/opencode/skills/"* "$PROJECT_DIR/.claude/skills/"
-        success "Skills copied to .claude/skills/"
-    else
-        warn "opencode/skills not found in Harness (optional)"
-    fi
+    # .opencode/commands/ is compatibility-only for older slash-command flows.
+    copy_dir_contents "$TEMP_DIR/harness/opencode/commands" "$PROJECT_DIR/.opencode/commands" "OpenCode compatibility commands" "optional"
 
     # AGENTS.md をコピー（既存の場合はバックアップ）
     if [ -f "$PROJECT_DIR/AGENTS.md" ]; then
@@ -124,33 +144,40 @@ copy_opencode_files() {
     if [ -f "$TEMP_DIR/harness/opencode/AGENTS.md" ]; then
         cp "$TEMP_DIR/harness/opencode/AGENTS.md" "$PROJECT_DIR/AGENTS.md"
         success "AGENTS.md created (from CLAUDE.md)"
+    else
+        error "opencode/AGENTS.md not found in Harness"
     fi
 }
 
-# opencode.json を生成（オプション）
-setup_mcp() {
-    echo ""
-    echo -e "${YELLOW}Do you want to setup MCP server? (for advanced workflow tools)${NC}"
-    echo "This requires Node.js and allows using harness_workflow_* tools"
-    read -p "Setup MCP? (y/N): " setup_mcp_answer
-
-    if [[ "$setup_mcp_answer" =~ ^[Yy]$ ]]; then
-        if [ -f "$PROJECT_DIR/opencode.json" ]; then
-            warn "opencode.json already exists, skipping"
-            return
-        fi
-
-        # opencode.json をコピー
-        if [ -f "$TEMP_DIR/harness/opencode/opencode.json" ]; then
-            cp "$TEMP_DIR/harness/opencode/opencode.json" "$PROJECT_DIR/opencode.json"
-            success "opencode.json created"
-
-            warn "You need to:"
-            echo "  1. Clone Harness: git clone $HARNESS_REPO"
-            echo "  2. Build MCP server: cd claude-code-harness/mcp-server && npm install && npm run build"
-            echo "  3. Update path in opencode.json"
-        fi
+# opencode.json をセットアップ
+setup_opencode_config() {
+    if [ -f "$PROJECT_DIR/opencode.json" ]; then
+        warn "opencode.json already exists, skipping"
+        return
     fi
+
+    if [ -f "$TEMP_DIR/harness/opencode/opencode.json" ]; then
+        cp "$TEMP_DIR/harness/opencode/opencode.json" "$PROJECT_DIR/opencode.json"
+        success "opencode.json created"
+    else
+        error "opencode/opencode.json not found in Harness"
+    fi
+}
+
+verify_installation() {
+    local first_skill
+    first_skill="$(find "$PROJECT_DIR/.opencode/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -print -quit 2>/dev/null || true)"
+
+    [ -n "$first_skill" ] || error "No OpenCode skills installed under .opencode/skills/"
+    [ -f "$PROJECT_DIR/AGENTS.md" ] || error "AGENTS.md was not created"
+    [ -f "$PROJECT_DIR/opencode.json" ] || error "opencode.json was not created"
+
+    if command -v node >/dev/null 2>&1; then
+        node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$PROJECT_DIR/opencode.json" \
+            || error "opencode.json is not valid JSON"
+    fi
+
+    success "OpenCode-native skills, AGENTS.md, and opencode.json verified"
 }
 
 # 完了メッセージ
@@ -161,23 +188,23 @@ print_success() {
     echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
     echo ""
     echo "Created files:"
-    echo "  📁 .opencode/commands/  - Harness commands"
-    echo "  📁 .claude/skills/      - Harness skills (notebookLM, harness-review, impl, etc.)"
+    echo "  📁 .opencode/skills/    - Harness skills for OpenCode's native skill tool"
+    [ -d "$PROJECT_DIR/.opencode/commands" ] && echo "  📁 .opencode/commands/  - Optional compatibility commands"
     echo "  📄 AGENTS.md            - Rules file (from CLAUDE.md)"
-    [ -f "$PROJECT_DIR/opencode.json" ] && echo "  📄 opencode.json        - MCP configuration"
+    echo "  📄 opencode.json        - OpenCode skill/instruction configuration"
     echo ""
-    echo "Available skills:"
-    echo "  • notebookLM - Documentation (NotebookLM, slides)"
-    echo "  • impl    - Feature implementation"
-    echo "  • harness-review - Code review"
-    echo "  • verify  - Build verification"
-    echo "  • auth    - Authentication (Clerk, Stripe)"
-    echo "  • deploy  - Deployment (Vercel, Netlify)"
+    echo "Primary skills:"
+    echo "  • harness-plan    - Evidence-backed implementation planning"
+    echo "  • harness-work    - Execute Plans.md tasks"
+    echo "  • breezing        - Team execution mode"
+    echo "  • harness-review  - Code review"
+    echo "  • harness-sync    - Sync progress and plans"
     echo ""
     echo "Next steps:"
     echo "  1. Start opencode: ${BLUE}opencode${NC}"
-    echo "  2. Run commands:   ${BLUE}/plan-with-agent${NC}, ${BLUE}/work${NC}, ${BLUE}/harness-review${NC}"
+    echo "  2. Ask it to use the installed skills, for example: ${BLUE}Use harness-plan to create a plan${NC}"
     echo ""
+    echo "MCP note: mcp-server/ is development-only and distribution-excluded."
     echo "Documentation: https://github.com/Chachamaru127/claude-code-harness"
     echo ""
 }
@@ -191,7 +218,8 @@ main() {
     check_requirements
     clone_harness
     copy_opencode_files
-    setup_mcp
+    setup_opencode_config
+    verify_installation
     print_success
 }
 

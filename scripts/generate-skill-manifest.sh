@@ -41,6 +41,18 @@ process.stdout.on('error', (error) => {
 const [outputFile] = process.argv.slice(2);
 const repoRoot = process.cwd();
 const roots = ['skills', 'skills-codex', 'codex/.codex/skills', 'opencode/skills'];
+const officialRuntimeFields = [
+  'name',
+  'description',
+  'description-en',
+  'description-ja',
+  'allowed-tools',
+  'argument-hint',
+  'user-invocable',
+  'disable-model-invocation',
+  'context',
+  'effort',
+];
 const designMetadataFields = [
   'kind',
   'purpose',
@@ -54,6 +66,31 @@ const designMetadataFields = [
   'deprecated_in',
   'replaces',
 ];
+const coreWorkflowSkillNames = new Set([
+  'harness-plan',
+  'harness-work',
+  'harness-review',
+  'harness-loop',
+  'breezing',
+  'harness-sync',
+  'harness-setup',
+  'harness-release',
+  'harness-release-internal',
+]);
+const coreContract = {
+  document: 'docs/architecture/hokage-core.md',
+  capability_matrix_document: 'docs/tool-capability-matrix.md',
+  capability_matrix_anchor: 'Capability Status',
+  capabilities: [
+    'skill_loading',
+    'bootstrap_notice',
+    'prompt_routing',
+    'pre_use_guard',
+    'post_use_gate',
+    'review_artifact',
+    'memory_bridge',
+  ],
+};
 
 function walk(dirPath, entries) {
   if (!fs.existsSync(dirPath)) return;
@@ -169,6 +206,14 @@ const skills = skillFiles
     const relativePath = path.relative(repoRoot, filePath).split(path.sep).join('/');
     const directory = path.dirname(relativePath).split(path.sep).join('/');
     const surface = rootNameFor(relativePath);
+    const officialRuntime = {};
+    for (const field of officialRuntimeFields) {
+      officialRuntime[field] = Object.prototype.hasOwnProperty.call(frontmatter, field) ? frontmatter[field] : null;
+    }
+    const harnessMetadata = {};
+    for (const field of designMetadataFields) {
+      harnessMetadata[field] = Object.prototype.hasOwnProperty.call(frontmatter, field) ? frontmatter[field] : null;
+    }
     const entry = {
       path: relativePath,
       directory,
@@ -184,10 +229,19 @@ const skills = skillFiles
       user_invocable: typeof frontmatter['user-invocable'] === 'boolean' ? frontmatter['user-invocable'] : null,
       disable_model_invocation: typeof frontmatter['disable-model-invocation'] === 'boolean' ? frontmatter['disable-model-invocation'] : null,
       do_not_use_for: parseDoNotUseFor(frontmatter),
+      official_runtime: officialRuntime,
+      harness_metadata: harnessMetadata,
+      core_contract_document: null,
+      capability_matrix_document: null,
     };
 
     for (const field of designMetadataFields) {
-      entry[field] = Object.prototype.hasOwnProperty.call(frontmatter, field) ? frontmatter[field] : null;
+      entry[field] = harnessMetadata[field];
+    }
+
+    if (coreWorkflowSkillNames.has(entry.name) && entry.kind === 'workflow') {
+      entry.core_contract_document = coreContract.document;
+      entry.capability_matrix_document = coreContract.capability_matrix_document;
     }
 
     return entry;
@@ -211,6 +265,9 @@ const manifest = {
   generated_at: new Date().toISOString(),
   repo_root: repoRoot,
   roots,
+  official_runtime_fields: officialRuntimeFields,
+  harness_metadata_fields: designMetadataFields,
+  core_contract: coreContract,
   skill_count: skills.length,
   skills,
 };

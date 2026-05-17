@@ -226,7 +226,22 @@ function validateOpencodeConfig() {
       warnings.push('opencode/opencode.json: Missing $schema field');
     }
 
-    // mcp 設定の存在確認
+    if (!Array.isArray(config.instructions) || !config.instructions.includes('AGENTS.md')) {
+      errors.push('opencode/opencode.json: Missing instructions entry for AGENTS.md');
+    }
+
+    const skillPermission = config.permission && config.permission.skill;
+    if (!skillPermission || skillPermission['*'] !== 'allow') {
+      errors.push('opencode/opencode.json: Missing permission.skill wildcard allow');
+    }
+
+    const serialized = JSON.stringify(config);
+    if (serialized.includes('mcp-server')) {
+      errors.push('opencode/opencode.json: Must not default to a development-only mcp-server path');
+    }
+
+    // mcp 設定の存在確認。OpenCode sample config may include custom MCP, but
+    // the generated default must not point at development-only mcp-server.
     if (config.mcp && config.mcp.harness) {
       const harness = config.mcp.harness;
       if (harness.type !== 'local' && harness.type !== 'remote') {
@@ -235,6 +250,83 @@ function validateOpencodeConfig() {
     }
   } catch (e) {
     // JSON パースエラーは既に出力済み
+  }
+}
+
+function validateOpenCodeSetupSurface() {
+  const readmePath = path.join(OPENCODE_DIR, 'README.md');
+  const localSetupPath = path.join(ROOT_DIR, 'scripts', 'opencode-setup-local.sh');
+  const remoteSetupPath = path.join(ROOT_DIR, 'scripts', 'setup-opencode.sh');
+  const buildPath = path.join(ROOT_DIR, 'scripts', 'build-opencode.js');
+
+  const readText = (filePath) => {
+    if (!fs.existsSync(filePath)) {
+      errors.push(`File not found: ${path.relative(ROOT_DIR, filePath)}`);
+      return '';
+    }
+    return fs.readFileSync(filePath, 'utf8');
+  };
+
+  const readme = readText(readmePath);
+  if (!readme.includes('.opencode/skills')) {
+    errors.push('opencode/README.md: Must document .opencode/skills as the primary setup path');
+  }
+  if (!readme.includes('AGENTS.md') || !readme.includes('opencode.json')) {
+    errors.push('opencode/README.md: Must document AGENTS.md and opencode.json setup');
+  }
+  if (!readme.includes('development-only and distribution-excluded')) {
+    errors.push('opencode/README.md: Must describe mcp-server/ as development-only and distribution-excluded');
+  }
+
+  const forbiddenConsumerDefaults = [
+    'cp -r claude-code-harness/opencode/commands/ your-project/.opencode/commands/',
+    'cp -r claude-code-harness/opencode/skills/ your-project/.claude/skills/',
+    'cd claude-code-harness/mcp-server',
+    'mcp-server/dist/index.js',
+  ];
+
+  for (const pattern of forbiddenConsumerDefaults) {
+    if (readme.includes(pattern)) {
+      errors.push(`opencode/README.md: Stale consumer-default setup found: ${pattern}`);
+    }
+  }
+
+  const setupFiles = [
+    ['scripts/opencode-setup-local.sh', readText(localSetupPath)],
+    ['scripts/setup-opencode.sh', readText(remoteSetupPath)],
+  ];
+
+  for (const [label, content] of setupFiles) {
+    if (!content.includes('.opencode/skills')) {
+      errors.push(`${label}: Must install skills into .opencode/skills`);
+    }
+    if (!content.includes('AGENTS.md')) {
+      errors.push(`${label}: Must verify or install AGENTS.md`);
+    }
+    if (!content.includes('opencode.json')) {
+      errors.push(`${label}: Must verify or install opencode.json`);
+    }
+    if (content.includes('PROJECT_DIR/.claude/skills') || content.includes('Skills copied to .claude/skills')) {
+      errors.push(`${label}: Must not install OpenCode skills into .claude/skills by default`);
+    }
+    if (content.includes('opencode/commands not found in Harness')) {
+      errors.push(`${label}: Must not require opencode/commands for skills-primary setup`);
+    }
+    if (content.includes('cd claude-code-harness/mcp-server') || content.includes('npm run build')) {
+      errors.push(`${label}: Must not document mcp-server build as consumer default`);
+    }
+  }
+
+  const buildContent = readText(buildPath);
+  const fallbackStart = buildContent.indexOf('const readme = `# Harness for OpenCode');
+  const fallbackReadme = fallbackStart >= 0 ? buildContent.slice(fallbackStart) : buildContent;
+  if (!fallbackReadme.includes('.opencode/skills')) {
+    errors.push('scripts/build-opencode.js: Generated README fallback must document .opencode/skills');
+  }
+  for (const pattern of forbiddenConsumerDefaults) {
+    if (fallbackReadme.includes(pattern)) {
+      errors.push(`scripts/build-opencode.js: Stale generated README fallback found: ${pattern}`);
+    }
   }
 }
 
@@ -263,6 +355,10 @@ function main() {
   console.log('📋 Validating JSON files...');
   validateJsonFile(path.join(OPENCODE_DIR, 'opencode.json'));
   validateOpencodeConfig();
+
+  // OpenCode setup surface の検証
+  console.log('🧭 Validating setup surface...');
+  validateOpenCodeSetupSurface();
 
   // 結果出力
   console.log('\n' + '='.repeat(50));
