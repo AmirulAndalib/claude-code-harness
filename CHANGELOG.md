@@ -6,6 +6,108 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### テーマ: Sandbox allowlist の運用レシピを harness-side に SSOT 化
+
+**他プロジェクトで Firecrawl / 外部スクレイプ API が `HTTP/2 403 / x-deny-reason: host_not_allowed` で塞がれる問題に対し、`~/.claude/settings.json` への patch 手順を `docs/sandbox-allowlist-recipe.md` として codify。AI 経由での自動書き換えはできない security boundary なので、ユーザー手動編集の手順を harness が責任を持って提示する設計。**
+
+---
+
+#### 1. `docs/sandbox-allowlist-recipe.md` を新規追加
+
+**今まで**: claude-code-harness を install した他プロジェクトで Firecrawl が動かない時、ユーザーは「sandbox 設定をどう変えればいいか」を毎回手探りで調査する必要がありました。CC sandbox が allowlist default で全 deny という挙動を知らないと、`HTTP/2 403 / x-deny-reason: host_not_allowed` を見ても何をすればいいか分からない状態でした。
+
+**今後**: `docs/sandbox-allowlist-recipe.md` に以下を codify:
+
+- 症状 (`HTTP/2 403 / x-deny-reason: host_not_allowed`) と原因 (CC sandbox が allowlist 空 = 全 deny)
+- `~/.claude/settings.json` に追加する patch JSON 完成形 (29 ドメイン allowlist + 9 ドメイン denylist)
+- 3 階層構成 (開発コア 14 / Firecrawl 本体 2 / スクレイプ対象 13) と各階層の意図
+- 検証コマンド (`jq -e '.sandbox.network.allowedDomains | length' ~/.claude/settings.json` で件数チェック)
+- なぜ AI が自動で編集しないのか (self-audit guard の責任境界)
+- トラブルシューティング (JSON syntax error / CC 完全再起動の必要性 / `FIRECRAWL_API_KEY` 設定)
+
+他プロジェクトで同じ問題に遭遇した時、`@docs/sandbox-allowlist-recipe.md` で一発参照して自己解決できます。
+
+#### 2. Self-audit guard と AI の責任境界を明確化
+
+**今まで**: `~/.claude/settings.json` の編集は AI から見ると「deny される作業」とだけ理解され、なぜ deny されるか・代わりに何をすべきかの SSOT がありませんでした。Bash + jq による迂回も CC auto mode classifier が「User Deny Rules circumvention」として deny する設計ですが、この挙動と意図は docs 化されていませんでした。
+
+**今後**: 「AI 側は patch 提示まで、ユーザー側が手動編集」という責任境界を docs の `## なぜ AI が自動で編集しないのか` セクションで codify。将来 sandbox 周りの問題に他セッションが遭遇した時、「`Edit/Write(.claude/settings*)` deny + Bash 迂回も classifier deny + ユーザー手動編集が正規ルート」と一発で把握できます。
+
+#### 3. `templates/sandbox-settings.json.template` を 29 ドメイン構成に同期 + 導線追加
+
+**今まで**: `templates/sandbox-settings.json.template` の `allowedDomains` は 8 個 (github / npmjs / anthropic / pypi / rubygems / crates のみ) で、docs の 29 個推奨と乖離。新規プロジェクトで template を流用しても `codeload.github.com` / `objects.githubusercontent.com` / `files.pythonhosted.org` / `proxy.golang.org` / `sum.golang.org` / `static.crates.io` 不在で git clone / pip / go mod / cargo が落ちる可能性がありました。また `CLAUDE.md` / 既存 docs から新 doc への inbound link がゼロで、「`@docs/sandbox-allowlist-recipe.md` で一発参照」の約束が機能していませんでした。
+
+**今後**:
+
+- `templates/sandbox-settings.json.template` を recipe と完全同期 (29 ドメイン allowlist + 9 ドメイン denylist + 6 excludedCommands)。`_notes.sync_with` フィールドで「recipe と数値・項目を完全一致させること」を明示し drift 再発を防止
+- `CLAUDE.md` Permission Boundaries セクションに 1 行ポインタ追加: `外部 API への sandbox allowlist 設定 (Firecrawl / web スクレイプ等): docs/sandbox-allowlist-recipe.md`
+- docs の patch JSON 例を「先頭 comma append 形式」から「top-level 同階層に 1 ブロック追加」+ 完成形 JSON 構造図に変更。コピペ手順 (`cp backup` → エディタ編集 → `jq -e` 検証 → CC 再起動) を追加して手動編集ミスを防止
+
+#### 4. 推奨 allowedDomains を 29 個に拡張 (Firecrawl + 日本テックブログ群)
+
+**今まで**: `templates/sandbox-settings.json.template` には開発コア 8 ドメイン (github / npm / anthropic / pypi / rubygems / crates) のみ列挙されており、Firecrawl の API host (`api.firecrawl.dev`) や代表的なテックブログ (`techblog.zozo.com` / `note.com` / `zenn.dev` 等) は含まれていませんでした。
+
+**今後**: docs の patch では 29 ドメインを 3 階層で列挙:
+
+- **開発コア (14)**: github 系 5 + npm + anthropic + pypi 系 2 + go 系 2 + crates 系 2 + rubygems
+- **Firecrawl (2)**: `api.firecrawl.dev` / `firecrawl.dev`
+- **スクレイプ対象 (13)**: `techblog.zozo.com` / `note.com` / `assets.st-note.com` / `zenn.dev` / `qiita.com` / `dev.to` / `medium.com` / `cdn-ak.f.st-hatena.com` / `engineering.dena.com` / `developers.cyberagent.co.jp` / `tech.uzabase.com` / `engineer.crowdworks.jp` / `tech.smarthr.jp`
+
+#### 5. Case A / Case B merge pattern と jq one-liner を追加 (Codex review 対応)
+
+**今まで**: 当初 recipe は「`~/.claude/settings.json` の最後の `}` 直前に sandbox ブロックを追加」という単一手順のみで、既に `sandbox` キーがある環境 (例: `failIfUnavailable` / `filesystem.denyRead` / `network.deniedDomains` を既存設定済) では JSON key 重複でどちらかの sandbox ブロックが消える危険がありました。また template から流用する説明で `4 行目-65 行目` という固定 line range を書いていたため、template 拡張で line がずれた後は無効な範囲を user が copy する事故リスクがありました。
+
+**今後**: Codex review (P2 + P3 指摘) を反映し、recipe を以下に書き直し:
+
+- **Step 0**: `jq 'has("sandbox")' ~/.claude/settings.json` で既存有無を判定し Case A / B に分岐
+- **Case A** (sandbox 既存無し): top-level に sandbox ブロックを新規追加
+- **Case B** (sandbox 既存あり): 内側を merge ルール表 (enabled / autoAllowBashIfSandboxed は set、failIfUnavailable / filesystem は touch 禁止、配列は union 化)
+- **jq one-liner** で Case A / B 両対応の安全 merge (既存 `filesystem` / `failIfUnavailable` を破壊しない、配列は `unique` で重複排除)
+- template 流用説明から固定 line range を削除し、「`sandbox` セクション全体をコピー」と書く形に変更 (template 拡張で line がずれても安全)
+- `templates/sandbox-settings.json.template` 丸ごとコピーは Case A 限定と明示 (Case B では既存 `filesystem` を破壊する)
+
+#### 6. jq merge コマンドの file permission 保持 + 検証セクションの Case 別化 (Codex review 2 回目対応)
+
+**今まで**: jq merge コマンドが `jq ... > settings.json.tmp && mv settings.json.tmp settings.json` の典型パターンで、tmp ファイルが user の umask (一般に 644) で作られていました。元の `~/.claude/settings.json` が `600` (token / secret を含むため強い permission で保護) だった場合、merge 後に **read access が 644 に広がる security regression** が起きていました。また「## 検証」セクションが 2 箇所で重複 (`### 検証` 内は「→ 29 以上」だが、独立 `## 検証` 内は固定 `→ 29`) で、Case B (既存 sandbox あり) の user が成功した merge を「件数違う、失敗した」と誤判定する状況がありました。
+
+**今後**: Codex review 2 回目 (P2 + P3 指摘) を反映:
+
+- jq merge コマンドに **file mode 保持** を追加:
+  - `MODE=$(stat -f '%Mp%Lp' "$SETTINGS" 2>/dev/null || stat -c '%a' "$SETTINGS")` で macOS / Linux 両対応
+  - `cp -p` で backup の mode 保持
+  - `chmod "$MODE" "${SETTINGS}.tmp"` で merge 後の tmp に元 mode を復元してから `mv`
+  - 末尾に mode 確認の `stat` 1 行を追加
+- 重複していた「## 検証」セクション (固定 `→ 29` を含む方) を削除し、「外向き通信のスモークテスト」セクションに置換 (Firecrawl scrape の動作確認専用)
+- 残った「### 検証」を **Case A / B 別の期待値** に書き直し:
+  - allowedDomains length: Case A = ちょうど 29 / Case B = 29 以上
+  - deniedDomains length: Case A = ちょうど 9 / Case B = 9 以上
+  - 必須ホスト (`api.firecrawl.dev` / `169.254.169.254` 等) の `contains` チェックを追加 (Case A / B 共通の最低条件)
+  - filesystem セクションの破壊チェックを Case B 限定として明示
+
+#### 7. `stat` 順序の Linux 互換性 + jq exact match 化 (Codex review 3 回目対応)
+
+**今まで**: 直前 commit で追加した cross-platform `stat` コマンドが `stat -f '%Mp%Lp' ... || stat -c '%a' ...` の順序で、**BSD `stat -f` を先に試す**設計でした。Linux GNU stat では `-f` は **filesystem-status flag** として認識され、format option ではないため、Linux 上では filesystem の multiline 情報を `MODE` 変数に代入してしまい、後続の `chmod "$MODE"` が失敗する不具合がありました。また検証セクションの `jq array contains` は **string substring matching** で再帰的に動くため、`"www.firecrawl.dev"` のような部分一致が `"firecrawl.dev"` の必須ホストチェックを満たしてしまう false positive がありました。
+
+**今後**: Codex review 3 回目 (P2 + P3 指摘) を反映:
+
+- `stat` の試行順序を **Linux GNU `-c` 優先 → macOS BSD `-f` fallback** に修正:
+  - `MODE=$(stat -c '%a' "$SETTINGS" 2>/dev/null || stat -f '%Lp' "$SETTINGS")`
+  - 順序が逆だと Linux で BSD `-f` を最初に試して filesystem-status 出力で MODE が壊れる
+  - macOS では GNU `-c` が即 fail → BSD `-f` で `%Lp` (lower octal) が返る
+  - 動作確認: macOS で `600` が正しく返ることを検証済
+- `jq array contains` から `any(. == "...")` に書き換え:
+  - 部分一致誤判定を防ぐ exact match
+  - `index() != null` ではなく `any(. == "")` を選択した理由は `!` が zsh history expansion と衝突する可能性を避けるため (`!=` がエスケープされる)
+  - semantic test: `["www.firecrawl.dev"]` が `"firecrawl.dev"` 必須チェックで正しく **false** を返すことを確認済
+
+#### 8. mode 検証用 stat も GNU-first に統一 (Codex review 4 回目対応)
+
+**今まで**: 直前 commit で `MODE=...` 取得側の `stat` は Linux GNU 優先に修正したものの、merge 後の検証用 `stat` コマンド (jq merge ブロック末尾の「mode が保持されたか確認」行) は旧 BSD 優先の順序のまま残っていました。Linux user が recipe をコピペした場合、検証ステップだけ `stat -f` が filesystem-status output を返して exit 0 になり、permission preservation 修正の効果を確認できない不整合がありました。
+
+**今後**: 検証用 `stat` も MODE 取得側と同じ順序 (`stat -c '%a' || stat -f '%Lp'`) に統一。recipe 全体で Linux / macOS どちらでも mode 確認が機能するようになりました。
+
+`deniedDomains` 9 個 (クラウド metadata endpoint + pastebin 系) は SSRF + 流出経路の遮断として維持。`allowedDomains` で許可されていても `deniedDomains` が優先で deny される設計を明示。
+
 ## [4.11.3] - 2026-05-19
 
 ### テーマ: Slash command 出力の「止まったように見える」UX 改善 (2 層対策)
