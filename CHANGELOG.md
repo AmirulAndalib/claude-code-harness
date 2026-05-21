@@ -53,6 +53,19 @@ Change history for claude-code-harness.
 - **Firecrawl (2)**: `api.firecrawl.dev` / `firecrawl.dev`
 - **スクレイプ対象 (13)**: `techblog.zozo.com` / `note.com` / `assets.st-note.com` / `zenn.dev` / `qiita.com` / `dev.to` / `medium.com` / `cdn-ak.f.st-hatena.com` / `engineering.dena.com` / `developers.cyberagent.co.jp` / `tech.uzabase.com` / `engineer.crowdworks.jp` / `tech.smarthr.jp`
 
+#### 5. Case A / Case B merge pattern と jq one-liner を追加 (Codex review 対応)
+
+**今まで**: 当初 recipe は「`~/.claude/settings.json` の最後の `}` 直前に sandbox ブロックを追加」という単一手順のみで、既に `sandbox` キーがある環境 (例: `failIfUnavailable` / `filesystem.denyRead` / `network.deniedDomains` を既存設定済) では JSON key 重複でどちらかの sandbox ブロックが消える危険がありました。また template から流用する説明で `4 行目-65 行目` という固定 line range を書いていたため、template 拡張で line がずれた後は無効な範囲を user が copy する事故リスクがありました。
+
+**今後**: Codex review (P2 + P3 指摘) を反映し、recipe を以下に書き直し:
+
+- **Step 0**: `jq 'has("sandbox")' ~/.claude/settings.json` で既存有無を判定し Case A / B に分岐
+- **Case A** (sandbox 既存無し): top-level に sandbox ブロックを新規追加
+- **Case B** (sandbox 既存あり): 内側を merge ルール表 (enabled / autoAllowBashIfSandboxed は set、failIfUnavailable / filesystem は touch 禁止、配列は union 化)
+- **jq one-liner** で Case A / B 両対応の安全 merge (既存 `filesystem` / `failIfUnavailable` を破壊しない、配列は `unique` で重複排除)
+- template 流用説明から固定 line range を削除し、「`sandbox` セクション全体をコピー」と書く形に変更 (template 拡張で line がずれても安全)
+- `templates/sandbox-settings.json.template` 丸ごとコピーは Case A 限定と明示 (Case B では既存 `filesystem` を破壊する)
+
 `deniedDomains` 9 個 (クラウド metadata endpoint + pastebin 系) は SSRF + 流出経路の遮断として維持。`allowedDomains` で許可されていても `deniedDomains` が優先で deny される設計を明示。
 
 ## [4.11.3] - 2026-05-19

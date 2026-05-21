@@ -25,11 +25,21 @@ Claude Code sandbox（macOS Seatbelt / Linux bubblewrap）は **allowlist defaul
 
 Firecrawl plugin の `SKILL.md` を確認すると `allowed-tools: Bash(firecrawl *)`。つまり Firecrawl CLI は Bash subprocess として走り、sandbox の影響を直接受ける（MCP server ではない）。
 
-## 解決: `~/.claude/settings.json` に sandbox キーを追加
+## 解決: `~/.claude/settings.json` に sandbox 設定を merge
 
-既存の `permissions` / `hooks` / `enabledPlugins` / `mcpServers` 等と **同じ階層** (top-level) に `sandbox` キーを 1 つ追加する。既存キーは touch しない。
+**重要**: `~/.claude/settings.json` に **既存の `sandbox` キーがあるかどうか** で 2 ケース分岐する。誤って既存 sandbox を上書きすると、`failIfUnavailable` / `filesystem.denyRead` / `network.deniedDomains` などの既存 guardrail が消える。
 
-追加する完成形 JSON 構造の全体像 (既存キーは省略表記):
+### Step 0: 既存 sandbox の有無を確認
+
+```bash
+jq 'has("sandbox")' ~/.claude/settings.json
+# false → Case A (新規追加)
+# true  → Case B (内側 merge)
+```
+
+### Case A: 既存に `sandbox` キーが無い場合 (新規追加)
+
+既存の `permissions` / `hooks` / `enabledPlugins` / `mcpServers` 等と **同じ階層 (top-level)** に `sandbox` キーを 1 つ追加する。既存キーは touch しない:
 
 ```json
 {
@@ -37,87 +47,112 @@ Firecrawl plugin の `SKILL.md` を確認すると `allowed-tools: Bash(firecraw
   "hooks": { /* 既存維持 */ },
   "enabledPlugins": { /* 既存維持 */ },
   "mcpServers": { /* 既存維持 */ },
-  /* ... 他の既存キーも全て維持 ... */
+  /* ... 他の既存 top-level keys も全て維持 ... */
 
   "sandbox": {
     "enabled": true,
     "autoAllowBashIfSandboxed": true,
     "excludedCommands": [
-      "docker",
-      "docker-compose",
-      "watchman",
-      "systemctl",
-      "launchctl",
-      "brew services"
+      "docker", "docker-compose", "watchman",
+      "systemctl", "launchctl", "brew services"
     ],
     "network": {
       "allowedDomains": [
-        "github.com",
-        "api.github.com",
-        "raw.githubusercontent.com",
-        "codeload.github.com",
-        "objects.githubusercontent.com",
-        "registry.npmjs.org",
-        "api.anthropic.com",
-        "pypi.org",
-        "files.pythonhosted.org",
-        "proxy.golang.org",
-        "sum.golang.org",
-        "crates.io",
-        "static.crates.io",
-        "rubygems.org",
-        "api.firecrawl.dev",
-        "firecrawl.dev",
-        "techblog.zozo.com",
-        "note.com",
-        "assets.st-note.com",
-        "zenn.dev",
-        "qiita.com",
-        "dev.to",
-        "medium.com",
+        "github.com", "api.github.com", "raw.githubusercontent.com",
+        "codeload.github.com", "objects.githubusercontent.com",
+        "registry.npmjs.org", "api.anthropic.com",
+        "pypi.org", "files.pythonhosted.org",
+        "proxy.golang.org", "sum.golang.org",
+        "crates.io", "static.crates.io", "rubygems.org",
+        "api.firecrawl.dev", "firecrawl.dev",
+        "techblog.zozo.com", "note.com", "assets.st-note.com",
+        "zenn.dev", "qiita.com", "dev.to", "medium.com",
         "cdn-ak.f.st-hatena.com",
-        "engineering.dena.com",
-        "developers.cyberagent.co.jp",
-        "tech.uzabase.com",
-        "engineer.crowdworks.jp",
-        "tech.smarthr.jp"
+        "engineering.dena.com", "developers.cyberagent.co.jp",
+        "tech.uzabase.com", "engineer.crowdworks.jp", "tech.smarthr.jp"
       ],
       "deniedDomains": [
-        "169.254.169.254",
-        "metadata.google.internal",
-        "metadata.azure.com",
-        "pastebin.com",
-        "transfer.sh",
-        "0x0.st",
-        "paste.ee",
-        "termbin.com",
-        "ix.io"
+        "169.254.169.254", "metadata.google.internal", "metadata.azure.com",
+        "pastebin.com", "transfer.sh", "0x0.st",
+        "paste.ee", "termbin.com", "ix.io"
       ]
     }
   }
 }
 ```
 
-**コピペ手順** (推奨: コマンドラインでの安全な merge):
+### Case B: 既存に `sandbox` キーがある場合 (内側 merge)
+
+既存の `sandbox.failIfUnavailable` / `sandbox.filesystem` / `sandbox.network.deniedDomains` などを **保持したまま**、内側にフィールドを追加 / 統合する。**`sandbox` ブロック全体の置換は禁止** (既存 guardrail を破壊する)。
+
+merge ルール:
+
+| フィールド | 操作 | 注意 |
+|------|------|------|
+| `sandbox.enabled` | `true` に設定 | 既に `true` なら維持 |
+| `sandbox.autoAllowBashIfSandboxed` | `true` に設定 | 新規追加 |
+| `sandbox.failIfUnavailable` | **既存維持** | 触らない |
+| `sandbox.excludedCommands` | 配列なら **union (重複排除して結合)**、無ければ新規追加 | 既存項目を消さない |
+| `sandbox.network.allowedDomains` | **既存配列 + 本 recipe の 29 個を union** | 既存ホストを消さない |
+| `sandbox.network.deniedDomains` | **既存配列 + 本 recipe の 9 個を union** | 既存遮断ホストを残す |
+| `sandbox.filesystem` | **既存維持** | touch 禁止 (denyRead/allowRead 等が消える) |
+
+### 自動 merge する jq one-liner (Case A / B 両対応)
+
+エディタでの手動 merge は重複と guardrail 消去のリスクが高い。以下の jq one-liner は両 case 安全:
 
 ```bash
-# 1. backup を取る (rollback 用)
+# backup
 cp ~/.claude/settings.json ~/.claude/settings.json.bak.$(date +%Y%m%d-%H%M%S)
 
-# 2. エディタで ~/.claude/settings.json を開き、既存の top-level keys
-#    (permissions, hooks, enabledPlugins, mcpServers 等) と **同じ階層** に
-#    上記 "sandbox": {...} ブロックを 1 つ追加する。
-#    既存キーとの区切りに , (カンマ) を忘れない。
-
-# 3. JSON 構文と件数を検証
-jq -e '.' ~/.claude/settings.json > /dev/null && echo "VALID JSON"
-jq '.sandbox.network.allowedDomains | length' ~/.claude/settings.json
-# → 29
-
-# 4. CC を完全再起動 (cmd+Q → 再起動) で sandbox 設定が effective に
+# merge (既存 sandbox.filesystem / failIfUnavailable は保持、配列は union)
+jq '
+  .sandbox.enabled = true |
+  .sandbox.autoAllowBashIfSandboxed = true |
+  .sandbox.excludedCommands = (((.sandbox.excludedCommands // []) + [
+    "docker", "docker-compose", "watchman",
+    "systemctl", "launchctl", "brew services"
+  ]) | unique) |
+  .sandbox.network.allowedDomains = (((.sandbox.network.allowedDomains // []) + [
+    "github.com", "api.github.com", "raw.githubusercontent.com",
+    "codeload.github.com", "objects.githubusercontent.com",
+    "registry.npmjs.org", "api.anthropic.com",
+    "pypi.org", "files.pythonhosted.org",
+    "proxy.golang.org", "sum.golang.org",
+    "crates.io", "static.crates.io", "rubygems.org",
+    "api.firecrawl.dev", "firecrawl.dev",
+    "techblog.zozo.com", "note.com", "assets.st-note.com",
+    "zenn.dev", "qiita.com", "dev.to", "medium.com",
+    "cdn-ak.f.st-hatena.com",
+    "engineering.dena.com", "developers.cyberagent.co.jp",
+    "tech.uzabase.com", "engineer.crowdworks.jp", "tech.smarthr.jp"
+  ]) | unique) |
+  .sandbox.network.deniedDomains = (((.sandbox.network.deniedDomains // []) + [
+    "169.254.169.254", "metadata.google.internal", "metadata.azure.com",
+    "pastebin.com", "transfer.sh", "0x0.st",
+    "paste.ee", "termbin.com", "ix.io"
+  ]) | unique)
+' ~/.claude/settings.json > ~/.claude/settings.json.tmp \
+  && mv ~/.claude/settings.json.tmp ~/.claude/settings.json
 ```
 
-> **template から流用する場合**: `templates/sandbox-settings.json.template` の `sandbox` セクション (4 行目-65 行目) をそのままコピーすると確実 (recipe と数値完全同期)。
+> **AI からこの jq を実行できない理由**: `~/.claude/settings.json` は AI による self-tampering 防止対象 (`Edit/Write(.claude/settings*)` deny + auto mode classifier が Bash 経由の迂回も block)。**ユーザー自身がターミナルで実行する**前提のレシピ。
+
+### 検証
+
+```bash
+jq -e '.' ~/.claude/settings.json > /dev/null && echo "VALID JSON"
+jq '.sandbox.network.allowedDomains | length' ~/.claude/settings.json
+# → 29 以上 (既存と union したので 29+α になることもある)
+jq '.sandbox.network.deniedDomains | length' ~/.claude/settings.json
+# → 9 以上
+jq '.sandbox.filesystem // "no filesystem section"' ~/.claude/settings.json
+# 既存があった場合は元の denyRead/allowRead が残っていることを確認
+```
+
+### CC 再起動
+
+sandbox 設定は **session start 時にのみ読まれる**。merge 後は CC を完全再起動 (cmd+Q → 再起動) で initialize される。
 
 ## 構成の意図
 
@@ -193,7 +228,7 @@ firecrawl scrape "https://techblog.zozo.com/" -o /tmp/test.md
 
 ## 関連
 
-- `templates/sandbox-settings.json.template` — harness の reference 設定。**本 recipe と 29 ドメイン allowlist + 9 ドメイン denylist が完全同期**。新規プロジェクトで一括コピーする場合はこちらをそのまま流用すると確実
+- `templates/sandbox-settings.json.template` — harness の reference 設定。**本 recipe と 29 ドメイン allowlist + 9 ドメイン denylist が完全同期**。新規プロジェクト (= `sandbox` 既存無し = Case A) で一括流用するなら、template の `sandbox` セクション全体をコピーすると確実。**既存 sandbox がある場合 (Case B) は jq merge を使う**こと (template の丸ごとコピーは既存 `filesystem` / `failIfUnavailable` を破壊する)
 - `CLAUDE.md` Permission Boundaries — sandbox 設定が AI による self-tampering 防止層と多層防御を構成
 - `.claude/rules/cross-repo-handoff.md` — Layer 1 (server-side) / Layer 2/3 (client-side) の redact 設計
 - CC v2.1.108+ sandbox 仕様: 公式 docs の `sandbox` セクション
