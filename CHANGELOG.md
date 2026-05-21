@@ -33,7 +33,7 @@ Change history for claude-code-harness.
 
 **今後**: 「AI 側は patch 提示まで、ユーザー側が手動編集」という責任境界を docs の `## なぜ AI が自動で編集しないのか` セクションで codify。将来 sandbox 周りの問題に他セッションが遭遇した時、「`Edit/Write(.claude/settings*)` deny + Bash 迂回も classifier deny + ユーザー手動編集が正規ルート」と一発で把握できます。
 
-#### 3. 推奨 allowedDomains を 30 個に拡張 (Firecrawl + 日本テックブログ群)
+#### 3. 推奨 allowedDomains を 29 個に拡張 (Firecrawl + 日本テックブログ群)
 
 **今まで**: `templates/sandbox-settings.json.template` には開発コア 8 ドメイン (github / npm / anthropic / pypi / rubygems / crates) のみ列挙されており、Firecrawl の API host (`api.firecrawl.dev`) や代表的なテックブログ (`techblog.zozo.com` / `note.com` / `zenn.dev` 等) は含まれていませんでした。
 
