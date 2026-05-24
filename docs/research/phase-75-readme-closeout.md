@@ -1,7 +1,7 @@
 # Phase 75 README Surface Closeout
 
 Date: 2026-05-24
-Status: copy complete, image generation pending user approval
+Status: copy complete, Pattern A hero images integrated
 
 ## What Changed
 
@@ -16,7 +16,9 @@ Status: copy complete, image generation pending user approval
   constraints, official GPT Image model boundary, EN/JA asset pairs, and A/B/C
   visual directions.
 - `docs/readme-visual-patterns.html` provides the approval board for image
-  direction selection.
+  direction selection; the user selected Pattern A.
+- Pattern A hero images were generated and integrated into `README.md` and
+  `README_ja.md`.
 
 ## Evidence Sources
 
@@ -47,15 +49,14 @@ No Superpowers or Hermes host/runtime claim is copied into Harness.
 
 ## Image Approval Boundary
 
-Phase 75 image generation is intentionally paused.
+Phase 75 image generation approval is satisfied for Pattern A only.
 
-- Approved before generation: none
+- Approved before generation: Pattern A Operating Loop
 - Candidate directions: A Operating Loop, B Evidence Board, C Tool-First Map
-- Recommended direction: A Operating Loop
-- Current README image references: logo only
+- Current README image references: logo plus Pattern A hero image
 - Obsolete README hero: removed from README references
 - `GPT-image2.0`: not observed as an official API model label in checked
-  OpenAI docs; use official GPT Image path only after user approval
+  OpenAI docs; README and CHANGELOG do not claim this model label
 
 ## Validation Commands
 
@@ -68,13 +69,12 @@ git diff --check
 bash tests/validate-plugin.sh
 ```
 
-All commands passed on 2026-05-24 after restoring the README link to
-`docs/hardening-parity.md`.
+All commands passed on 2026-05-24 after Pattern A image integration.
 
 ## Residual Risk
 
-- Final README images are not generated or integrated yet because user approval
-  is required.
+- Generated text is raster text and should be visually inspected before the next
+  release tag.
 - Browser visual inspection of `docs/readme-visual-patterns.html` was not
   captured through Playwright because the available browser tool blocked
   `file://` access; the static HTML file itself is present for local review.

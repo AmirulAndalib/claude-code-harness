@@ -11,6 +11,12 @@
 # Allow top-of-README brand logo (README.md:2, README_ja.md:2)
 !/claude-harness-logo-with-text.png
 
+# Allow generated README hero visuals selected through the Phase 75 approval gate
+!/readme/
+/readme/*
+!/readme/hero-operating-loop-en.png
+!/readme/hero-operating-loop-ja.png
+
 # Allow hokage hero (README.md:24, README_ja.md:24) — but no other hokage assets
 !/hokage/
 /hokage/*

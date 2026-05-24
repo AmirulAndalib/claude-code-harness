@@ -34,6 +34,7 @@ for file in "$ROOT_DIR/README.md" "$ROOT_DIR/README_ja.md"; do
   assert_contains "$file" "Cursor | \`candidate\`"
   assert_contains "$file" "GitHub Copilot CLI | \`candidate\`"
   assert_contains "$file" "Antigravity CLI | \`future/unsupported\`"
+  assert_contains "$file" "docs/images/readme/hero-operating-loop-"
   assert_not_contains "$file" "Hokage"
   assert_not_contains "$file" "v4.2"
   assert_not_contains "$file" "v4.0"

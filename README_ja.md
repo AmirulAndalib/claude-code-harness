@@ -21,6 +21,10 @@
   <a href="README.md">English</a> | 日本語
 </p>
 
+<p align="center">
+  <img src="docs/images/readme/hero-operating-loop-ja.png" alt="Claude Code Harness の作業ループ: 仕様、計画、実装、レビュー、出荷" width="900">
+</p>
+
 Claude Code は強力ですが、そのままだと計画が会話に埋もれ、検証が後回しに
 なり、レビューとリリース判断が毎回やり直しになりがちです。Harness はその
 流れを、最初から「確認できる作業手順」に変えます。

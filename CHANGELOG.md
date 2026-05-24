@@ -10,7 +10,7 @@ Change history for claude-code-harness.
 
 - README / README_ja now lead with the current Harness operating path: tool-first onboarding, generated `spec.md` / `Plans.md`, command internals, support tiers, migration safety, and deeper docs.
 - Removed top-level README emphasis on internal code names and release-history blocks so new users see the latest product state first.
-- Added a README visual refresh manifest and approval board before regenerating text-bearing English/Japanese images.
+- Added approved Pattern A operating-loop README hero images in English and Japanese, with a visual refresh manifest and approval board preserved as evidence.
 
 ## [4.12.0] - 2026-05-23
 

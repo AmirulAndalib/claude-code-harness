@@ -1,11 +1,23 @@
 # README Visual Asset Manifest
 
 Date: 2026-05-24
-Status: approval pending
+Status: Pattern A approved and integrated
 
 This manifest defines the README visual refresh, but does not claim that final
-images have been generated. Image generation and README image integration are
-blocked until the user approves one visual direction.
+images were generated with an official `GPT-image2.0` API model label. The
+approved Pattern A images were generated through the built-in Codex image
+generation tool and copied into the workspace.
+
+## Selected Direction
+
+- Approved option: A, Operating Loop
+- Approved by: user selection in the in-app browser on 2026-05-24
+- Integrated files:
+  - `docs/images/readme/hero-operating-loop-en.png`
+  - `docs/images/readme/hero-operating-loop-ja.png`
+- Source generated files:
+  - `/Users/tachibanashuuta/.codex/generated_images/019e4363-5936-78f0-bb1a-fc933f9d2693/ig_09f1b2980f71b0db016a126f2bc3a88191b3870aea35668baa.png`
+  - `/Users/tachibanashuuta/.codex/generated_images/019e4363-5936-78f0-bb1a-fc933f9d2693/ig_09f1b2980f71b0db016a126f65446c8191a138702a7fe07b9c.png`
 
 ## Model / Tool Boundary
 
@@ -49,8 +61,8 @@ for secondary diagrams after the first release of the refreshed README.
 
 | Asset | Language | Text-bearing | Output path after approval | Purpose |
 |-------|----------|--------------|----------------------------|---------|
-| Hero operating loop | EN | Yes | `assets/readme-visuals-en/generated/hero-operating-loop.png` | First README visual. |
-| Hero operating loop | JA | Yes | `assets/readme-visuals-ja/generated/hero-operating-loop.png` | First Japanese README visual. |
+| Hero operating loop | EN | Yes | `docs/images/readme/hero-operating-loop-en.png` | First README visual. |
+| Hero operating loop | JA | Yes | `docs/images/readme/hero-operating-loop-ja.png` | First Japanese README visual. |
 | Command internals diagram | EN | Yes | `assets/readme-visuals-en/generated/command-internals.png` | Shows what commands do inside. |
 | Command internals diagram | JA | Yes | `assets/readme-visuals-ja/generated/command-internals.png` | Japanese version. |
 | Support boundary map | EN | Yes | `assets/readme-visuals-en/generated/support-boundary.png` | Shows tiers without false parity. |
@@ -130,5 +142,5 @@ Claude Harness らしい orange / black / soft green。未サポート parity cl
 
 ## Approval Gate
 
-User must approve one option before Phase 75.1.5 generates or integrates final
-README images.
+Satisfied for Pattern A on 2026-05-24. Future secondary visuals still require a
+separate approval if they change claim boundaries or add text-bearing images.

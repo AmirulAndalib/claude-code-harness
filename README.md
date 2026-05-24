@@ -21,6 +21,10 @@
   English | <a href="README_ja.md">日本語</a>
 </p>
 
+<p align="center">
+  <img src="docs/images/readme/hero-operating-loop-en.png" alt="Claude Code Harness operating loop: Spec, Plan, Work, Review, Release" width="900">
+</p>
+
 Claude Code is powerful, but raw agent work drifts: plans live in chat, tests
 become optional, review happens too late, and release evidence gets rebuilt by
 memory. Harness turns that into one repeatable operating path.
