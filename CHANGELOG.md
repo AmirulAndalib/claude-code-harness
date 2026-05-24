@@ -6,6 +6,8 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [4.12.2] - 2026-05-24
+
 ### Fixed
 
 - Restored README claim anchors for Cursor docs, 5 verb skills, the Go-native guardrail engine, and Japanese opt-in language guidance so main CI matches the refreshed README surface.
@@ -4494,7 +4496,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.12.1...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.12.2...HEAD
+[4.12.2]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.12.1...v4.12.2
 [4.12.1]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.12.0...v4.12.1
 [4.12.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.11.4...v4.12.0
 [4.11.4]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.11.3...v4.11.4
