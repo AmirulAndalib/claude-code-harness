@@ -52,6 +52,44 @@ count_plan_tasks() {
   ' "$file" 2>/dev/null || printf '0\n'
 }
 
+list_plan_tasks() {
+  local pattern="$1"
+  local file="$2"
+  local limit="${3:-20}"
+
+  awk -v pattern="$pattern" -v limit="$limit" '
+    function trim(value) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      return value
+    }
+    function is_task_line(line, fields, first_cell) {
+      if (line ~ /^[[:space:]]*[-*+][[:space:]]+\[[ xX]\]/) {
+        return 1
+      }
+      if (line !~ /^[[:space:]]*\|/) {
+        return 0
+      }
+      split(line, fields, /\|/)
+      first_cell = trim(fields[2])
+      gsub(/`/, "", first_cell)
+      if (first_cell == "" || first_cell == "Task" || first_cell ~ /^[-]+$/) {
+        return 0
+      }
+      if (first_cell ~ /^(pm|cc|cursor):/) {
+        return 0
+      }
+      return 1
+    }
+    is_task_line($0) && $0 ~ pattern {
+      print NR ":" $0
+      count++
+      if (count >= limit) {
+        exit
+      }
+    }
+  ' "$file" 2>/dev/null || true
+}
+
 STATE_FILE=".claude/state/session.json"
 MEMORY_DIR=".claude/memory"
 SESSION_LOG_FILE="${MEMORY_DIR}/session-log.md"
@@ -96,7 +134,7 @@ WIP_TASK_TITLE=""
 if [ -f "$PLANS_PATH" ]; then
   COMPLETED_TASKS=$(count_plan_tasks "cc:(done|完了)" "$PLANS_PATH")
   # 現在のWIPタスクタイトルを取得（最初の1件）
-  WIP_TASK_TITLE=$(grep -E "^\s*-\s*\[.\]\s*\*\*.*\`cc:(WIP|wip)\`" "$PLANS_PATH" 2>/dev/null | head -1 | sed 's/.*\*\*\(.*\)\*\*.*/\1/' || true)
+  WIP_TASK_TITLE=$(grep -E "^[[:space:]]*[-*+][[:space:]]+\[[ xX]\][[:space:]]+\*\*.*\`cc:(WIP|wip)\`" "$PLANS_PATH" 2>/dev/null | head -1 | sed 's/.*\*\*\(.*\)\*\*.*/\1/' || true)
 fi
 
 # Agent Trace から直近の編集ファイル情報を取得
@@ -193,7 +231,7 @@ EOF
   # WIP タスク（存在すれば軽く抽出）
   WIP_TASKS=""
   if [ -f "$PLANS_PATH" ]; then
-    WIP_TASKS=$(grep -n "cc:WIP\|cc:wip\|pm:requested\|pm:依頼中\|cursor:依頼中" "$PLANS_PATH" 2>/dev/null | head -20 || true)
+    WIP_TASKS=$(list_plan_tasks "(cc:(WIP|wip)|pm:(requested|依頼中)|cursor:依頼中)" "$PLANS_PATH" 20)
   fi
 
   {

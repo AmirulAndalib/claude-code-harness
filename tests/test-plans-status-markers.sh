@@ -195,7 +195,7 @@ printf '%s' "$stop_output" | jq -e '
   (.systemMessage | contains("2 cc:done task(s) await PM review"))
 ' >/dev/null
 
-resume_output="$(cd "${HOOK_TMP}" && printf '%s\n' '{"session_id":"cc-test"}' | bash "${PROJECT_ROOT}/scripts/session-resume.sh" 2>/dev/null)"
+resume_output="$(cd "${HOOK_TMP}" && printf '%s\n' '{"session_id":"cc-test"}' | CLAUDE_CODE_HARNESS_LANG=ja bash "${PROJECT_ROOT}/scripts/session-resume.sh" 2>/dev/null)"
 printf '%s' "$resume_output" | jq -e '
   .hookSpecificOutput.additionalContext | contains("進行中 1 / 未着手 1")
 ' >/dev/null
@@ -210,7 +210,11 @@ cat > "${HOOK_TMP}/.claude/state/session.json" <<EOF
   "memory_logged": false
 }
 EOF
-summary_output="$(cd "${HOOK_TMP}" && bash "${PROJECT_ROOT}/scripts/session-summary.sh" 2>/dev/null)"
+summary_output="$(cd "${HOOK_TMP}" && CLAUDE_CODE_HARNESS_LANG=ja bash "${PROJECT_ROOT}/scripts/session-summary.sh" 2>/dev/null)"
 printf '%s' "$summary_output" | grep -q '完了タスク: 2件'
+if grep -q 'legend only' "${HOOK_TMP}/.claude/memory/session-log.md"; then
+  echo "[FAIL] session-summary must not include marker legend rows in WIP handoff" >&2
+  exit 1
+fi
 
 echo "test-plans-status-markers: ok"
