@@ -42,6 +42,18 @@ SESSION_FILE="$STATE_DIR/session.json"
 EVENT_LOG_FILE="$STATE_DIR/session.events.jsonl"
 ARCHIVE_DIR="$STATE_DIR/sessions"
 SESSION_MAP_FILE="$STATE_DIR/session-map.json"
+PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
+CONFIG_FILE="${CONFIG_FILE:-${REPO_ROOT}/.claude-code-harness.config.yaml}"
+PLANS_PATH="${REPO_ROOT}/Plans.md"
+if [ -f "${SCRIPT_DIR}/config-utils.sh" ]; then
+  # shellcheck source=./config-utils.sh
+  source "${SCRIPT_DIR}/config-utils.sh"
+  resolved_plans_path="$(get_plans_file_path 2>/dev/null || printf 'Plans.md')"
+  case "$resolved_plans_path" in
+    /*) PLANS_PATH="$resolved_plans_path" ;;
+    *) PLANS_PATH="${REPO_ROOT}/${resolved_plans_path}" ;;
+  esac
+fi
 
 mkdir -p "$STATE_DIR" "$ARCHIVE_DIR"
 
@@ -68,12 +80,36 @@ add_line() {
   OUTPUT="${OUTPUT}$1\n"
 }
 
-count_matches() {
+count_task_matches() {
   local pattern="$1"
   local file="$2"
-  local count
-  count="$(grep -c "$pattern" "$file" 2>/dev/null || true)"
-  printf '%s' "${count:-0}"
+
+  awk -v pattern="$pattern" '
+    function trim(value) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      return value
+    }
+    function is_task_line(line, fields, first_cell) {
+      if (line ~ /^[[:space:]]*[-*+][[:space:]]+\[[ xX]\]/) {
+        return 1
+      }
+      if (line !~ /^[[:space:]]*\|/) {
+        return 0
+      }
+      split(line, fields, /\|/)
+      first_cell = trim(fields[2])
+      gsub(/`/, "", first_cell)
+      if (first_cell == "" || first_cell == "Task" || first_cell ~ /^[-]+$/) {
+        return 0
+      }
+      if (first_cell ~ /^(pm|cc|cursor):/) {
+        return 0
+      }
+      return 1
+    }
+    is_task_line($0) && $0 ~ pattern { count++ }
+    END { print count + 0 }
+  ' "$file" 2>/dev/null || printf '0\n'
 }
 
 consume_memory_resume_context() {
@@ -423,9 +459,9 @@ rm -f "${STATE_DIR}/.ultrawork-review-warned" 2>/dev/null || true
 
 # ===== Plans.md チェック =====
 PLANS_INFO=""
-if [ -f "Plans.md" ]; then
-  wip_count="$(count_matches "cc:WIP\\|pm:依頼中\\|cursor:依頼中" "Plans.md")"
-  todo_count="$(count_matches "cc:TODO" "Plans.md")"
+if [ -f "$PLANS_PATH" ]; then
+  wip_count="$(count_task_matches "(cc:(wip|WIP)|pm:(requested|依頼中)|cursor:依頼中)" "$PLANS_PATH")"
+  todo_count="$(count_task_matches "cc:(todo|TODO)" "$PLANS_PATH")"
   PLANS_INFO="📄 Plans.md: 進行中 ${wip_count} / 未着手 ${todo_count}"
 else
   PLANS_INFO="📄 Plans.md: 未検出"

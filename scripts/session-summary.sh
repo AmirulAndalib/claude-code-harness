@@ -6,6 +6,118 @@
 
 set +e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+CONFIG_FILE="${CONFIG_FILE:-${PROJECT_ROOT}/.claude-code-harness.config.yaml}"
+PLANS_PATH="${PROJECT_ROOT}/Plans.md"
+if [ -f "${SCRIPT_DIR}/config-utils.sh" ]; then
+  # shellcheck source=./config-utils.sh
+  source "${SCRIPT_DIR}/config-utils.sh"
+  resolved_plans_path="$(get_plans_file_path 2>/dev/null || printf 'Plans.md')"
+  case "$resolved_plans_path" in
+    /*) PLANS_PATH="$resolved_plans_path" ;;
+    *) PLANS_PATH="${PROJECT_ROOT}/${resolved_plans_path}" ;;
+  esac
+fi
+
+count_plan_tasks() {
+  local pattern="$1"
+  local file="$2"
+
+  awk -v pattern="$pattern" '
+    function trim(value) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      return value
+    }
+    function is_task_line(line, fields, first_cell) {
+      if (line ~ /^[[:space:]]*[-*+][[:space:]]+\[[ xX]\]/) {
+        return 1
+      }
+      if (line ~ /^[[:space:]]*#+[[:space:]]+/) {
+        return 1
+      }
+      if (line !~ /^[[:space:]]*\|/) {
+        return 0
+      }
+      split(line, fields, /\|/)
+      first_cell = trim(fields[2])
+      gsub(/`/, "", first_cell)
+      if (first_cell == "" || first_cell == "Task" || first_cell ~ /^[-]+$/) {
+        return 0
+      }
+      if (first_cell ~ /^(pm|cc|cursor):/) {
+        return 0
+      }
+      return 1
+    }
+    is_task_line($0) && $0 ~ pattern { count++ }
+    END { print count + 0 }
+  ' "$file" 2>/dev/null || printf '0\n'
+}
+
+list_plan_tasks() {
+  local pattern="$1"
+  local file="$2"
+  local limit="${3:-20}"
+
+  awk -v pattern="$pattern" -v limit="$limit" '
+    function trim(value) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      return value
+    }
+    function is_task_line(line, fields, first_cell) {
+      if (line ~ /^[[:space:]]*[-*+][[:space:]]+\[[ xX]\]/) {
+        return 1
+      }
+      if (line ~ /^[[:space:]]*#+[[:space:]]+/) {
+        return 1
+      }
+      if (line !~ /^[[:space:]]*\|/) {
+        return 0
+      }
+      split(line, fields, /\|/)
+      first_cell = trim(fields[2])
+      gsub(/`/, "", first_cell)
+      if (first_cell == "" || first_cell == "Task" || first_cell ~ /^[-]+$/) {
+        return 0
+      }
+      if (first_cell ~ /^(pm|cc|cursor):/) {
+        return 0
+      }
+      return 1
+    }
+    is_task_line($0) && $0 ~ pattern {
+      print NR ":" $0
+      count++
+      if (count >= limit) {
+        exit
+      }
+    }
+  ' "$file" 2>/dev/null || true
+}
+
+extract_plan_task_title() {
+  local task_line="$1"
+
+  task_line="${task_line#*:}"
+  task_line="${task_line#"${task_line%%[![:space:]]*}"}"
+  case "$task_line" in
+    \|*)
+      printf '%s\n' "$task_line" | awk -F'|' '{
+        title = $3
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", title)
+        print title
+      }'
+      ;;
+    \#*)
+      printf '%s\n' "$task_line" | sed -E 's/^[[:space:]]*#+[[:space:]]*[^:]+:[[:space:]]*//; s/[[:space:]]*`cc:[^`]+`.*$//; s/[[:space:]]+$//'
+      ;;
+    *)
+      printf '%s\n' "$task_line" | sed -E 's/^[[:space:]]*[-*+][[:space:]]+\[[ xX]\][[:space:]]*//; s/.*\*\*([^*]+)\*\*.*/\1/; s/[[:space:]]*`cc:[^`]+`.*$//; s/[[:space:]]+$//'
+      ;;
+  esac
+}
+
 STATE_FILE=".claude/state/session.json"
 MEMORY_DIR=".claude/memory"
 SESSION_LOG_FILE="${MEMORY_DIR}/session-log.md"
@@ -47,10 +159,13 @@ fi
 # Plans.md のタスク状況
 COMPLETED_TASKS=0
 WIP_TASK_TITLE=""
-if [ -f "Plans.md" ]; then
-  COMPLETED_TASKS=$(grep -c "cc:完了" Plans.md 2>/dev/null || echo "0")
+if [ -f "$PLANS_PATH" ]; then
+  COMPLETED_TASKS=$(count_plan_tasks "cc:(done|完了)" "$PLANS_PATH")
   # 現在のWIPタスクタイトルを取得（最初の1件）
-  WIP_TASK_TITLE=$(grep -E "^\s*-\s*\[.\]\s*\*\*.*\`cc:WIP\`" Plans.md 2>/dev/null | head -1 | sed 's/.*\*\*\(.*\)\*\*.*/\1/' || true)
+  WIP_TASK_LINE=$(list_plan_tasks "cc:(WIP|wip)" "$PLANS_PATH" 1 | head -1)
+  if [ -n "$WIP_TASK_LINE" ]; then
+    WIP_TASK_TITLE=$(extract_plan_task_title "$WIP_TASK_LINE")
+  fi
 fi
 
 # Agent Trace から直近の編集ファイル情報を取得
@@ -146,8 +261,8 @@ EOF
 
   # WIP タスク（存在すれば軽く抽出）
   WIP_TASKS=""
-  if [ -f "Plans.md" ]; then
-    WIP_TASKS=$(grep -n "cc:WIP\|pm:依頼中\|cursor:依頼中" Plans.md 2>/dev/null | head -20 || true)
+  if [ -f "$PLANS_PATH" ]; then
+    WIP_TASKS=$(list_plan_tasks "(cc:(WIP|wip)|pm:(requested|依頼中)|cursor:依頼中)" "$PLANS_PATH" 20)
   fi
 
   {

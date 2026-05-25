@@ -6,6 +6,52 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+CONFIG_FILE="${CONFIG_FILE:-${PROJECT_ROOT}/.claude-code-harness.config.yaml}"
+PLANS_PATH="${PROJECT_ROOT}/Plans.md"
+if [ -f "${SCRIPT_DIR}/config-utils.sh" ]; then
+  # shellcheck source=./config-utils.sh
+  source "${SCRIPT_DIR}/config-utils.sh"
+  resolved_plans_path="$(get_plans_file_path 2>/dev/null || printf 'Plans.md')"
+  case "$resolved_plans_path" in
+    /*) PLANS_PATH="$resolved_plans_path" ;;
+    *) PLANS_PATH="${PROJECT_ROOT}/${resolved_plans_path}" ;;
+  esac
+fi
+
+count_plan_tasks() {
+  local pattern="$1"
+  local file="$2"
+
+  awk -v pattern="$pattern" '
+    function trim(value) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      return value
+    }
+    function is_task_line(line, fields, first_cell) {
+      if (line ~ /^[[:space:]]*[-*+][[:space:]]+\[[ xX]\]/) {
+        return 1
+      }
+      if (line !~ /^[[:space:]]*\|/) {
+        return 0
+      }
+      split(line, fields, /\|/)
+      first_cell = trim(fields[2])
+      gsub(/`/, "", first_cell)
+      if (first_cell == "" || first_cell == "Task" || first_cell ~ /^[-]+$/) {
+        return 0
+      }
+      if (first_cell ~ /^(pm|cc|cursor):/) {
+        return 0
+      }
+      return 1
+    }
+    is_task_line($0) && $0 ~ pattern { count++ }
+    END { print count + 0 }
+  ' "$file" 2>/dev/null || printf '0\n'
+}
+
 # JSON出力用の変数
 PLANS_EXISTS="false"
 PLANS_LINES=0
@@ -23,21 +69,21 @@ GIT_UNCOMMITTED=0
 SESSION_CHANGES=0
 
 # Plans.md の分析
-if [ -f "Plans.md" ]; then
+if [ -f "$PLANS_PATH" ]; then
   PLANS_EXISTS="true"
-  PLANS_LINES=$(wc -l < "Plans.md" | tr -d ' ')
+  PLANS_LINES=$(wc -l < "$PLANS_PATH" | tr -d ' ')
 
   # タスク数をカウント
-  COMPLETED_TASKS=$(grep -c "\[x\].*cc:完了\|pm:確認済\|cursor:確認済" Plans.md 2>/dev/null || echo "0")
-  WIP_TASKS=$(grep -c "cc:WIP\|pm:依頼中\|cursor:依頼中" Plans.md 2>/dev/null || echo "0")
-  TODO_TASKS=$(grep -c "cc:TODO" Plans.md 2>/dev/null || echo "0")
-  PM_PENDING_TASKS=$(( $(grep -c "pm:依頼中" Plans.md 2>/dev/null || echo "0") + $(grep -c "cursor:依頼中" Plans.md 2>/dev/null || echo "0") ))
-  PM_CONFIRMED_TASKS=$(( $(grep -c "pm:確認済" Plans.md 2>/dev/null || echo "0") + $(grep -c "cursor:確認済" Plans.md 2>/dev/null || echo "0") ))
-  CC_WIP_TASKS=$(grep -c "cc:WIP" Plans.md 2>/dev/null || echo "0")
-  CC_DONE_TASKS=$(grep -c "cc:完了" Plans.md 2>/dev/null || echo "0")
+  COMPLETED_TASKS=$(count_plan_tasks "(cc:(done|完了)|pm:(approved|確認済)|cursor:確認済)" "$PLANS_PATH")
+  WIP_TASKS=$(count_plan_tasks "(cc:(wip|WIP)|pm:(requested|依頼中)|cursor:依頼中)" "$PLANS_PATH")
+  TODO_TASKS=$(count_plan_tasks "cc:(todo|TODO)" "$PLANS_PATH")
+  PM_PENDING_TASKS=$(count_plan_tasks "(pm:(requested|依頼中)|cursor:依頼中)" "$PLANS_PATH")
+  PM_CONFIRMED_TASKS=$(count_plan_tasks "(pm:(approved|確認済)|cursor:確認済)" "$PLANS_PATH")
+  CC_WIP_TASKS=$(count_plan_tasks "cc:(wip|WIP)" "$PLANS_PATH")
+  CC_DONE_TASKS=$(count_plan_tasks "cc:(done|完了)" "$PLANS_PATH")
 
   # 最も古い完了日を取得（YYYY-MM-DD 形式を探す）
-  OLDEST_COMPLETED_DATE=$(grep -oE "[0-9]{4}-[0-9]{2}-[0-9]{2}" Plans.md 2>/dev/null | sort | head -1 || echo "")
+  OLDEST_COMPLETED_DATE=$(grep -oE "[0-9]{4}-[0-9]{2}-[0-9]{2}" "$PLANS_PATH" 2>/dev/null | sort | head -1 || echo "")
 fi
 
 # session-log.md の行数

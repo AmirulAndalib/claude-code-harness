@@ -7,6 +7,52 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+CONFIG_FILE="${CONFIG_FILE:-${PROJECT_ROOT}/.claude-code-harness.config.yaml}"
+PLANS_PATH="${PROJECT_ROOT}/Plans.md"
+if [ -f "${SCRIPT_DIR}/config-utils.sh" ]; then
+  # shellcheck source=./config-utils.sh
+  source "${SCRIPT_DIR}/config-utils.sh"
+  resolved_plans_path="$(get_plans_file_path 2>/dev/null || printf 'Plans.md')"
+  case "$resolved_plans_path" in
+    /*) PLANS_PATH="$resolved_plans_path" ;;
+    *) PLANS_PATH="${PROJECT_ROOT}/${resolved_plans_path}" ;;
+  esac
+fi
+
+count_plan_tasks() {
+  local pattern="$1"
+  local file="$2"
+
+  awk -v pattern="$pattern" '
+    function trim(value) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      return value
+    }
+    function is_task_line(line, fields, first_cell) {
+      if (line ~ /^[[:space:]]*[-*+][[:space:]]+\[[ xX]\]/) {
+        return 1
+      }
+      if (line !~ /^[[:space:]]*\|/) {
+        return 0
+      }
+      split(line, fields, /\|/)
+      first_cell = trim(fields[2])
+      gsub(/`/, "", first_cell)
+      if (first_cell == "" || first_cell == "Task" || first_cell ~ /^[-]+$/) {
+        return 0
+      }
+      if (first_cell ~ /^(pm|cc|cursor):/) {
+        return 0
+      }
+      return 1
+    }
+    is_task_line($0) && $0 ~ pattern { count++ }
+    END { print count + 0 }
+  ' "$file" 2>/dev/null || printf '0\n'
+}
+
 # 判定用変数
 NEED_REMINDER="false"
 REASON=""
@@ -32,30 +78,30 @@ if [ -f ".claude/state/session.json" ] && command -v jq >/dev/null 2>&1; then
 fi
 
 # 変更がある場合のみ Plans.md をチェック
-if [ "$HAS_CHANGES" = "true" ] && [ -f "Plans.md" ]; then
-  PM_PENDING=$(( $(grep -c "pm:依頼中" Plans.md 2>/dev/null || echo "0") + $(grep -c "cursor:依頼中" Plans.md 2>/dev/null || echo "0") ))
-  CC_WIP=$(grep -c "cc:WIP" Plans.md 2>/dev/null || echo "0")
-  CC_DONE=$(grep -c "cc:完了" Plans.md 2>/dev/null || echo "0")
+if [ "$HAS_CHANGES" = "true" ] && [ -f "$PLANS_PATH" ]; then
+  PM_PENDING=$(count_plan_tasks "(pm:(requested|依頼中)|cursor:依頼中)" "$PLANS_PATH")
+  CC_WIP=$(count_plan_tasks "cc:(wip|WIP)" "$PLANS_PATH")
+  CC_DONE=$(count_plan_tasks "cc:(done|完了)" "$PLANS_PATH")
 
   # PM からの依頼がある場合
   if [ "$PM_PENDING" -gt 0 ]; then
     NEED_REMINDER="true"
     REASON="pm_pending_tasks > 0"
-    MESSAGE="Plans.md: pm:依頼中 が${PM_PENDING}件あります。作業開始時は cc:WIP に、完了時は cc:完了 に更新してください"
+    MESSAGE="Plans.md: ${PM_PENDING} pm:requested task(s) remain. Start work with cc:wip and mark completion with cc:done."
   fi
 
   # WIP タスクがある場合
   if [ "$CC_WIP" -gt 0 ]; then
     NEED_REMINDER="true"
     REASON="cc_wip_tasks > 0"
-    MESSAGE="Plans.md: cc:WIP が${CC_WIP}件あります。完了した場合は cc:完了 に更新してください"
+    MESSAGE="Plans.md: ${CC_WIP} cc:wip task(s) remain. Mark completed work with cc:done."
   fi
 
   # 完了タスクがある場合（PM確認待ち）
   if [ "$CC_DONE" -gt 0 ]; then
     NEED_REMINDER="true"
     REASON="cc_done_tasks > 0"
-    MESSAGE="Plans.md: cc:完了 が${CC_DONE}件あります。PMが確認後 pm:確認済 に更新してください"
+    MESSAGE="Plans.md: ${CC_DONE} cc:done task(s) await PM review. After PM confirms, use pm:approved."
   fi
 fi
 
