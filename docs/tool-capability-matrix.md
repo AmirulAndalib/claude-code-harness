@@ -1,6 +1,6 @@
 # Tool Capability Matrix
 
-Last updated: 2026-05-22
+Last updated: 2026-05-27
 
 ## Purpose
 

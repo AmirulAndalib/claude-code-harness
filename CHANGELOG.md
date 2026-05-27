@@ -6,6 +6,10 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Changed
+
+- **Phase 80 upstream refresh (Claude Code 2.1.143-2.1.152 + Codex 0.131-0.134)**: Added dated snapshot and adoption plan, Claude `disallowed-tools` / `/reload-skills` / `MessageDisplay` policies, Codex `--profile` primary guidance, and integration tests. Upstream Auto mode consent removal does not change Harness `--auto-mode` or `autoMode.hard_deny` defaults.
+
 ## [4.12.8] - 2026-05-27
 
 ### Changed

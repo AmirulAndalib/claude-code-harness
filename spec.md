@@ -1,7 +1,7 @@
 # Claude Code Harness V2 Spec
 
-Status: draft SSOT for Phase 72 through Phase 76
-Last updated: 2026-05-24
+Status: draft SSOT for Phase 72 through Phase 80
+Last updated: 2026-05-27
 
 This file is the root product contract for Claude Code Harness V2.
 Plans.md is the task ledger. `spec.md` is the product contract.
@@ -438,6 +438,41 @@ Preferred memory targets:
 
 If harness-mem is unavailable, the agent must say so and keep the local SSOT
 updated instead of pretending memory was written.
+
+## Upstream Tracking Contract
+
+Claude Code and Codex updates must be turned into Harness changes through an
+evidence gate, not by copying release notes into docs.
+
+Every non-trivial upstream refresh must:
+
+- compare the local installed versions with the latest official upstream
+  versions,
+- use official Anthropic, OpenAI, or first-party GitHub release sources,
+- record a dated snapshot document with release URLs, local version output, and
+  observed gaps,
+- classify each relevant item as `A: adopt now`, `C: inherit upstream`,
+  `P: plan/spike`, or `Reject`,
+- keep `B: explanation only` at zero unless the plan explicitly explains why a
+  non-actionable note is still worth preserving,
+- connect adopted items to `Plans.md`, tests, docs, CHANGELOG, and review gates,
+- avoid support-tier upgrades until host bootstrap, runtime smoke, and release
+  gates prove the claim.
+
+The following upstream surfaces are product-affecting and must not be treated as
+automatic documentation updates:
+
+- skill or slash-command frontmatter semantics,
+- hooks, message display, session start, and plugin marketplace behavior,
+- agent, subagent, background-session, worktree, or permission behavior,
+- sandbox, approval, profile, or managed policy behavior,
+- Codex companion, CLI, SDK, MCP, app-server, or GitHub Action behavior,
+- installer, package, release artifact, or supply-chain behavior.
+
+If an upstream product weakens a previous opt-in barrier, such as an auto mode
+consent change, Harness must keep its own safety default until a dedicated phase
+updates the contract, tests, and release notes. Upstream convenience is evidence
+to evaluate, not permission to silently relax Harness guardrails.
 
 ## Non-Goals
 
