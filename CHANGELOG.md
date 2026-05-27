@@ -6,6 +6,30 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Changed
+
+- Expanded CodeQL to run on every `main` push and every `main` pull request so
+  Scorecard can detect SAST coverage across release/documentation commits.
+
+### Fixed
+
+- Added a Go fuzz seed for `harness.toml` parsing so parser robustness is
+  exercised and detected by Scorecard's fuzzing check.
+- Required all shipped platform hook binaries in the distribution archive check,
+  documenting why Scorecard binary-artifact findings are handled as intentional
+  plugin payload rather than deleted files.
+
+### Security
+
+- Removed mutable global npm install/update fallbacks from quick install and
+  Codex update guidance; optional development tools now use Homebrew or manual
+  versioned package-manager installation.
+- Added Scorecard maintainer annotations for intentionally shipped plugin
+  binaries and the decision not to pursue the external CII badge for this
+  release line.
+- Recorded the Scorecard alert disposition and branch-protection state in
+  `docs/evidence/scorecard-alerts-2026-05-27.md`.
+
 ## [4.12.5] - 2026-05-27
 
 ### Fixed
