@@ -205,8 +205,13 @@ check_cch_branch_protection_policy() {
   if bash scripts/check-cch-branch-protection-policy.sh >"$output_file" 2>&1; then
     pass "CCH branch protection policy"
   else
-    fail "CCH branch protection policy"
-    sed 's/^/  /' "$output_file"
+    if grep -Fq "Resource not accessible by integration" "$output_file"; then
+      warn "CCH branch protection policy unavailable to GitHub Actions token"
+      sed 's/^/  /' "$output_file"
+    else
+      fail "CCH branch protection policy"
+      sed 's/^/  /' "$output_file"
+    fi
   fi
   rm -f "$output_file"
 }

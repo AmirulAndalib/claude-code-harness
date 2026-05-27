@@ -389,6 +389,30 @@ test_preflight_fails_on_opencode_mirror_drift() {
   assert_contains "$output" "opencode/skills/example/SKILL.md"
 }
 
+test_preflight_warns_on_github_actions_branch_protection_403() {
+  local repo="$TMP_DIR/release-preflight-branch-protection-403"
+  setup_repo "$repo" valid
+
+  cat > "$repo/scripts/check-cch-branch-protection-policy.sh" <<'EOF'
+#!/bin/bash
+printf "%s\n" "gh: Resource not accessible by integration (HTTP 403)" >&2
+exit 1
+EOF
+  chmod +x "$repo/scripts/check-cch-branch-protection-policy.sh"
+  git -C "$repo" add scripts/check-cch-branch-protection-policy.sh
+  git -C "$repo" commit -qm "add branch protection 403 fixture"
+
+  local output="$TMP_DIR/branch-protection-403.txt"
+  HARNESS_RELEASE_PROJECT_ROOT="$repo" \
+  HARNESS_RELEASE_HEALTHCHECK_CMD='true' \
+  HARNESS_RELEASE_CI_STATUS_CMD='true' \
+    "$PROJECT_ROOT/scripts/release-preflight.sh" >"$output" 2>&1
+
+  assert_contains "$output" "\\[WARN\\] CCH branch protection policy unavailable to GitHub Actions token"
+  assert_contains "$output" "Resource not accessible by integration"
+  assert_contains "$output" "Summary: "
+}
+
 test_preflight_checks_plugin_version_sync() {
   local repo="$TMP_DIR/release-preflight-plugin"
   setup_repo "$repo" valid
@@ -533,6 +557,7 @@ test_doc_mentions_overrides
 test_release_workflow_runs_preflight_before_assets
 test_preflight_pass_and_fail
 test_preflight_fails_on_opencode_mirror_drift
+test_preflight_warns_on_github_actions_branch_protection_403
 test_preflight_checks_plugin_version_sync
 test_preflight_warns_when_env_is_managed_elsewhere
 
