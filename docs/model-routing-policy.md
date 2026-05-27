@@ -4,7 +4,7 @@ Status: adopted
 Last updated: 2026-05-28
 
 This document defines the default model and reasoning-effort routing for
-Claude Code and Codex in Harness workflows.
+Claude Code, Codex, and Cursor in Harness workflows.
 
 ## Decision
 
@@ -58,6 +58,25 @@ Custom Codex agents can set their own `model`, `model_reasoning_effort`, and
 `sandbox_mode`. Official docs:
 https://developers.openai.com/codex/config-reference and
 https://developers.openai.com/codex/subagents
+
+Cursor subagents support frontmatter `model: inherit|<model-id>`, `readonly`,
+and background execution. The Task tool accepts an explicit `model` parameter.
+Cursor CLI supports `--model` for per-run selection. Cloud Agent API accepts
+`model.id` and `model.params`. Official docs:
+https://cursor.com/docs/subagents ,
+https://cursor.com/docs/cli/overview ,
+https://cursor.com/docs/cloud-agent/api/endpoints
+
+## Override Priority (All Hosts)
+
+1. **Explicit caller override** — Task/subagent `model`, CLI `--model`, or
+   companion `--model` when the wrapper documents it.
+2. **Harness routed default** — `scripts/model-routing.sh --host <host> --role …`
+3. **Session inherit** — subagent `model: inherit` or host session default.
+
+Residual risk: team/admin/plan-unavailable models may fall back silently unless
+smoke or operator checks catch them. Do not treat availability in one account as
+guaranteed for every Harness user.
 
 ## Claude Code Routing
 
@@ -173,17 +192,46 @@ Notes:
 - Do not make Codex fast mode the default. It is a latency/credit trade-off,
   not an intelligence tier.
 
+## Cursor Routing (adapter candidate)
+
+| Harness tier | Cursor model (router default) | Effort label | Use cases |
+| --- | --- | --- | --- |
+| `lite` | `composer-2-fast` | `low` | read-only exploration, cheap fan-out |
+| `standard` | `composer-2.5-fast` | `medium` | normal worker implementation |
+| `deep` | `claude-opus-4-7-thinking-xhigh` | `xhigh` | architecture, security, recovery |
+| `review` | `composer-2.5-fast` | `xhigh` | harness-review / reviewer subagent |
+| `advisor` | `claude-opus-4-7-thinking-xhigh` | `xhigh` | advisor-request decisions |
+| `release` | `composer-2.5-fast` | `high` | release preflight wording checks |
+| `long-context` | `gemini-3.1-pro` | `high` | large repo reads when available |
+
+Adapter surfaces:
+
+- `.cursor/agents/*.md` frontmatter `model`
+- Task tool explicit `model`
+- Cursor CLI `--model`
+- Cloud Agent API `model.id` / `model.params` (optional evidence)
+
+Notes:
+
+- Cursor remains `candidate`; routing defaults are contract fixtures, not a
+  support claim.
+- Breezing multitask/background agents may fan out Workers; Reviewer and
+  cherry-pick stay serial in core.
+- When explicit `model` is set on Task/subagent invocation, routed defaults must
+  not override it (`tests/test-model-routing.sh` covers Codex explicit path;
+  Cursor uses the same priority rule).
+
 ## Harness Role Defaults
 
-| Harness surface | Claude default | Codex default | Why |
-| --- | --- | --- | --- |
-| Interactive operator session | `opusplan`, `high` | `gpt-5.5`, `high` | strong default without forcing max spend |
-| `/harness-plan` | `opusplan` or Opus for non-trivial planning | `gpt-5.5`, `high` | planning quality affects all downstream work |
-| `worker` | Sonnet 4.6, `medium` to `high` | `gpt-5.5`, `medium` | implementation benefits from iteration and tests |
-| `explorer` / read-only fan-out | Haiku 4.5, `low` | `gpt-5.4-mini`, `low` | cheap context isolation |
-| `reviewer` | Sonnet 4.6 `xhigh`; Opus 4.7 `xhigh` for high-risk | `gpt-5.5`, `xhigh` | review is where deeper reasoning pays |
-| `advisor` | Opus 4.7, `xhigh` | `gpt-5.5`, `xhigh` | blocked-loop decisions need high confidence |
-| `release` | Sonnet 4.6, `high` | `gpt-5.5`, `high` | procedural but public-facing |
+| Harness surface | Claude default | Codex default | Cursor default | Why |
+| --- | --- | --- | --- | --- |
+| Interactive operator session | `opusplan`, `high` | `gpt-5.5`, `high` | `composer-2.5-fast`, `medium` | strong default without forcing max spend |
+| `/harness-plan` | `opusplan` or Opus for non-trivial planning | `gpt-5.5`, `high` | `claude-opus-4-7-thinking-xhigh`, `xhigh` | planning quality affects all downstream work |
+| `worker` | Sonnet 4.6, `medium` to `high` | `gpt-5.5`, `medium` | `composer-2.5-fast`, `medium` | implementation benefits from iteration and tests |
+| `explorer` / read-only fan-out | Haiku 4.5, `low` | `gpt-5.4-mini`, `low` | `composer-2-fast`, `low` | cheap context isolation |
+| `reviewer` | Sonnet 4.6 `xhigh`; Opus 4.7 `xhigh` for high-risk | `gpt-5.5`, `xhigh` | `composer-2.5-fast`, `xhigh` | review is where deeper reasoning pays |
+| `advisor` | Opus 4.7, `xhigh` | `gpt-5.5`, `xhigh` | `claude-opus-4-7-thinking-xhigh`, `xhigh` | blocked-loop decisions need high confidence |
+| `release` | Sonnet 4.6, `high` | `gpt-5.5`, `high` | `composer-2.5-fast`, `high` | procedural but public-facing |
 
 ## Non-Goals
 
@@ -202,6 +250,7 @@ The router maps:
 ```text
 tier -> claude model/effort
 tier -> codex --model / -c model_reasoning_effort
+tier -> cursor model (+ effort label for docs/tests)
 role -> tier
 ```
 

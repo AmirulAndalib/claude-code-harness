@@ -24,6 +24,36 @@ claude_advisor_effort="$(bash "${ROUTER}" --host claude --role advisor --field e
   exit 1
 }
 
+claude_advisor_model="$(bash "${ROUTER}" --host claude --role advisor --field model)"
+[ "${claude_advisor_model}" = "claude-opus-4-7" ] || {
+  echo "claude advisor must route to claude-opus-4-7"
+  exit 1
+}
+
+cursor_worker_model="$(bash "${ROUTER}" --host cursor --role worker --field model)"
+[ "${cursor_worker_model}" = "composer-2.5-fast" ] || {
+  echo "cursor worker must route to composer-2.5-fast"
+  exit 1
+}
+
+cursor_advisor_model="$(bash "${ROUTER}" --host cursor --role advisor --field model)"
+[ "${cursor_advisor_model}" = "claude-opus-4-7-thinking-xhigh" ] || {
+  echo "cursor advisor must route to claude-opus-4-7-thinking-xhigh"
+  exit 1
+}
+
+cursor_args="$(bash "${ROUTER}" --host cursor --tier review --format args | tr '\n' ' ')"
+printf '%s' "${cursor_args}" | grep -q -- '--model composer-2.5-fast' || {
+  echo "cursor args must include review model"
+  exit 1
+}
+
+cursor_env="$(bash "${ROUTER}" --host cursor --tier standard --format env)"
+printf '%s' "${cursor_env}" | grep -q '^CURSOR_MODEL=composer-2.5-fast$' || {
+  echo "cursor env must export CURSOR_MODEL"
+  exit 1
+}
+
 codex_args="$(bash "${ROUTER}" --host codex --tier review --format args | tr '\n' ' ')"
 printf '%s' "${codex_args}" | grep -q -- '--model gpt-5.5' || {
   echo "codex args must include review model"

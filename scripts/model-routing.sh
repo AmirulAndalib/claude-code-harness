@@ -12,8 +12,8 @@ FORMAT="json"
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/model-routing.sh --host codex|claude --tier TIER [--format json|args|env] [--field model|effort]
-  scripts/model-routing.sh --host codex|claude --role ROLE [--format json|args|env] [--field model|effort]
+  scripts/model-routing.sh --host codex|claude|cursor --tier TIER [--format json|args|env] [--field model|effort]
+  scripts/model-routing.sh --host codex|claude|cursor --role ROLE [--format json|args|env] [--field model|effort]
 
 Tiers: lite, standard, deep, review, advisor, release, long-context, spark
 Roles: explorer, worker, reviewer, advisor, plan, release, operator, long-context
@@ -65,7 +65,7 @@ if [ -z "$TIER" ]; then
 fi
 
 case "$HOST" in
-  codex|claude) ;;
+  codex|claude|cursor) ;;
   *) echo "ERROR: unsupported host: $HOST" >&2; exit 2 ;;
 esac
 
@@ -81,6 +81,17 @@ if [ "$HOST" = "codex" ]; then
     release|long-context) MODEL="gpt-5.5"; EFFORT="high" ;;
     spark) MODEL="gpt-5.3-codex-spark"; EFFORT="low" ;;
     *) echo "ERROR: unknown codex tier: $TIER" >&2; exit 2 ;;
+  esac
+elif [ "$HOST" = "cursor" ]; then
+  case "$TIER" in
+    lite) MODEL="composer-2-fast"; EFFORT="low" ;;
+    standard) MODEL="composer-2.5-fast"; EFFORT="medium" ;;
+    deep|advisor) MODEL="claude-opus-4-7-thinking-xhigh"; EFFORT="xhigh" ;;
+    review) MODEL="composer-2.5-fast"; EFFORT="xhigh" ;;
+    release) MODEL="composer-2.5-fast"; EFFORT="high" ;;
+    long-context) MODEL="gemini-3.1-pro"; EFFORT="high" ;;
+    spark) echo "ERROR: spark tier is codex-only" >&2; exit 2 ;;
+    *) echo "ERROR: unknown cursor tier: $TIER" >&2; exit 2 ;;
   esac
 else
   case "$TIER" in
@@ -109,6 +120,8 @@ case "$FORMAT" in
   args)
     if [ "$HOST" = "codex" ]; then
       printf '%s\n' "--model" "$MODEL" "-c" "model_reasoning_effort=\"$EFFORT\""
+    elif [ "$HOST" = "cursor" ]; then
+      printf '%s\n' "--model" "$MODEL"
     else
       printf '%s\n' "--model" "$MODEL" "--effort" "$EFFORT"
     fi
@@ -116,6 +129,8 @@ case "$FORMAT" in
   env)
     if [ "$HOST" = "codex" ]; then
       printf 'CODEX_MODEL=%s\nCODEX_EFFORT=%s\n' "$MODEL" "$EFFORT"
+    elif [ "$HOST" = "cursor" ]; then
+      printf 'CURSOR_MODEL=%s\nCURSOR_EFFORT=%s\n' "$MODEL" "$EFFORT"
     else
       printf 'CLAUDE_MODEL=%s\nCLAUDE_EFFORT=%s\n' "$MODEL" "$EFFORT"
     fi

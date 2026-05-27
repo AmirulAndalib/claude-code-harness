@@ -6,6 +6,26 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [4.12.11] - 2026-05-28
+
+### Changed
+
+| Before | After |
+| --- | --- |
+| Cursor had no adapter candidate route. | Cursor has a `candidate` adapter skeleton, evidence doc, and static smoke. |
+| Cursor support claims were intentionally absent. | Cursor remains `candidate`; public support claims still wait for workflow smoke. |
+| Bootstrap and capability contracts did not describe Cursor. | `spec.md`, capability matrix, and bootstrap routing contract define Cursor boundaries. |
+| Breezing and model routing had no Cursor mapping. | Breezing docs and `scripts/model-routing.sh --host cursor` define candidate routing. |
+
+- **Phase 81 Cursor CCH Adapter (candidate)**: Added Cursor adapter evidence
+  (`docs/research/cursor-adapter-candidate.md`), contract updates in
+  `spec.md`, capability matrix, and bootstrap routing contract, adapter skeleton
+  (`.cursor-plugin/`, `.cursor/AGENTS.md`, agents, hooks, MCP config shape),
+  Breezing Cursor mapping docs, `scripts/model-routing.sh --host cursor`, advisor
+  model alignment to Opus 4.7, and `tests/test-cursor-adapter-candidate.sh`.
+  Cursor remains `candidate`; no public supported Cursor adapter claim until
+  workflow smoke passes.
+
 ## [4.12.10] - 2026-05-28
 
 ### Fixed
@@ -4602,7 +4622,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.12.10...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.12.11...HEAD
+[4.12.11]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.12.10...v4.12.11
 [4.12.10]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.12.9...v4.12.10
 [4.12.9]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.12.8...v4.12.9
 [4.12.8]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.12.7...v4.12.8
