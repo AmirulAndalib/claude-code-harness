@@ -8,7 +8,7 @@ export default {
   timeout: 300,
   scripts: ["test"],
   sandbox: "docker",
-  evals: ["task-01"],
+  evals: ["task-11"],
   setup: async (sandbox) => {
     await sandbox.writeFiles({
       "CLAUDE.md": [

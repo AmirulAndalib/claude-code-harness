@@ -8,7 +8,7 @@ export default {
   timeout: 600,
   scripts: ["test"],
   sandbox: "docker",
-  evals: ["task-01"],
+  evals: ["task-11"],
   setup: async (sandbox) => {
     await sandbox.writeFiles({
       ".claude/settings.json": JSON.stringify(

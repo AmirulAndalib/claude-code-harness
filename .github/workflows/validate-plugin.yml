@@ -93,6 +93,10 @@ jobs:
         run: |
           bash ./tests/validate-plugin.sh
 
+      - name: Audit breezing benchmark dependencies
+        run: |
+          bash ./tests/test-breezing-agent-eval-deps.sh
+
       - name: Check consistency (templates/refs/version/hooks)
         run: |
           bash ./scripts/ci/check-consistency.sh
