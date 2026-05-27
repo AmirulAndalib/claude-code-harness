@@ -36,17 +36,24 @@
 詳細: `references/planning-quality.md`
 
 ユーザーが渡した情報をそのまま Plans.md に落とさない。
-外部プロダクト、競合、仕様案、改善案、比較材料が含まれる場合は、最新情報・既存仕様・記憶・複数視点レビューで確認し、取り入れるべき要素だけを task contract にする。
+外部プロダクト、競合、仕様案、改善案、比較材料が含まれる場合は、最新情報・既存仕様・記憶・TeamAgent / サブエージェント複数視点レビューで確認し、取り入れるべき要素だけを task contract にする。
+単発・軽微ではない planning は、TeamAgent またはサブエージェント前提で扱う。
 
 最低限の確認:
 
 - 最新情報: WebSearch / 公式 docs / 一次情報を優先し、重要点は複数ソースで確認する
 - 既存仕様: Plans.md、README、docs、CLAUDE.md、関連 skill、tests を確認する
-- 記憶: harness-mem / harness-recall / `.claude/agent-memory/` / `.claude/state/` が使える場合は project-scoped で確認する
-- 議論: Product / Architecture / QA / Skeptic の視点で採用価値とリスクを分ける
-- 採点: Product Fit、Evidence Strength、User Value、Implementation Feasibility、Regression Safety、Strategic Leverage を 5 点満点で見る
+- 記憶: harness-mem / harness-recall / `.claude/agent-memory/` / `.claude/state/` が使える場合は project-scoped で確認し、車輪の再発明を避ける
+- 議論: Product / Architecture / Security / QA / Skeptic の視点で採用価値とリスクを分ける
+- 実装プラン検証: product fit、security fit、works in practice を確認し、test / smoke / CI / review / release gate を DoD に落とす
+- 採点: Product Fit、Evidence Strength、User Value、Implementation Feasibility、Regression Safety、Strategic Leverage、Security Safety、Works In Practice を 5 点満点で見る
 
 `harness-mem` の DB は直接読まない。検索や documented memory surface が使えない場合は「記憶未確認」と明示する。
+Task tool が使えない場合は `サブエージェント未使用` と明示し、同じ観点を単独で分けて評価する。
+`team_validation_mode` は `not_required_lightweight` / `native` / `subagent` / `manual-pass` / `unavailable` のいずれかを出す。
+non-trivial planning では `native` / `subagent` / `manual-pass` のいずれかを使い、`unavailable` のまま Required にしない。
+Product / Architecture / Security / QA / Skeptic は perspective 名であり agent_type 名ではない。
+Security gate は `.env` や secret の実読取を要求しない。
 
 小さな typo、format、README/CHANGELOG、marker 更新だけならこの step は軽く済ませてよい。
 

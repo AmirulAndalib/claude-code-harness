@@ -88,6 +88,43 @@ smallest decision branch and keep unverified facts as `unknown` or
 Harness generates the spec result. Consumers approve or edit `Spec delta` /
 `Spec skip reason`; they are not expected to write the spec from scratch.
 
+Non-trivial planning must be team-validated before it becomes implementation
+work. A request is non-trivial when it spans multiple tasks, files, sessions,
+or changes product behavior, APIs, data models, permissions, billing, external
+integrations, distribution, or security posture. For those requests,
+`/harness-plan` must use TeamAgent or sub-agent perspectives when available.
+If the runtime cannot spawn sub-agents, the plan must explicitly say
+`サブエージェント未使用` and run the same checks in separated sections.
+The plan must include `team_validation_mode`, one of
+`not_required_lightweight`, `native`, `subagent`, `manual-pass`, or
+`unavailable`. Lightweight work may use `not_required_lightweight`.
+Non-trivial work must use `native`, `subagent`, or `manual-pass`; `unavailable`
+cannot be marked Required.
+
+Product, Architecture, Security, QA, and Skeptic are validation perspectives,
+not required runtime `agent_type` names. Harness should pass those perspectives
+to the available TeamAgent or Task mechanism rather than requiring arbitrary
+agent spawning.
+
+Every non-trivial plan must show:
+
+- alignment with root `spec.md`, applicable sub-specs, and `Plans.md`,
+- a project-scoped harness-mem / harness-recall / repo-memory wheel check,
+- product-fit validation against the primary operator workflow,
+- security validation for permissions, secrets, external sends, supply chain,
+  branch protection, and release gates,
+- works-in-practice validation that maps the plan to test, smoke, CI, review,
+  and release or closeout evidence.
+
+If any of those gates cannot pass, the plan must not mark the work Required
+until it adds a spike, narrows scope, updates the product contract, or rejects
+the idea.
+
+Security validation must not require reading secrets. If a plan would need to
+inspect `.env`, tokens, private keys, or customer data, it must stop at a Risk
+Gate and use non-secret evidence such as guardrail rules, config shape, audit
+metadata, tests, or CI/GitHub state.
+
 ## Hokage Core And Host Adapter Boundary
 
 Hokage Core defines workflow contracts. Host adapters translate those contracts
