@@ -11,7 +11,7 @@ export default {
   scripts: ["test"],
   sandbox: "docker",
   evals: [
-    "task-02",
+    "task-12",
   ],
   setup: async (sandbox) => {
     await sandbox.writeFiles({

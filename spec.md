@@ -365,6 +365,29 @@ messages for prose. Status marker writes are the exception: new/update writer
 paths use the English marker family while legacy Japanese markers remain
 read-compatible.
 
+## Supply Chain Alert Contract
+
+Open Dependabot alerts on tracked source, tooling, benchmark, or distribution
+lockfiles are repo-health findings, not release noise.
+
+Harness must handle them with evidence:
+
+- enumerate the live GitHub alert set before planning remediation,
+- group alerts by manifest path, dependency, severity, and advisory,
+- prefer supported upgrades that keep the current tool line moving forward over
+  security downgrades suggested only by `npm audit fix`,
+- use package-manager-native override mechanisms only when the direct owner
+  package has not yet published a patched dependency range,
+- verify the affected tool still starts or runs an equivalent smoke command,
+- add or update Dependabot configuration and CI/audit checks when a tracked
+  manifest can otherwise accumulate alerts without PR automation,
+- keep GitHub alert closeout, local `npm audit`, CI, and release gates separate.
+
+Benchmark-only manifests may use focused smoke evidence instead of full
+benchmark execution when model keys, Docker, or sandbox services are unavailable,
+but the unavailable part must be recorded as a residual risk rather than treated
+as success.
+
 ## Memory Contract
 
 When a planning or design decision is made, Harness should record why it was
