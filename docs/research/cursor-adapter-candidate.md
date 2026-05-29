@@ -270,6 +270,49 @@ hot-reloaded:
   Codex). Strict write-confinement via the sandbox is optional global hardening,
   not a blocker.
 
+## Cursor ACP — Not adopted (2026-05-29)
+
+Cursor's Agent Client Protocol (ACP) is recorded here as NOT ADOPTED for the
+harness execution backend; Cursor stays `candidate` and no support tier changes.
+
+### What ACP is
+
+- Bidirectional JSON-RPC over stdio for "custom clients and integrations",
+  activated via `agent acp`.
+- Streaming via `session/update` notifications (live token / event feed).
+- Permission gating via `session/request_permission` (per-action approval).
+- Blocking methods such as `cursor/ask_question` and `cursor/create_plan`, plus
+  persistent `sessionId` for multi-turn continuity.
+- IDE integration path for editors other than Cursor desktop to embed composer.
+- No separate server and no special tier; auth reuses `agent login` /
+  `--api-key` / `--auth-token`.
+- Official guidance from cursor.com/docs/ja/cli/acp: "ACP is intended for
+  building custom clients or integrations. For normal terminal workflows, use
+  the interactive CLI with `agent`."
+
+### Why not adopt now
+
+- Harness delegation pattern is whole-task: send a task, wait, receive a final
+  `.result`. ACP's strengths (streaming, permission gating, blocking dialogs,
+  sessionId continuity) are unused.
+- Implementing ACP would require streaming consumers, permission-gating
+  handlers, and JSON-RPC plumbing on the harness side without adding capability
+  the wrapper does not already deliver.
+- `cursor-agent -p --output-format json --trust` (the current wrapper) already
+  returns the final `.result` deterministically with exit-code semantics that
+  the wrapper's exit-code-first check (Phase 82 evidence) requires.
+
+### Re-evaluate ACP when ANY of the following hold
+
+- Streaming UX is required (live progress feed inside Lead, not just
+  task-completed events).
+- An IDE other than Cursor desktop must embed composer as a worker backend.
+- Per-action permission gating (rather than per-session) becomes a harness
+  contract.
+
+Support tier is unchanged (cursor=`candidate`); no consumer distribution claim
+is added by this entry.
+
 ## Promotion Conditions
 
 Cursor can move beyond `candidate` only after all of the following in the same
