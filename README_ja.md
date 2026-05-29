@@ -81,7 +81,7 @@ claude
 ## 中で何が起きるか
 
 Harness は agent 作業の前後に、正本と検証の loop を置きます。
-基本は plan、work、review、sync、release の 5動詞スキルで動かすワークフローです。
+基本は plan、work、review、sync、release の 5動詞スキルで動かす 5動詞ワークフローです。
 
 1. あなたは作りたい結果を普通に伝える。
 2. `/harness-plan` が `spec.md` と `Plans.md` を作成・更新し、範囲、
