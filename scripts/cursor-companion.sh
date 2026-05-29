@@ -8,6 +8,9 @@
 #   bash scripts/cursor-companion.sh task "Explain the failing test"            # read-only (default)
 #   bash scripts/cursor-companion.sh task --write --workspace <dir> "Fix bug"   # write mode
 #   bash scripts/cursor-companion.sh task --model <m> "..."                     # model override
+#   bash scripts/cursor-companion.sh --debug task "..."                         # wrapper debug trace
+#   bash scripts/cursor-companion.sh task --debug "..."                         # 同上 (位置どちらでも可)
+#   HARNESS_CURSOR_DEBUG=1 bash scripts/cursor-companion.sh task "..."          # env による debug
 #
 # Subcommands: task
 #
@@ -24,16 +27,107 @@
 #   - model は scripts/model-routing.sh --host cursor --role worker --field model
 #     （→ composer-2.5-fast）で解決する。
 #
+# Observability:
+#   --debug / HARNESS_CURSOR_DEBUG=1 は wrapper 専用の観測フラグで、cursor-agent 自身には
+#   渡らない。デフォルト挙動（DEBUG=0）は従来と変えない: model-routing.sh の stderr は
+#   silent に飲み込み、cursor-agent の stderr は失敗時のみ出力する。DEBUG=1 の時のみ:
+#     (a) model-routing.sh の stderr を [cursor-companion DEBUG] prefix で stderr に出す
+#     (b) 構築された cmd 配列を secret マスク付きで stderr に出す（実行前）
+#     (c) cursor-agent の stderr を成功・失敗を問わず stderr に出す
+#   secret マスク対象: `--api-key <value>` / `--auth-token <value>` /
+#                      `-H Authorization:*` / `--header Authorization:*`
+#
+# Testability hooks (test-only, do not rely on in production):
+#   HARNESS_CURSOR_COMPANION_MODEL_ROUTER  — model-routing.sh のパスを差し替える
+#   CURSOR_COMPANION_SOURCED_FOR_TEST=1    — 関数定義のみ source して main を実行しない
+#
 # Exit codes:
 #   0  ok            — 成功し、.result を stdout に出力した
 #   1  result-error  — 実行は exit 0 だが is_error=true / result が null・空
 #   2  bad-guard     — --write の workspace ガード違反（未指定 / repo root / $HOME / 非ディレクトリ）
 #   3  not-found     — cursor-agent バイナリが見つからない（not-configured）
 
+# ---- DEBUG 既定値（env による初期化）-------------------------------------
+# --debug フラグでも 1 にする。env 未設定なら 0。
+DEBUG="${HARNESS_CURSOR_DEBUG:-0}"
+
+# ---- debug_log: DEBUG=1 のときだけ stderr に prefix 付きで出す ------------
+# stdout 汚染を避けるため必ず >&2。.result consumers を壊さない契約。
+debug_log() {
+  if [ "${DEBUG}" != "1" ]; then
+    return 0
+  fi
+  printf '[cursor-companion DEBUG] %s\n' "$*" >&2
+}
+
+# ---- mask_args: cmd 配列を走査し、secret 系の値を [REDACTED] に置換 -------
+# 入力: $@ = 元の配列要素。出力: stdout に空白区切りで joined string。
+# 置換対象（条件は literal 一致）:
+#   --api-key <next>            → <next> を [REDACTED]
+#   --auth-token <next>         → <next> を [REDACTED]
+#   -H Authorization:<rest>     → そのトークン全体を [REDACTED]
+#   --header Authorization:<rest> → 同上
+#   Authorization:<rest>        → Authorization: + Bearer 部分等を [REDACTED] へ
+# PROMPT 本文は secret 扱いしない（マスクしない）。
+mask_args() {
+  local out=()
+  local i=0
+  local n=$#
+  local args=("$@")
+  while [ "$i" -lt "$n" ]; do
+    local a="${args[$i]}"
+    case "$a" in
+      --api-key|--auth-token)
+        out+=("$a")
+        i=$((i + 1))
+        if [ "$i" -lt "$n" ]; then
+          out+=("[REDACTED]")
+          i=$((i + 1))
+        fi
+        ;;
+      -H|--header)
+        out+=("$a")
+        i=$((i + 1))
+        if [ "$i" -lt "$n" ]; then
+          local next="${args[$i]}"
+          # Authorization: ヘッダだけマスクする（その他のヘッダは秘匿しない）
+          case "$next" in
+            [Aa]uthorization:*)
+              out+=("Authorization: [REDACTED]")
+              ;;
+            *)
+              out+=("$next")
+              ;;
+          esac
+          i=$((i + 1))
+        fi
+        ;;
+      [Aa]uthorization:*)
+        # 単独要素として "Authorization: Bearer ..." が含まれていた場合のマスク。
+        out+=("Authorization: [REDACTED]")
+        i=$((i + 1))
+        ;;
+      *)
+        out+=("$a")
+        i=$((i + 1))
+        ;;
+    esac
+  done
+  printf '%s' "${out[*]}"
+}
+
+# === FUNCTIONS ABOVE === early return for tests ===
+# テストから source されたときは関数定義の load だけで main を実行しない。
+# 本番実行（直接 invoke）では CURSOR_COMPANION_SOURCED_FOR_TEST は未設定なので素通り。
+if [ "${CURSOR_COMPANION_SOURCED_FOR_TEST:-0}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODEL_ROUTER="${SCRIPT_DIR}/model-routing.sh"
+# MODEL_ROUTER はテスト hook により差し替え可能。
+MODEL_ROUTER="${HARNESS_CURSOR_COMPANION_MODEL_ROUTER:-${SCRIPT_DIR}/model-routing.sh}"
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "${SCRIPT_DIR}/.." && pwd))"
 
 # ---- cursor-agent バイナリ解決 -------------------------------------------
@@ -54,19 +148,40 @@ resolve_cursor_agent() {
 }
 
 # ---- model 解決 -----------------------------------------------------------
+# DEBUG=1 のときは model-routing.sh の stderr を取り込み、失敗原因を可視化する。
+# DEBUG=0 では従来通り stderr を捨てる（既存挙動を保つ）。
 resolve_cursor_model() {
   if [ ! -x "${MODEL_ROUTER}" ]; then
     return 0
   fi
-  bash "${MODEL_ROUTER}" --host cursor --role worker --field model 2>/dev/null || true
+  if [ "${DEBUG}" = "1" ]; then
+    local tmp_stderr
+    tmp_stderr="$(mktemp "${TMPDIR:-/tmp}/cursor-companion-mr-err.XXXXXX")"
+    local model
+    model="$(bash "${MODEL_ROUTER}" --host cursor --role worker --field model 2>"${tmp_stderr}" || true)"
+    if [ -s "${tmp_stderr}" ]; then
+      debug_log "model-routing.sh stderr: $(cat "${tmp_stderr}")"
+    fi
+    rm -f "${tmp_stderr}"
+    printf '%s' "${model}"
+  else
+    bash "${MODEL_ROUTER}" --host cursor --role worker --field model 2>/dev/null || true
+  fi
 }
 
 usage() {
   cat <<'EOF'
 Usage:
-  cursor-companion.sh task [--write] [--workspace <dir>] [--model <m>] "<prompt>"
+  cursor-companion.sh [--debug] task [--debug] [--write] [--workspace <dir>] [--model <m>] "<prompt>"
 EOF
 }
+
+# ---- top-level の --debug を最初に剥がす（task の前に置けるように）-------
+# 既存テストとの後方互換のため、最初の引数が --debug の場合のみ吸収する。
+if [ "${1:-}" = "--debug" ]; then
+  DEBUG=1
+  shift
+fi
 
 SUBCOMMAND="${1:-}"
 if [ "${SUBCOMMAND}" != "task" ]; then
@@ -83,6 +198,11 @@ MODEL=""
 PROMPT=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --debug)
+      # task の後ろにある --debug も受ける。cursor-agent には渡さない。
+      DEBUG=1
+      shift
+      ;;
     --write)
       WRITE=1
       shift
@@ -192,6 +312,13 @@ if [ -n "${WORKSPACE}" ]; then
 fi
 cmd+=("${PROMPT}")
 
+# ---- DEBUG: 実行前に cmd 配列を secret マスク付きで dump --------------------
+# 実行後ではなく実行前に出すことで、ハング・タイムアウト時にも何を起動したかが残る。
+if [ "${DEBUG}" = "1" ]; then
+  masked="$(mask_args "${cmd[@]}")"
+  debug_log "cmd: ${masked}"
+fi
+
 # ---- 実行（stdout を temp に捕捉し、exit code を先に確認）-----------------
 # stdout と stderr を別ファイルに分けて捕捉する。
 # stdout には成功時の JSON、stderr には診断メッセージが流れる。
@@ -216,7 +343,12 @@ if [ "${rc}" -ne 0 ]; then
   exit "${rc}"
 fi
 
-# (2) 成功 exit でも結果が不正なら failure 扱い（空 success を出力しない）。
+# (2) DEBUG=1 のときは成功時にも cursor-agent stderr を出す（順序: stderr → result 処理）。
+if [ "${DEBUG}" = "1" ] && [ -s "${ERR_FILE}" ]; then
+  debug_log "cursor-agent stderr: $(cat "${ERR_FILE}")"
+fi
+
+# (3) 成功 exit でも結果が不正なら failure 扱い（空 success を出力しない）。
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required to parse cursor-agent output" >&2
   exit 1
@@ -242,5 +374,5 @@ if [ -z "${result}" ]; then
   exit 1
 fi
 
-# (3) 本当の成功: result テキストを stdout に出力する。
+# (4) 本当の成功: result テキストを stdout に出力する。
 printf '%s\n' "${result}"

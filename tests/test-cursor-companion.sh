@@ -177,6 +177,189 @@ set -e
 [ "$rc" -eq 3 ] || fail "(h) missing cursor-agent should exit 3, got $rc"
 
 # ---------------------------------------------------------------------------
+# (i) --debug 引数: 成功パスで wrapper stderr に [cursor-companion DEBUG] と cmd:
+#     が含まれ、ARGS_FILE には --debug が混入していない（cursor-agent に渡らない）
+# ---------------------------------------------------------------------------
+make_mock '{"is_error":false,"result":"DONE"}' 0
+DEBUG_ERR="${TMP_DIR}/debug-flag-stderr.txt"
+set +e
+out="$(run_wrapper --debug task "do the thing" 2>"${DEBUG_ERR}")"
+rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "(i) --debug success path should exit 0, got $rc"
+[ "$out" = "DONE" ] || fail "(i) --debug success path should still print 'DONE', got '$out'"
+grep -q "\[cursor-companion DEBUG\]" "${DEBUG_ERR}" \
+  || fail "(i) --debug wrapper stderr should contain '[cursor-companion DEBUG]', got: $(cat "${DEBUG_ERR}")"
+grep -q "cmd:" "${DEBUG_ERR}" \
+  || fail "(i) --debug wrapper stderr should contain 'cmd:', got: $(cat "${DEBUG_ERR}")"
+if grep -q -- "--debug" "${ARGS_FILE}"; then
+  fail "(i) --debug must NOT be passed to cursor-agent, args were: $(cat "${ARGS_FILE}")"
+fi
+
+# (i-b) --debug は task の後ろにも置ける
+make_mock '{"is_error":false,"result":"DONE"}' 0
+DEBUG_ERR2="${TMP_DIR}/debug-flag-after-task-stderr.txt"
+set +e
+out="$(run_wrapper task --debug "do the thing" 2>"${DEBUG_ERR2}")"
+rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "(i-b) 'task --debug' should exit 0, got $rc"
+grep -q "\[cursor-companion DEBUG\]" "${DEBUG_ERR2}" \
+  || fail "(i-b) 'task --debug' should also trigger debug output, got: $(cat "${DEBUG_ERR2}")"
+if grep -q -- "--debug" "${ARGS_FILE}"; then
+  fail "(i-b) 'task --debug' must NOT be passed to cursor-agent, args were: $(cat "${ARGS_FILE}")"
+fi
+
+# ---------------------------------------------------------------------------
+# (ii) HARNESS_CURSOR_DEBUG=1 env: --debug フラグなしでも同じ debug 出力
+# ---------------------------------------------------------------------------
+make_mock '{"is_error":false,"result":"DONE"}' 0
+DEBUG_ENV_ERR="${TMP_DIR}/debug-env-stderr.txt"
+set +e
+out="$(HARNESS_CURSOR_DEBUG=1 run_wrapper task "do the thing" 2>"${DEBUG_ENV_ERR}")"
+rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "(ii) HARNESS_CURSOR_DEBUG=1 success path should exit 0, got $rc"
+[ "$out" = "DONE" ] || fail "(ii) HARNESS_CURSOR_DEBUG=1 should still print 'DONE', got '$out'"
+grep -q "\[cursor-companion DEBUG\]" "${DEBUG_ENV_ERR}" \
+  || fail "(ii) HARNESS_CURSOR_DEBUG=1 stderr should contain '[cursor-companion DEBUG]', got: $(cat "${DEBUG_ENV_ERR}")"
+grep -q "cmd:" "${DEBUG_ENV_ERR}" \
+  || fail "(ii) HARNESS_CURSOR_DEBUG=1 stderr should contain 'cmd:', got: $(cat "${DEBUG_ENV_ERR}")"
+if grep -q -- "--debug" "${ARGS_FILE}"; then
+  fail "(ii) HARNESS_CURSOR_DEBUG=1 must NOT pass --debug to cursor-agent, args were: $(cat "${ARGS_FILE}")"
+fi
+
+# ---------------------------------------------------------------------------
+# (iii) secret マスキング: mask_args() を直接 source して call し、
+#       --api-key / Authorization が [REDACTED] に置換され、PROMPT は素通しを assert
+# ---------------------------------------------------------------------------
+(
+  # source guard により main は実行されず関数だけ load される
+  CURSOR_COMPANION_SOURCED_FOR_TEST=1
+  export CURSOR_COMPANION_SOURCED_FOR_TEST
+  # shellcheck disable=SC1090
+  . "${WRAPPER}"
+  masked="$(mask_args "--api-key" "SUPERSECRET" "--header" "Authorization: Bearer ABCDEFG" "prompt-text")"
+  # SUPERSECRET は --api-key の次なので [REDACTED] になる
+  if printf '%s' "${masked}" | grep -q "SUPERSECRET"; then
+    echo "FAIL: (iii) --api-key value 'SUPERSECRET' must be masked, masked='${masked}'" >&2
+    exit 1
+  fi
+  # ABCDEFG は Authorization ヘッダの値なので [REDACTED] になる
+  if printf '%s' "${masked}" | grep -q "ABCDEFG"; then
+    echo "FAIL: (iii) Authorization bearer 'ABCDEFG' must be masked, masked='${masked}'" >&2
+    exit 1
+  fi
+  # [REDACTED] が含まれている
+  if ! printf '%s' "${masked}" | grep -q "\[REDACTED\]"; then
+    echo "FAIL: (iii) mask_args must emit '[REDACTED]', masked='${masked}'" >&2
+    exit 1
+  fi
+  # PROMPT は素通し（マスクしない）
+  if ! printf '%s' "${masked}" | grep -q "prompt-text"; then
+    echo "FAIL: (iii) prompt body 'prompt-text' must NOT be masked, masked='${masked}'" >&2
+    exit 1
+  fi
+) || fail "(iii) mask_args unit test failed"
+
+# (iii-b) -H Authorization も同様にマスクされる
+(
+  CURSOR_COMPANION_SOURCED_FOR_TEST=1
+  export CURSOR_COMPANION_SOURCED_FOR_TEST
+  # shellcheck disable=SC1090
+  . "${WRAPPER}"
+  masked="$(mask_args "-H" "Authorization: Bearer XYZ123" "next")"
+  if printf '%s' "${masked}" | grep -q "XYZ123"; then
+    echo "FAIL: (iii-b) -H Authorization value must be masked, masked='${masked}'" >&2
+    exit 1
+  fi
+  if ! printf '%s' "${masked}" | grep -q "\[REDACTED\]"; then
+    echo "FAIL: (iii-b) mask_args must emit '[REDACTED]', masked='${masked}'" >&2
+    exit 1
+  fi
+  if ! printf '%s' "${masked}" | grep -q "next"; then
+    echo "FAIL: (iii-b) following token 'next' must remain, masked='${masked}'" >&2
+    exit 1
+  fi
+) || fail "(iii-b) mask_args -H unit test failed"
+
+# (iii-c) --auth-token も同様にマスクされる
+(
+  CURSOR_COMPANION_SOURCED_FOR_TEST=1
+  export CURSOR_COMPANION_SOURCED_FOR_TEST
+  # shellcheck disable=SC1090
+  . "${WRAPPER}"
+  masked="$(mask_args "--auth-token" "TOPSECRET" "prompt")"
+  if printf '%s' "${masked}" | grep -q "TOPSECRET"; then
+    echo "FAIL: (iii-c) --auth-token value must be masked, masked='${masked}'" >&2
+    exit 1
+  fi
+  if ! printf '%s' "${masked}" | grep -q "prompt"; then
+    echo "FAIL: (iii-c) prompt must remain unmasked, masked='${masked}'" >&2
+    exit 1
+  fi
+) || fail "(iii-c) mask_args --auth-token unit test failed"
+
+# ---------------------------------------------------------------------------
+# (iv) Default-off: --debug もなく env も無い → wrapper stderr に DEBUG marker なし
+# ---------------------------------------------------------------------------
+make_mock '{"is_error":false,"result":"DONE"}' 0
+DEFAULT_ERR="${TMP_DIR}/default-off-stderr.txt"
+set +e
+out="$(run_wrapper task "do the thing" 2>"${DEFAULT_ERR}")"
+rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "(iv) default-off success path should exit 0, got $rc"
+if grep -q "\[cursor-companion DEBUG\]" "${DEFAULT_ERR}"; then
+  fail "(iv) default-off (no --debug, no env) must NOT emit DEBUG marker, stderr was: $(cat "${DEFAULT_ERR}")"
+fi
+
+# ---------------------------------------------------------------------------
+# (v) Model-routing failure surfacing:
+#     HARNESS_CURSOR_COMPANION_MODEL_ROUTER で偽の model-routing.sh を差し込む。
+#     --debug 有効時、wrapper stderr に "model-routing.sh stderr:" と "ERROR: bogus"
+#     が出ること。既存の "could not resolve a Cursor model" は依然 exit 2。
+# ---------------------------------------------------------------------------
+FAKE_MR="${TMP_DIR}/fake-model-routing.sh"
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'echo "ERROR: bogus" >&2\n'
+  printf 'exit 2\n'
+} >"${FAKE_MR}"
+chmod +x "${FAKE_MR}"
+
+make_mock '{"is_error":false,"result":"DONE"}' 0
+MR_ERR="${TMP_DIR}/model-routing-debug-stderr.txt"
+set +e
+HARNESS_CURSOR_COMPANION_MODEL_ROUTER="${FAKE_MR}" \
+  run_wrapper --debug task "do the thing" >/dev/null 2>"${MR_ERR}"
+rc=$?
+set -e
+[ "$rc" -eq 2 ] || fail "(v) bogus model-routing should still exit 2, got $rc"
+grep -q "model-routing.sh stderr:" "${MR_ERR}" \
+  || fail "(v) --debug should surface 'model-routing.sh stderr:' prefix, stderr was: $(cat "${MR_ERR}")"
+grep -q "ERROR: bogus" "${MR_ERR}" \
+  || fail "(v) --debug should surface fake model-routing's 'ERROR: bogus' stderr, stderr was: $(cat "${MR_ERR}")"
+grep -q "could not resolve a Cursor model" "${MR_ERR}" \
+  || fail "(v) existing 'could not resolve a Cursor model' error must still be emitted, stderr was: $(cat "${MR_ERR}")"
+
+# (v-b) DEBUG=0 のときは model-routing.sh の stderr を呑む（既存挙動の保護）
+make_mock '{"is_error":false,"result":"DONE"}' 0
+MR_ERR2="${TMP_DIR}/model-routing-silent-stderr.txt"
+set +e
+HARNESS_CURSOR_COMPANION_MODEL_ROUTER="${FAKE_MR}" \
+  run_wrapper task "do the thing" >/dev/null 2>"${MR_ERR2}"
+rc=$?
+set -e
+[ "$rc" -eq 2 ] || fail "(v-b) bogus model-routing without --debug should still exit 2, got $rc"
+if grep -q "model-routing.sh stderr:" "${MR_ERR2}"; then
+  fail "(v-b) DEBUG=0 must NOT surface model-routing.sh stderr, stderr was: $(cat "${MR_ERR2}")"
+fi
+if grep -q "ERROR: bogus" "${MR_ERR2}"; then
+  fail "(v-b) DEBUG=0 must NOT surface fake 'ERROR: bogus', stderr was: $(cat "${MR_ERR2}")"
+fi
+
+# ---------------------------------------------------------------------------
 # 任意: 実ネットワーク smoke（default skip）
 # ---------------------------------------------------------------------------
 if [ "${HARNESS_CURSOR_AGENT_SMOKE:-0}" = "1" ]; then
