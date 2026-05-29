@@ -151,6 +151,29 @@ problem above). Distribution to consumers is out of scope for this phase and is
 gated by the Phase 83 prerequisites (manual sandbox allowlist recipe,
 cursor-agent governance rule, support-tier promotion).
 
+### Write-capability spike (Phase 83.3a, 2026-05-29)
+
+Make-or-break check for the "brain Opus / body composer" execution backend: can
+`cursor-agent --force` write files while its OWN sandbox stays enabled (the
+Codex `workspace-write` equivalent), or is `--sandbox disabled` required?
+
+| cursor-agent sandbox | `--force` write of `foo.txt` in throwaway workspace | is_error | wall |
+| --- | --- | --- | --- |
+| `--sandbox enabled` | ✅ wrote `PONG` | false | ~32.6s (cold start) |
+| `--sandbox disabled` | ✅ wrote `PONG` | false | ~18.3s |
+
+Result: `--sandbox enabled --force --workspace <dir>` **does perform writes**, so
+the recommended path keeps cursor-agent's own jail enabled (Codex-equivalent
+containment) and does not require disabling it. Only the Claude Code outer Bash
+sandbox needs the egress path (allowlist preferred over disable). Implication:
+the recommended gatsuri path needs no per-task Risk Gate ack; the bare
+`--sandbox disabled` fallback is the only ack-gated path.
+
+Not yet verified (deferred to 83.3 env-guard): whether `--sandbox enabled`
+*confines* writes to the workspace (blocks writes outside it) like Codex
+workspace-write, or merely auto-approves. Worktree confinement + Lead review
+remain mandatory regardless.
+
 ## Promotion Conditions
 
 Cursor can move beyond `candidate` only after all of the following in the same
