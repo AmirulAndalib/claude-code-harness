@@ -125,4 +125,41 @@ printf 'export HARNESS_IMPL_BACKEND=bogus\n' > "${HARNESS_ENV_LOCAL}"
 got="$(env -u HARNESS_IMPL_BACKEND bash "$RESOLVE" 2>/dev/null)"
 [ "$got" = "claude" ] || fail "(invalid-file) should fall back to claude, got '$got'"
 
+# ---------------------------------------------------------------------------
+# ユーザースコープ（--user / HARNESS_USER_BACKEND_FILE）
+# ---------------------------------------------------------------------------
+export HARNESS_USER_BACKEND_FILE="${TMP_DIR}/user-backend"
+reset_user() { rm -f "${HARNESS_USER_BACKEND_FILE}"; }
+
+# (i) project / env / flag が無いとき user file の値を使う
+reset_env_local; reset_user
+env -u HARNESS_IMPL_BACKEND bash "$SET" --user cursor >/dev/null
+got="$(env -u HARNESS_IMPL_BACKEND bash "$RESOLVE")"
+[ "$got" = "cursor" ] || fail "(i) user-scope value should be used, got '$got'"
+grep -qE "^export HARNESS_IMPL_BACKEND=cursor$" "${HARNESS_USER_BACKEND_FILE}" \
+  || fail "(i) user file should contain the export line"
+
+# (j) project env.local が user file に勝つ
+reset_env_local; reset_user
+env -u HARNESS_IMPL_BACKEND bash "$SET" --user cursor >/dev/null
+env -u HARNESS_IMPL_BACKEND bash "$SET" codex >/dev/null
+got="$(env -u HARNESS_IMPL_BACKEND bash "$RESOLVE")"
+[ "$got" = "codex" ] || fail "(j) project should win over user-scope, got '$got'"
+
+# (k) env が user file に勝つ
+reset_env_local; reset_user
+env -u HARNESS_IMPL_BACKEND bash "$SET" --user cursor >/dev/null
+got="$(HARNESS_IMPL_BACKEND=claude bash "$RESOLVE")"
+[ "$got" = "claude" ] || fail "(k) env should win over user-scope, got '$got'"
+
+# (l) --unset --user は user file だけ削除する（project は触らない）
+reset_env_local; reset_user
+env -u HARNESS_IMPL_BACKEND bash "$SET" codex >/dev/null
+env -u HARNESS_IMPL_BACKEND bash "$SET" --user cursor >/dev/null
+env -u HARNESS_IMPL_BACKEND bash "$SET" --unset --user >/dev/null
+ucount="$(grep -cE "^export HARNESS_IMPL_BACKEND=" "${HARNESS_USER_BACKEND_FILE}" 2>/dev/null || true)"
+[ "$ucount" = "0" ] || fail "(l) --unset --user should clear user file, got $ucount"
+got="$(env -u HARNESS_IMPL_BACKEND bash "$RESOLVE")"
+[ "$got" = "codex" ] || fail "(l) project setting should survive user unset, got '$got'"
+
 echo "ok"

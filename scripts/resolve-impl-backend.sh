@@ -8,8 +8,9 @@
 # 優先順位（高い順）:
 #   1. --backend <v> フラグ
 #   2. HARNESS_IMPL_BACKEND 環境変数
-#   3. ${REPO_ROOT}/env.local の `^export HARNESS_IMPL_BACKEND=` 行
-#   4. 既定値 claude
+#   3. ${REPO_ROOT}/env.local の `^export HARNESS_IMPL_BACKEND=` 行（プロジェクトスコープ）
+#   4. ${HOME}/.claude/harness-impl-backend の同行（ユーザースコープ・全プロジェクト共通）
+#   5. 既定値 claude
 #
 # 妥当性:
 #   - 解決値は {claude, codex, cursor} のいずれかでなければならない
@@ -20,13 +21,15 @@
 #   - 前方互換のために受理するが、現時点では解決結果に影響しない（reserved）
 #
 # テスト用オーバーライド:
-#   - HARNESS_ENV_LOCAL が設定されている場合、env.local のパスとしてそれを使う
-#     （${REPO_ROOT}/env.local の代わり）。テストが実 env.local に触れないようにするため。
+#   - HARNESS_ENV_LOCAL が設定されている場合、env.local（プロジェクト）のパスに使う
+#   - HARNESS_USER_BACKEND_FILE が設定されている場合、ユーザースコープファイルのパスに使う
+#     （${HOME}/.claude/harness-impl-backend の代わり）。テストが実ファイルに触れないようにするため。
 
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$(cd "$(dirname "$0")/.." && pwd)")"
 ENV_LOCAL="${HARNESS_ENV_LOCAL:-${REPO_ROOT}/env.local}"
+USER_FILE="${HARNESS_USER_BACKEND_FILE:-${HOME}/.claude/harness-impl-backend}"
 KEY="HARNESS_IMPL_BACKEND"
 DEFAULT="claude"
 
@@ -95,5 +98,20 @@ if [ -f "${ENV_LOCAL}" ]; then
   fi
 fi
 
-# 4. 既定値
+# 4. ユーザースコープファイル（全プロジェクト共通。不正値は警告して claude にフォールバック）
+if [ -f "${USER_FILE}" ]; then
+  user_line="$(grep -E "^export ${KEY}=" "${USER_FILE}" 2>/dev/null | tail -1 || true)"
+  if [ -n "${user_line}" ]; then
+    user_value="${user_line#export ${KEY}=}"
+    if is_valid_backend "${user_value}"; then
+      echo "${user_value}"
+      exit 0
+    fi
+    echo "[resolve-impl-backend] 警告: ${USER_FILE} の ${KEY}='${user_value}' が不正です。'${DEFAULT}' にフォールバックします。" >&2
+    echo "${DEFAULT}"
+    exit 0
+  fi
+fi
+
+# 5. 既定値
 echo "${DEFAULT}"
