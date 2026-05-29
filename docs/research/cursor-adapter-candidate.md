@@ -223,6 +223,31 @@ Design consequences (supersede the `--force` recommendation):
 3. Add a recommended `.cursorignore` (secrets, `.env`, keys, `.git`) so the
    network-enabled agent cannot read secrets to exfiltrate.
 
+#### `~/.cursor/permissions.json` schema (cursor.com/docs/reference/permissions)
+
+Two optional top-level arrays. Global per-user (no per-project override), JSONC,
+hot-reloaded:
+
+```jsonc
+{
+  // terminal commands that auto-run without approval (prefix match, case-sensitive)
+  "terminalAllowlist": ["git status", "git diff", "go test", "npm:test*"],
+  // MCP tools that auto-run without approval ("server:tool", wildcards ok)
+  "mcpAllowlist": ["harness:*"]
+}
+```
+
+- `terminalAllowlist`: command-prefix strings. `"git"` matches every `git ...`;
+  `"npm:install*"` = base command `npm` + argument glob.
+- Precedence: team admin (dashboard) > `permissions.json` > IDE settings UI. A
+  defined key **fully replaces** the in-app allowlist for that type (no merge).
+- **CRITICAL (Cursor's exact words): "Allowlists are best-effort convenience.
+  They are not a security guarantee."** So `permissions.json` only removes
+  approval friction for headless auto-run — it is **not** a containment boundary
+  and is bypassable. The real boundary remains: dedicated-`.git` worktree + Lead
+  diff review + cherry-pick through R01-R13, and treating cursor output as
+  untrusted. This is why write containment cannot be delegated to Cursor at all.
+
 ## Promotion Conditions
 
 Cursor can move beyond `candidate` only after all of the following in the same
