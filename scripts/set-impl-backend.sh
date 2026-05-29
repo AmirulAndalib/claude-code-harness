@@ -11,7 +11,7 @@
 # 効果:
 #   - 対象ファイルに `export HARNESS_IMPL_BACKEND=<value>` を書き込む（冪等）
 #     - 既定（プロジェクト）: ${REPO_ROOT}/env.local
-#     - --user 指定時（ユーザー）: ${HOME}/.claude/harness-impl-backend
+#     - --user 指定時（ユーザー）: ${HOME}/.config/claude-harness/impl-backend.env
 #   - すでに同じ値なら何もしない。別の値なら in-place 置換（重複行を残さない）。ファイルが無ければ新規作成
 #
 # スコープと優先順位:
@@ -30,7 +30,7 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$(cd "$(dirname "$0")/.." && pwd)")"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_LOCAL="${HARNESS_ENV_LOCAL:-${REPO_ROOT}/env.local}"
-USER_FILE="${HARNESS_USER_BACKEND_FILE:-${HOME}/.claude/harness-impl-backend}"
+USER_FILE="${HARNESS_USER_BACKEND_FILE:-${HOME}/.config/claude-harness/impl-backend.env}"
 KEY="HARNESS_IMPL_BACKEND"
 
 usage() {

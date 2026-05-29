@@ -9,7 +9,7 @@
 #   1. --backend <v> フラグ
 #   2. HARNESS_IMPL_BACKEND 環境変数
 #   3. ${REPO_ROOT}/env.local の `^export HARNESS_IMPL_BACKEND=` 行（プロジェクトスコープ）
-#   4. ${HOME}/.claude/harness-impl-backend の同行（ユーザースコープ・全プロジェクト共通）
+#   4. ${HOME}/.config/claude-harness/impl-backend.env の同行（ユーザースコープ・全プロジェクト共通）
 #   5. 既定値 claude
 #
 # 妥当性:
@@ -23,13 +23,13 @@
 # テスト用オーバーライド:
 #   - HARNESS_ENV_LOCAL が設定されている場合、env.local（プロジェクト）のパスに使う
 #   - HARNESS_USER_BACKEND_FILE が設定されている場合、ユーザースコープファイルのパスに使う
-#     （${HOME}/.claude/harness-impl-backend の代わり）。テストが実ファイルに触れないようにするため。
+#     （${HOME}/.config/claude-harness/impl-backend.env の代わり）。テストが実ファイルに触れないようにするため。
 
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$(cd "$(dirname "$0")/.." && pwd)")"
 ENV_LOCAL="${HARNESS_ENV_LOCAL:-${REPO_ROOT}/env.local}"
-USER_FILE="${HARNESS_USER_BACKEND_FILE:-${HOME}/.claude/harness-impl-backend}"
+USER_FILE="${HARNESS_USER_BACKEND_FILE:-${HOME}/.config/claude-harness/impl-backend.env}"
 KEY="HARNESS_IMPL_BACKEND"
 DEFAULT="claude"
 
