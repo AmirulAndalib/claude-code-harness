@@ -6,6 +6,13 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Added
+
+- **実装バックエンド選択（Cursor candidate / 脳 Opus・体 composer）**: 実装の手を `claude`(既定) / `codex` / `cursor`(composer-2.5-fast) から選べる実行バックエンドを追加。`scripts/set-impl-backend.sh [--user] <claude|codex|cursor>` で一度設定すれば、`/breezing`・`/harness-work` の worker（実装）ロールが選択バックエンドに委譲し、review/advisor は Opus 固定（自作レビュー防止）。precedence は flag > `HARNESS_IMPL_BACKEND` env > project `env.local` > user `~/.config/claude-harness/impl-backend.env` > `claude`。
+  - 安全境界は専用 `.git` worktree + Lead の diff レビュー + cherry-pick（R01-R13）。Cursor の allowlist は公式に best-effort のため依存せず、cursor 出力は untrusted 扱い。読取委譲は `--mode ask`、`--force`/Run Everything は不使用。
+  - Cursor は `candidate` のまま（consumer 配布・公開 support claim なし、ローカル opt-in）。
+  - 新規: `scripts/resolve-impl-backend.sh`, `scripts/cursor-companion.sh`, `.claude/rules/cursor-cli-only.md`、spec.md「Execution Backend Contract」。`harness-work`/`breezing`/`worker.md` に 3-way backend スイッチを配線。
+
 ## [4.12.11] - 2026-05-28
 
 ### Changed
