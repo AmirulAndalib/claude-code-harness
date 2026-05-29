@@ -19,6 +19,8 @@ targets=(
   "scripts/release-preflight.sh"
   "scripts/setup-codex.sh"
   "scripts/setup-opencode.sh"
+  "scripts/set-impl-backend.sh"
+  "scripts/resolve-impl-backend.sh"
   "scripts/ci/check-checklist-sync.sh"
   "scripts/ci/check-consistency.sh"
   "scripts/ci/check-template-registry.sh"
