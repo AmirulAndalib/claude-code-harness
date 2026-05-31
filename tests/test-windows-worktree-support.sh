@@ -26,7 +26,7 @@ grep_file 'harness-\$\{OS\}-\$\{ARCH\}\$\{EXT\}' "bin/harness" "shim resolves su
 grep_file '"windows/amd64"' "go/scripts/build-all.sh" "build-all includes Windows amd64"
 grep_file '\.exe' "go/scripts/build-all.sh" "build-all emits Windows .exe artifact"
 
-grep_file 'filepath\.Join\(cwd, "\.claude", "state"\)' "go/internal/hookhandler/worktree_create.go" "WorktreeCreate uses platform path joining"
+grep_file 'filepath\.Join\([A-Za-z]+, "\.claude", "state"\)' "go/internal/hookhandler/worktree_create.go" "WorktreeCreate uses platform path joining"
 grep_file 'looksLikeHookDecisionJSON' "go/internal/hookhandler/worktree_create.go" "WorktreeCreate rejects hook decision JSON as cwd"
 grep_file '//go:build windows' "go/internal/hookhandler/file_lock_windows.go" "Windows build has a file-lock fallback"
 grep_file 'file lock unsupported on windows' "go/internal/hookhandler/file_lock_windows.go" "Windows build avoids syscall.Flock"
