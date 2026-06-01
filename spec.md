@@ -202,26 +202,62 @@ The harness has three implementation execution backends:
 
 - `claude` (default): the Claude Task subagent.
 - `codex` (existing): whole-task delegation via `scripts/codex-companion.sh`.
-- `cursor` (candidate): whole-task delegation to
+- `cursor` (internal-compatible): whole-task delegation to
   `cursor-agent --model composer-2.5-fast` via `scripts/cursor-companion.sh`.
   This is the same delegation pattern as `codex`, not a model-provider bridge.
 
 Backend selection precedence (highest first): a per-command flag (e.g.
 `--backend cursor`) > the `HARNESS_IMPL_BACKEND` env var > the project
 `env.local` entry > the user-scope `~/.config/claude-harness/impl-backend.env`
-entry > the default `claude`. Project scope overrides user scope.
+entry > the call-site default. The global call-site default remains `claude`,
+and shipped workflow skills must not hard-code Cursor as their call-site
+fallback. A project or user can opt in to Cursor by setting
+`HARNESS_IMPL_BACKEND=cursor`; that default must affect all Cursor-capable
+surfaces, not only Breezing. Project scope overrides user scope.
 
-Backend is role-scoped: only the implementation (worker) role uses the selected
-backend. The review and advisor roles stay on the brain (Opus / `claude` host)
-so the implementing backend never reviews its own output.
+Backend resolution must go through `scripts/resolve-impl-backend.sh`. Skills
+and hosts must not infer the backend from `HARNESS_IMPL_BACKEND` alone, because
+env-only checks skip project `env.local`, user-scope defaults, and call-site
+defaults.
+
+Backend is role-scoped: the implementation (worker) role uses the selected
+backend. The primary review and advisor roles stay on the brain (Opus /
+`claude` host) so the implementing backend never reviews its own output.
+When the resolved backend is `cursor`, review flows may add Cursor as a
+read-only second opinion, but Cursor remains advisory and never owns the
+primary verdict.
+
+Cursor-capable host packages must expose the Cursor namespace as first-class
+commands. This surface is pre-release, so Harness does not provide legacy
+aliases for the earlier `cursor-do` / `cursor-ask` naming:
+
+- `cursor:setup`: configure or verify the Cursor package, `cursor-agent`, and
+  local/project backend defaults.
+- `cursor:do`: write delegation through an isolated worktree, Lead diff review,
+  and cherry-pick.
+- `cursor:ask`: read-only delegation through `cursor-companion.sh task` without
+  `--write`, worktree, or cherry-pick.
+- `cursor:review`: read-only advisory Cursor review; primary verdict remains
+  on the host brain.
+- `cursor:rescue`: diagnose Cursor backend setup, resolution, and companion
+  failure paths.
+
+Skill frontmatter `name` fields remain validator-safe lowercase hyphen ids
+(`cursor-do`, `cursor-ask`, `cursor-setup`, `cursor-review`, `cursor-rescue`).
+Codex defaultPrompt uses those registered `$cursor-<verb>` skill ids for
+name-based invocation; descriptions and prose retain the `cursor:<verb>`
+namespace as the user-facing mental model.
 
 The concrete model for any host+role is resolved by
 `scripts/model-routing.sh --host <backend> --role <role>`. This contract does
 not reimplement model selection.
 
-Cursor stays `candidate`: opt-in only, with no public support claim, and is not
-distributed (distribution prerequisites are tracked separately). Write
-delegation is governed by `.claude/rules/cursor-cli-only.md`.
+Cursor remains `internal-compatible`, not a public `supported` claim. Shipped
+Claude Code and Codex plugin surfaces keep Cursor opt-in by default; individual
+local environments may set `HARNESS_IMPL_BACKEND=cursor` in env, project
+`env.local`, or user-scope config to make Cursor the resolved default. If Cursor
+is selected but not configured, the workflow must fail with setup guidance
+rather than silently claiming Claude/Codex parity.
 
 Containment for cursor write delegation relies on a dedicated-`.git` worktree
 plus Lead diff review and cherry-pick as the real boundary. Per Cursor's

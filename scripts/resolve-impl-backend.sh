@@ -3,22 +3,26 @@
 # 実装バックエンド（claude|codex|cursor）を優先順位に従って解決し、stdout に 1 行で出力する。
 #
 # 使い方:
-#   bash scripts/resolve-impl-backend.sh [--backend <v>] [--role <role>]
+#   bash scripts/resolve-impl-backend.sh [--backend <v>] [--role <role>] [--default <v>]
 #
 # 優先順位（高い順）:
 #   1. --backend <v> フラグ
 #   2. HARNESS_IMPL_BACKEND 環境変数
 #   3. ${REPO_ROOT}/env.local の `^export HARNESS_IMPL_BACKEND=` 行（プロジェクトスコープ）
 #   4. ${HOME}/.config/claude-harness/impl-backend.env の同行（ユーザースコープ・全プロジェクト共通）
-#   5. 既定値 claude
+#   5. 既定値（通常は claude、特殊なローカル caller は --default <v> で上書き可）
 #
 # 妥当性:
 #   - 解決値は {claude, codex, cursor} のいずれかでなければならない
 #   - env / file の値が不正な場合は stderr に警告し claude にフォールバックする
-#   - --backend に不正値が渡された場合はエラー終了する（exit 2）
+#   - --backend / --default に不正値が渡された場合はエラー終了する（exit 2）
 #
 # --role:
 #   - 前方互換のために受理するが、現時点では解決結果に影響しない（reserved）
+#
+# --default:
+#   - flag / env / project file / user file が全て未設定の時だけ使う既定値。
+#   - 配布 plugin の通常 workflow は opt-in 互換性のため指定しない。
 #
 # テスト用オーバーライド:
 #   - HARNESS_ENV_LOCAL が設定されている場合、env.local（プロジェクト）のパスに使う
@@ -55,6 +59,14 @@ while [ "$#" -gt 0 ]; do
       role="${2:-}"
       shift 2
       ;;
+    --default)
+      DEFAULT="${2:-}"
+      if ! is_valid_backend "${DEFAULT}"; then
+        echo "[resolve-impl-backend] 不正な --default 値: '${DEFAULT}'（claude|codex|cursor のいずれかを指定）" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
     *)
       echo "[resolve-impl-backend] 不明な引数: $1" >&2
       exit 2
@@ -78,8 +90,8 @@ if [ -n "${HARNESS_IMPL_BACKEND:-}" ]; then
     echo "${HARNESS_IMPL_BACKEND}"
     exit 0
   fi
-  echo "[resolve-impl-backend] 警告: 環境変数 ${KEY}='${HARNESS_IMPL_BACKEND}' が不正です。'${DEFAULT}' にフォールバックします。" >&2
-  echo "${DEFAULT}"
+  echo "[resolve-impl-backend] 警告: 環境変数 ${KEY}='${HARNESS_IMPL_BACKEND}' が不正です。'claude' にフォールバックします。" >&2
+  echo "claude"
   exit 0
 fi
 
@@ -92,8 +104,8 @@ if [ -f "${ENV_LOCAL}" ]; then
       echo "${file_value}"
       exit 0
     fi
-    echo "[resolve-impl-backend] 警告: ${ENV_LOCAL} の ${KEY}='${file_value}' が不正です。'${DEFAULT}' にフォールバックします。" >&2
-    echo "${DEFAULT}"
+    echo "[resolve-impl-backend] 警告: ${ENV_LOCAL} の ${KEY}='${file_value}' が不正です。'claude' にフォールバックします。" >&2
+    echo "claude"
     exit 0
   fi
 fi
@@ -107,8 +119,8 @@ if [ -f "${USER_FILE}" ]; then
       echo "${user_value}"
       exit 0
     fi
-    echo "[resolve-impl-backend] 警告: ${USER_FILE} の ${KEY}='${user_value}' が不正です。'${DEFAULT}' にフォールバックします。" >&2
-    echo "${DEFAULT}"
+    echo "[resolve-impl-backend] 警告: ${USER_FILE} の ${KEY}='${user_value}' が不正です。'claude' にフォールバックします。" >&2
+    echo "claude"
     exit 0
   fi
 fi

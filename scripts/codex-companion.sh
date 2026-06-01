@@ -60,11 +60,11 @@ extract_target_cwd() {
   shift || true
   while [ $# -gt 0 ]; do
     case "$1" in
-      --cd|-C)
+      --cwd|--cd|-C)
         printf '%s\n' "${2:-$PWD}"
         return 0
         ;;
-      --cd=*|-C=*)
+      --cwd=*|--cd=*|-C=*)
         printf '%s\n' "${1#*=}"
         return 0
         ;;
@@ -175,6 +175,14 @@ run_structured_task_exec() {
         fi
         shift
         ;;
+      --cwd)
+        passthrough+=(--cd "${2:-}")
+        shift 2
+        ;;
+      --cwd=*)
+        passthrough+=(--cd "${current#*=}")
+        shift
+        ;;
       *)
         case "$current" in
           --model|-m|--model=*) saw_model=1 ;;
@@ -279,24 +287,27 @@ if [ "$SUBCOMMAND" = "task" ]; then
   if [ "$EFFORT_ALREADY_SET" -eq 0 ]; then
     # タスク説明を引数から抽出（最後の非フラグ引数）
     # Boolean フラグ（値を取らない）: --write, --resume-last, --json, --full-auto, --ephemeral, --oss, --skip-git-repo-check
-    # 値付きフラグ（次の引数を消費）: --base, --effort, --model, -m, -i, --image, -c, --config, -C, --cd, --add-dir, --output-schema, -o, --output-last-message, --color, --enable, --disable, --local-provider
+    # 値付きフラグ（次の引数を消費）: --base, --effort, --model, -m, -i, --image, -c, --config, -C, --cwd, --cd, --add-dir, --output-schema, -o, --output-last-message, --color, --enable, --disable, --local-provider
     # 未知の --* フラグ → 安全側で値付き（次引数を消費）として扱う
     TASK_DESC=""
     EXPECT_VALUE=""
-    for arg in "${@:2}"; do
-      if [ -n "$EXPECT_VALUE" ]; then
-        # 前のフラグの値なのでスキップ
-        EXPECT_VALUE=""
-        continue
-      fi
-      case "$arg" in
-        --write|--resume-last|--json|--full-auto|--ephemeral|--oss|--skip-git-repo-check|--dangerously-bypass-approvals-and-sandbox|--background|--resume|--fresh)
-          # 値を取らない boolean フラグ → スキップするだけ
-          ;;
-        --base|--effort|--model|-m|-i|--image|-c|--config|-C|--cd|--add-dir|--output-schema|-o|--output-last-message|--color|--enable|--disable|--local-provider)
-          # 明示的に値を取るフラグ
-          EXPECT_VALUE="$arg"
-          ;;
+	    for arg in "${@:2}"; do
+	      if [ -n "$EXPECT_VALUE" ]; then
+	        # 前のフラグの値なのでスキップ
+	        EXPECT_VALUE=""
+	        continue
+	      fi
+	      case "$arg" in
+	        --write|--resume-last|--json|--full-auto|--ephemeral|--oss|--skip-git-repo-check|--dangerously-bypass-approvals-and-sandbox|--background|--resume|--fresh)
+	          # 値を取らない boolean フラグ → スキップするだけ
+	          ;;
+	        --base=*|--effort=*|--model=*|-m=*|-i=*|--image=*|-c=*|--config=*|-C=*|--cwd=*|--cd=*|--add-dir=*|--output-schema=*|-o=*|--output-last-message=*|--color=*|--enable=*|--disable=*|--local-provider=*)
+	          # 値付きフラグの --flag=value 形式。次引数は消費しない。
+	          ;;
+	        --base|--effort|--model|-m|-i|--image|-c|--config|-C|--cwd|--cd|--add-dir|--output-schema|-o|--output-last-message|--color|--enable|--disable|--local-provider)
+	          # 明示的に値を取るフラグ
+	          EXPECT_VALUE="$arg"
+	          ;;
         --*)
           # 未知のフラグ → 安全側で値付きとして扱う（誤って次引数を TASK_DESC にしない）
           EXPECT_VALUE="$arg"

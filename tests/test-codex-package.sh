@@ -169,6 +169,79 @@ else
   log_fail "Missing path-based core skills"
 fi
 
+log_test "Codex host package ships helpers for advertised Cursor skills"
+codex_dist_ok=true
+codex_dist_tmp="$(mktemp -d)"
+if bash scripts/build-host-plugin-dist.sh --host codex --out "${codex_dist_tmp}" >/tmp/codex-host-dist.$$ 2>&1; then
+  required_codex_dist_paths=(
+    ".codex-plugin/plugin.json"
+    ".cursor-plugin/plugin.json"
+    ".cursor/AGENTS.md"
+    ".cursor/agents/worker.md"
+    "cursor-skills/breezing/SKILL.md"
+    "cursor-skills/harness-work/SKILL.md"
+    "skills/cursor-do/SKILL.md"
+    "skills/cursor-ask/SKILL.md"
+    "skills/cursor-review/SKILL.md"
+    "skills/cursor-setup/SKILL.md"
+    "skills/cursor-rescue/SKILL.md"
+    "scripts/build-host-plugin-dist.sh"
+    "scripts/codex-companion.sh"
+    "scripts/codex-primary-environment-guard.sh"
+    "scripts/cursor-companion.sh"
+    "scripts/model-routing.sh"
+    "scripts/resolve-impl-backend.sh"
+    "scripts/set-impl-backend.sh"
+    "scripts/setup-cursor.sh"
+  )
+  for path in "${required_codex_dist_paths[@]}"; do
+    if [ ! -e "${codex_dist_tmp}/${path}" ]; then
+      echo "  missing from generated Codex package: ${path}"
+      codex_dist_ok=false
+    fi
+  done
+  if ! HARNESS_PROJECT_ROOT="${codex_dist_tmp}" HARNESS_CURSOR_DIST="${codex_dist_tmp}/cursor-check" \
+    bash "${codex_dist_tmp}/scripts/setup-cursor.sh" --check >/tmp/codex-cursor-setup-check.$$ 2>&1; then
+    echo "  setup-cursor --check failed inside generated Codex package"
+    sed 's/^/    /' /tmp/codex-cursor-setup-check.$$ | head -80
+    codex_dist_ok=false
+  fi
+  if rg -q --fixed-strings 'Codex host 版' "${codex_dist_tmp}/cursor-check/skills/breezing/SKILL.md" 2>/dev/null; then
+    echo "  generated Cursor package used Codex-host breezing skill source"
+    codex_dist_ok=false
+  fi
+  if ! rg -q --fixed-strings 'allowed-tools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Task", "WebSearch", "Monitor"]' \
+    "${codex_dist_tmp}/cursor-check/skills/breezing/SKILL.md" 2>/dev/null; then
+    echo "  generated Cursor package did not use canonical shared breezing skill source"
+    codex_dist_ok=false
+  fi
+  required_cursor_dist_paths=(
+    ".cursor-plugin/plugin.json"
+    "skills/cursor-do/SKILL.md"
+    "scripts/build-host-plugin-dist.sh"
+    "scripts/cursor-companion.sh"
+    "scripts/model-routing.sh"
+    "scripts/resolve-impl-backend.sh"
+    "scripts/set-impl-backend.sh"
+    "scripts/setup-cursor.sh"
+  )
+  for path in "${required_cursor_dist_paths[@]}"; do
+    if [ ! -e "${codex_dist_tmp}/cursor-check/${path}" ]; then
+      echo "  missing from generated Cursor package: ${path}"
+      codex_dist_ok=false
+    fi
+  done
+else
+  sed 's/^/  /' /tmp/codex-host-dist.$$
+  codex_dist_ok=false
+fi
+rm -rf "${codex_dist_tmp}" /tmp/codex-host-dist.$$ /tmp/codex-cursor-setup-check.$$ 2>/dev/null || true
+if $codex_dist_ok; then
+  log_pass "Codex host package contains runtime helpers required by Cursor skills"
+else
+  log_fail "Codex host package is missing runtime helpers for Cursor skills"
+fi
+
 log_test "Shipped Codex/OpenCode skills have required description frontmatter"
 skill_frontmatter_ok=true
 while IFS= read -r skill_file; do
@@ -791,6 +864,12 @@ fi
 # Test 2: skills directory parity
 log_test "Skills parity by SKILL name"
 if [ -d "opencode/skills" ] && [ -d "codex/.codex/skills" ]; then
+  normalize_cross_client_skill_name() {
+    printf '%s\n' "$1" \
+      | tr '[:upper:]' '[:lower:]' \
+      | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
+  }
+
   get_skill_names() {
     local root="$1"
     find "$root" -mindepth 1 -maxdepth 1 -type d | while IFS= read -r d; do
@@ -803,11 +882,10 @@ if [ -d "opencode/skills" ] && [ -d "codex/.codex/skills" ]; then
       if [ -f "$d/SKILL.md" ]; then
         local skill_name
         skill_name="$(sed -n 's/^name:[[:space:]]*//p' "$d/SKILL.md" | head -n 1 | tr -d '\"')"
-        # OpenCode skill names must be lowercase kebab-case. Normalize known
-        # cross-client casing differences before comparing mirror coverage.
-        if [ "$skill_name" = "notebookLM" ]; then
-          skill_name="notebooklm"
-        fi
+        # OpenCode skill names must be lowercase kebab-case. Normalize
+        # cross-client command namespace differences (for example
+        # cursor:do -> cursor-do) before comparing mirror coverage.
+        skill_name="$(normalize_cross_client_skill_name "$skill_name")"
         printf '%s\n' "$skill_name"
       fi
     done | sort

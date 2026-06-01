@@ -1,9 +1,9 @@
 ---
 name: cursor-do
-description: "Delegate a single write task to Cursor Composer via cursor-companion.sh inside an isolated worktree, then Lead-review the diff and cherry-pick. Use when user invokes /cursor:do, says delegate to cursor, have composer write it, refactor with cursor, hand a file edit to Composer. Do NOT load for: planning, code review only, read-only investigation, or multi-task team runs (use breezing --cursor or /cursor:ask instead)."
+description: "Delegate a single write task to Cursor Composer via cursor-companion.sh inside an isolated worktree, then Lead-review the diff and cherry-pick. Use when user invokes cursor:do, says delegate to cursor, have composer write it, refactor with cursor, hand a file edit to Composer. Do NOT load for: planning, code review only, read-only investigation, or multi-task team runs (use breezing --cursor or cursor:ask instead)."
 ---
 
-# cursor-do — Single-Task Write Delegate to Cursor Composer
+# cursor:do — Single-Task Write Delegate to Cursor Composer
 
 1 件の実装タスクを Cursor Composer (`composer-2.5-fast`) に専用 worktree 内で委譲し、Lead が diff をレビューしてから main へ cherry-pick する skill。breezing の team フローを起こさず、1 タスク 1 cherry-pick を最短経路で回す。
 
@@ -77,7 +77,20 @@ bash -c '
   echo "==BRANCH=="; git branch --show-current
   echo "==VERSION=="; cat VERSION 2>/dev/null
   echo "==PLANS_TAIL=="; tail -n 12 Plans.md 2>/dev/null
-  echo "==CURSOR_AGENT=="; cursor-agent --version 2>/dev/null || echo "NOT_INSTALLED"
+  echo "==CURSOR_AGENT=="
+  CURSOR_AGENT_BIN="${CURSOR_AGENT_BIN:-}"
+  if [ -z "$CURSOR_AGENT_BIN" ]; then
+    if command -v cursor-agent >/dev/null 2>&1; then
+      CURSOR_AGENT_BIN="$(command -v cursor-agent)"
+    elif [ -x "$HOME/.local/bin/cursor-agent" ]; then
+      CURSOR_AGENT_BIN="$HOME/.local/bin/cursor-agent"
+    fi
+  fi
+  if [ -z "$CURSOR_AGENT_BIN" ]; then
+    echo "NOT_INSTALLED"
+  else
+    "$CURSOR_AGENT_BIN" --version 2>/dev/null || echo "NOT_INSTALLED"
+  fi
 '
 ```
 
@@ -93,9 +106,20 @@ bash -c '
 bash -c '
   set -euo pipefail
   valid_root() {
-    [ -n "${1:-}" ] && [ -f "$1/scripts/cursor-companion.sh" ] && [ -f "$1/.claude-plugin/plugin.json" ]
+    [ -n "${1:-}" ] && [ -f "$1/scripts/cursor-companion.sh" ] && { [ -f "$1/.claude-plugin/plugin.json" ] || [ -f "$1/.codex-plugin/plugin.json" ] || [ -f "$1/.cursor-plugin/plugin.json" ]; }
   }
-  ROOT="${CLAUDE_PLUGIN_ROOT:-${HARNESS_PLUGIN_ROOT:-}}"
+  HARNESS_PLUGIN_ROOT="${HARNESS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}"
+  ROOT="$HARNESS_PLUGIN_ROOT"
+  if ! valid_root "$ROOT"; then
+    ROOT=""
+    if [ -n "${CLAUDE_SKILL_DIR:-}" ]; then
+      probe="$(cd "${CLAUDE_SKILL_DIR}" && pwd)"
+      while [ "$probe" != "/" ] && ! valid_root "$probe"; do
+        probe="$(cd "$probe/.." && pwd)"
+      done
+      valid_root "$probe" && ROOT="$probe"
+    fi
+  fi
   if ! valid_root "$ROOT"; then
     ROOT=""
     for c in "${CLAUDE_PROJECT_DIR:-}" "$PWD" \
@@ -108,9 +132,10 @@ bash -c '
     echo "ERROR: claude-code-harness plugin root not found (no scripts/cursor-companion.sh)" >&2
     exit 2
   fi
-  BACKEND=$(bash "$ROOT/scripts/resolve-impl-backend.sh" --backend cursor --role worker)
-  MODEL=$(bash "$ROOT/scripts/model-routing.sh" --host cursor --role worker --field model)
-  echo "PLUGIN_ROOT=$ROOT"
+  HARNESS_PLUGIN_ROOT="$ROOT"
+  BACKEND=$(bash "${HARNESS_PLUGIN_ROOT}/scripts/resolve-impl-backend.sh" --backend cursor --role worker)
+  MODEL=$(bash "${HARNESS_PLUGIN_ROOT}/scripts/model-routing.sh" --host cursor --role worker --field model)
+  echo "PLUGIN_ROOT=${HARNESS_PLUGIN_ROOT}"
   echo "BACKEND=$BACKEND"
   echo "MODEL=$MODEL"
 '
@@ -151,14 +176,43 @@ Lead が直接 companion を呼ぶ (`.claude/rules/cursor-cli-only.md` Topology 
 ```bash
 bash -c '
   set -euo pipefail
+  valid_root() {
+    [ -n "${1:-}" ] && [ -f "$1/scripts/cursor-companion.sh" ] && { [ -f "$1/.claude-plugin/plugin.json" ] || [ -f "$1/.codex-plugin/plugin.json" ] || [ -f "$1/.cursor-plugin/plugin.json" ]; }
+  }
+  HARNESS_PLUGIN_ROOT="${HARNESS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}"
+  ROOT="${PLUGIN_ROOT:-$HARNESS_PLUGIN_ROOT}"
+  if ! valid_root "$ROOT"; then
+    ROOT=""
+    if [ -n "${CLAUDE_SKILL_DIR:-}" ]; then
+      probe="$(cd "${CLAUDE_SKILL_DIR}" && pwd)"
+      while [ "$probe" != "/" ] && ! valid_root "$probe"; do
+        probe="$(cd "$probe/.." && pwd)"
+      done
+      valid_root "$probe" && ROOT="$probe"
+    fi
+  fi
+  if ! valid_root "$ROOT"; then
+    ROOT=""
+    for c in "${CLAUDE_PROJECT_DIR:-}" "$PWD" \
+             "$HOME/.claude/plugins/marketplaces/claude-code-harness-marketplace" \
+             "$HOME/.claude/plugins/cache/claude-code-harness-marketplace/claude-code-harness/"*; do
+      if valid_root "$c"; then ROOT="$c"; break; fi
+    done
+  fi
+  if ! valid_root "$ROOT"; then
+    echo "ERROR: claude-code-harness plugin root not found (no scripts/cursor-companion.sh)" >&2
+    exit 2
+  fi
+  HARNESS_PLUGIN_ROOT="$ROOT"
   PROMPT="<task-description>
 
 Constraints:
 - Modify only files relevant to the task.
 - Keep existing tests green. Add tests when the task is verifiable.
 - Match existing code style and naming.
+- Create exactly one git commit if your environment supports it; otherwise leave one dirty changeset for Lead auto-commit.
 - Do not touch .claude-plugin/settings*, .claude/settings*, .eslintrc*, biome.json, tsconfig*.json."
-  bash "${PLUGIN_ROOT}/scripts/cursor-companion.sh" task \
+  bash "${HARNESS_PLUGIN_ROOT}/scripts/cursor-companion.sh" task \
     --write \
     --workspace "${WT_DIR}" \
     "${PROMPT}"
@@ -175,18 +229,24 @@ Constraints:
 
 worktree 内で Composer が作成した変更を読み、目視レビュー + contract grep の二段ゲートを通す (`harness-work` 「Lead の cherry-pick 前ゲート」と同じ契約)。
 
-**注意 (Issue #193 §1)**: Cursor Composer は `--write` でファイル編集を行うが **commit は作らない**。worktree が dirty なまま放置すると Step 7 の cherry-pick が対象 0 で no-op になり、ユーザー視点で「完了したのに main に何も入らない」状態になる。本 Step 冒頭で dirty なら Lead 側で 1 commit にまとめる。
+**注意 (Issue #193 §1)**: Cursor Composer は `--write` でファイル編集を行うが **commit は作らない**ことがある。worktree が dirty なまま放置すると Step 7 の cherry-pick 対象から漏れ、ユーザー視点で「完了したのに main に何も入らない」状態になる。本 Step 冒頭で dirty なら、既存 commit がある場合は amend、commit がない場合は Lead 側で 1 commit にまとめる。
 
 ```bash
 bash -c '
   set -euo pipefail
   cd "${WT_DIR}"
-  # Composer は commit しないため、未コミットの編集を 1 commit にまとめる
+  # Composer は dirty changeset を返すことがあるため、既存 commit に fold する
   if [ -n "$(git status --porcelain)" ]; then
     git add -A
-    git -c user.name="cursor-composer" -c user.email="cursor-composer@local" \
-      commit --no-verify -m "cursor: ${TASK_SUMMARY:-cursor-do delegated change}"
-    echo "==AUTO_COMMITTED=="
+    if [ "$(git rev-list --count "${BASE_REF}..HEAD")" -gt 0 ]; then
+      git -c user.name="cursor-composer" -c user.email="cursor-composer@local" \
+        commit --amend --no-edit --no-verify
+      echo "==AUTO_AMENDED=="
+    else
+      git -c user.name="cursor-composer" -c user.email="cursor-composer@local" \
+        commit --no-verify -m "cursor: ${TASK_SUMMARY:-cursor-do delegated change}"
+      echo "==AUTO_COMMITTED=="
+    fi
     git log -1 --oneline
   fi
   echo "==LOG=="
@@ -205,11 +265,11 @@ Lead は diff 全文を Read し、以下を確認する:
 - 変更が依頼タスクの範囲内か (関係ないファイルを触っていないか)
 - protected path (`.claude-plugin/settings*`, `.eslintrc*`, etc.) を変更していないか
 - secret / `.env` / 認証情報を含まないか
-- 公開 support tier 表記を破壊していないか:
+- 公開 support tier 表記を破壊していないか。contract gates は必ず candidate worktree (`WT_DIR`) 内で実行する:
   ```bash
-  bash tests/test-support-claim-wording.sh 2>/dev/null || true
-  bash scripts/ci/check-consistency.sh 2>/dev/null || true
-  bash tests/validate-plugin.sh 2>/dev/null || true
+  [ ! -f "${WT_DIR}/tests/test-support-claim-wording.sh" ] || (cd "${WT_DIR}" && bash tests/test-support-claim-wording.sh)
+  [ ! -f "${WT_DIR}/scripts/ci/check-consistency.sh" ] || (cd "${WT_DIR}" && bash scripts/ci/check-consistency.sh)
+  [ ! -f "${WT_DIR}/tests/validate-plugin.sh" ] || (cd "${WT_DIR}" && bash tests/validate-plugin.sh)
   ```
 
 判定:
@@ -219,33 +279,60 @@ Lead は diff 全文を Read し、以下を確認する:
 
 ## Step 7 — cherry-pick + Plans.md cc:done 更新
 
-worktree から main tree に cherry-pick する。**SHA 直接指定** (branch 名経由ではない) で reviewer state drift を避ける (MEMORY: reviewer_state_drift)。
+worktree から main tree に cherry-pick する。Cursor prompt は exactly one commit 契約だが、Composer は dirty changeset を返すことがあるため Step 6 で commit/amend する。複数 commit が残った場合は main tree を触る前に停止する。
+さらに cherry-pick 前に `Plans.md` の staged / unstaged 差分がないことを確認する。理由: 既存差分がある状態で後続の `git add Plans.md && git commit --amend` を行うと、task と無関係な plan/status 編集を Cursor の code commit に巻き込むため。
+**SHA 直接指定** (branch 名経由ではない) で reviewer state drift を避ける (MEMORY: reviewer_state_drift)。
 
 ```bash
 bash -c '
   set -euo pipefail
-  COMMITS=$(cd "${WT_DIR}" && git log --reverse --format=%H "${BASE_REF}..HEAD")
-  if [ -z "${COMMITS}" ]; then
+  COMMIT_COUNT="$(cd "${WT_DIR}" && git rev-list --count "${BASE_REF}..HEAD")"
+  if [ "${COMMIT_COUNT}" -eq 0 ]; then
     echo "ERROR: no commits to cherry-pick"
     exit 1
   fi
-  for SHA in ${COMMITS}; do
-    git cherry-pick "${SHA}"
-  done
+  if [ "${COMMIT_COUNT}" -ne 1 ]; then
+    echo "ERROR: cursor returned ${COMMIT_COUNT} commits; expected exactly one. Keep worktree for manual review: ${WT_DIR}"
+    exit 1
+  fi
+  if ! git diff --quiet -- Plans.md || ! git diff --cached --quiet -- Plans.md; then
+    echo "ERROR: Plans.md has pre-existing local edits; refusing to cherry-pick before the cursor:do marker amend"
+    exit 1
+  fi
+  SHA="$(cd "${WT_DIR}" && git rev-parse HEAD)"
+  git cherry-pick "${SHA}"
   echo "==CHERRY_PICKED=="
-  git log --oneline -n $(echo "${COMMITS}" | wc -l)
+  git log --oneline -n 1
 '
 ```
 
 cherry-pick で conflict が出たら `git cherry-pick --abort` し、`CHERRY_PICK_CONFLICT: <files>` を 1 行で示して終了 (worktree は残す、ユーザー判断)。
 
-cherry-pick 後、Plans.md に対応行があれば該当タスクのマーカーを更新する:
+cherry-pick 後、Plans.md に対応行があれば該当タスクのマーカーを更新する。
+上記の clean precondition を通過しているため、ここで発生する Plans.md 差分は marker-only diff として扱う:
 
 ```
 | <task> | ... | cc:done [<merged-sha>] |
 ```
 
 該当行の特定: 引数 task 文字列の先頭 40 文字で grep し、ヒットした最初の `cc:TODO` / `cc:WIP` / `cc:todo` 行を `cc:done [<sha>]` に置換する。ヒットなしなら更新スキップ (Plans.md 外のタスクとして扱う)。
+
+マーカーを更新した場合、その編集は cherry-pick commit に含める。未コミットの `Plans.md` を残して cleanup / 完了報告へ進んではならない。
+以下の amend block は、上記 precondition 通過後に実行した marker-only diff だけを対象にする:
+
+```bash
+bash -c '
+  set -euo pipefail
+  if git diff --quiet -- Plans.md; then
+    echo "PLANS_UPDATED=0"
+  else
+    git add Plans.md
+    git commit --amend --no-edit
+    echo "PLANS_UPDATED=1"
+    echo "MERGED_SHA=$(git rev-parse HEAD)"
+  fi
+'
+```
 
 ## Step 8 — worktree cleanup + 完了報告 (1 ブロック)
 
@@ -264,7 +351,7 @@ bash -c '
 完了報告は **1 ブロック** で出す。中間ナレーションなし:
 
 ```
-✅ cursor-do completed
+cursor:do completed
    task: <task-first-60-chars>
    commits: <count>
    base: <BASE_REF> → cherry-picked into <BASE_BRANCH>
@@ -292,7 +379,7 @@ bash -c '
 
 ## Related Skills / Rules
 
-- `cursor-ask` — 読取専用の質問・調査・敵対的視点 (worktree 不要)
+- `cursor:ask` — 読取専用の質問・調査・敵対的視点 (worktree 不要)
 - `breezing --cursor` — 複数タスクを team フローで cursor 委譲する場合
 - `harness-work` — claude backend の default フロー (Worker agent 経由)
 - `.claude/rules/cursor-cli-only.md` — Cursor backend governance + Topology

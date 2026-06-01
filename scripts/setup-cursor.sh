@@ -98,6 +98,19 @@ validate_dist() {
     exit 1
   fi
 
+  for script in \
+    build-host-plugin-dist.sh \
+    cursor-companion.sh \
+    model-routing.sh \
+    resolve-impl-backend.sh \
+    set-impl-backend.sh \
+    setup-cursor.sh; do
+    if [ ! -f "${DIST_DIR}/scripts/${script}" ]; then
+      log_err "cursor dist missing runtime helper: scripts/${script}"
+      exit 1
+    fi
+  done
+
   log_ok "Cursor package validation passed"
 }
 

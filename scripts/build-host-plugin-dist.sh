@@ -65,6 +65,26 @@ copy_tree() {
   cp -R "$src" "$dst"
 }
 
+copy_runtime_helpers() {
+  local dst_root="$1"
+  mkdir -p "${dst_root}/scripts"
+  for script in \
+    build-host-plugin-dist.sh \
+    calculate-effort.sh \
+    codex-companion.sh \
+    codex-primary-environment-guard.sh \
+    cursor-companion.sh \
+    model-routing.sh \
+    resolve-impl-backend.sh \
+    set-impl-backend.sh \
+    setup-cursor.sh; do
+    if [ -f "${ROOT_DIR}/scripts/${script}" ]; then
+      cp "${ROOT_DIR}/scripts/${script}" "${dst_root}/scripts/${script}"
+      chmod +x "${dst_root}/scripts/${script}" 2>/dev/null || true
+    fi
+  done
+}
+
 write_normalized_manifest() {
   local host="$1"
   local src_manifest="$2"
@@ -120,6 +140,17 @@ build_codex() {
   mkdir -p "${OUT_DIR}/.codex-plugin"
   write_normalized_manifest "codex" "${ROOT_DIR}/.codex-plugin/plugin.json" "${OUT_DIR}/.codex-plugin/plugin.json"
   copy_tree "${ROOT_DIR}/codex/.codex/skills" "${OUT_DIR}/skills"
+  copy_tree "${ROOT_DIR}/skills" "${OUT_DIR}/cursor-skills"
+
+  # Codex skills call bundled Harness helpers through HARNESS_PLUGIN_ROOT.
+  # Keep this list narrow: these are runtime helpers needed by the shipped
+  # Codex skill surface, including cursor:setup which builds the Cursor pack.
+  copy_runtime_helpers "${OUT_DIR}"
+
+  copy_tree "${ROOT_DIR}/.cursor-plugin" "${OUT_DIR}/.cursor-plugin"
+  copy_tree "${ROOT_DIR}/.cursor/agents" "${OUT_DIR}/.cursor/agents"
+  mkdir -p "${OUT_DIR}/.cursor"
+  cp "${ROOT_DIR}/.cursor/AGENTS.md" "${OUT_DIR}/.cursor/AGENTS.md"
 }
 
 normalize_cursor_skill_invocation() {
@@ -157,8 +188,13 @@ NODE
 build_cursor() {
   mkdir -p "${OUT_DIR}/.cursor-plugin"
   write_normalized_manifest "cursor" "${ROOT_DIR}/.cursor-plugin/plugin.json" "${OUT_DIR}/.cursor-plugin/plugin.json"
-  copy_tree "${ROOT_DIR}/skills" "${OUT_DIR}/skills"
+  local cursor_skill_source="${ROOT_DIR}/skills"
+  if [ -d "${ROOT_DIR}/cursor-skills" ]; then
+    cursor_skill_source="${ROOT_DIR}/cursor-skills"
+  fi
+  copy_tree "${cursor_skill_source}" "${OUT_DIR}/skills"
   normalize_cursor_skill_invocation "${OUT_DIR}/skills"
+  copy_runtime_helpers "${OUT_DIR}"
   copy_tree "${ROOT_DIR}/.cursor/agents" "${OUT_DIR}/agents"
   mkdir -p "${OUT_DIR}/.cursor"
   cp "${ROOT_DIR}/.cursor/AGENTS.md" "${OUT_DIR}/.cursor/AGENTS.md"

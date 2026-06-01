@@ -41,7 +41,8 @@ commit / push / release は既定では行わない。
 | `/harness-review --quick` | `quick` | 小さな dirty change を軽く closeout |
 | `/harness-review --codex-closeout` | `codex-closeout` | Codex 助言 + focused tests で closeout |
 | `/harness-review --dual` | `dual` | Claude + Codex second opinion |
-| `/harness-review --cursor` | `cursor-second-opinion` | cursor (composer-2.5-fast) を second-opinion として並走 (read = lean、Opus reviewer 必須併走) |
+| `/harness-review --cursor` | `code+cursor-second-opinion` | core review gates に cursor (composer-2.5-fast) second-opinion を加算 (read = lean、Opus reviewer 必須併走) |
+| `HARNESS_IMPL_BACKEND=cursor harness-review` | `code+cursor-second-opinion` | default ON 時も core review gates に cursor second-opinion を自動加算。primary verdict は Opus/brain 固定 |
 | `/harness-review --team-debate` | `team-debate` | TeamAgent Debate を強制 |
 | `/harness-review --security` | `security` | security 専用 review |
 | `/harness-review plan` | `plan` | `Plans.md` の計画 review |
@@ -57,17 +58,29 @@ commit / push / release は既定では行わない。
 | `--quick` | `quick` | `references/codex-closeout.md`, `references/code-review.md` |
 | `--codex-closeout` | `codex-closeout` | `references/codex-closeout.md` |
 | `--dual` | `dual` | `references/dual-review.md`, `references/team-debate.md` |
-| `--cursor` | `cursor-second-opinion` | `references/cursor-review.md`, `references/dual-review.md` |
 | `--team-debate` | `team-debate` | `references/team-debate.md`, `references/governance.md` |
 | `--security` | `security` | `references/security-profile.md`, `references/governance.md` |
 | `--ui-rubric` | `ui-rubric` | `references/ui-rubric.md` |
 | `plan` | `plan` | `references/plan-review.md`, `references/governance.md` |
 | `scope` | `scope` | `references/scope-review.md`, `references/governance.md` |
+| `--cursor` or resolver result `cursor` for no-arg / `code` review only | `code+cursor-second-opinion` | `references/code-review.md`, `references/governance.md`, `references/cursor-review.md`, `references/dual-review.md` |
 | `full` | `full` | `references/code-review.md`, `references/team-debate.md`, `references/dual-review.md` |
 
 `quick` と `codex-closeout` は軽量 path。
 小さな dirty change、single commit、PR branch の closeout を速く見る。
 品質 gate を捨てるものではない。
+
+### Cursor Default ON
+
+mode 判定時、明示 mode words (`plan`, `scope`, `full`) と明示フラグを先に確定する。no-arg / `code` review の場合だけ helper root を解決して resolver を 1 回だけ実行し、resolver 不在時は `claude` とみなす。
+
+```bash
+HARNESS_PLUGIN_ROOT="${HARNESS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}"; if [ -z "$HARNESS_PLUGIN_ROOT" ] && [ -n "${CLAUDE_SKILL_DIR:-}" ]; then probe="$(cd "${CLAUDE_SKILL_DIR}" && pwd)"; while [ "$probe" != "/" ] && [ ! -d "$probe/scripts" ]; do probe="$(cd "$probe/.." && pwd)"; done; [ -d "$probe/scripts" ] && HARNESS_PLUGIN_ROOT="$probe"; fi
+if [ -x "${HARNESS_PLUGIN_ROOT:-}/scripts/resolve-impl-backend.sh" ]; then resolved_backend="$(bash "${HARNESS_PLUGIN_ROOT}/scripts/resolve-impl-backend.sh" --role reviewer)"; else resolved_backend="claude"; fi
+```
+
+no-arg / `code` review で結果が `cursor` の場合は `--cursor` と同じ `cursor-second-opinion` を追加するが、core review gates (`references/code-review.md`, `references/governance.md`) は必ず先に読み、Cursor reference は additive にだけ扱う。primary verdict は Opus/brain 側で維持し、cursor は `dual_review.cursor_verdict` の advisory に限る。`plan` / `scope` など明示 mode word は resolver result より優先し、cursor default によって plan/scope references も code/governance references も置き換えない。
+結果が `claude` / `codex` の場合は従来どおりで、review の primary 判定面は変えない。
 
 ## Review Target Detection
 
