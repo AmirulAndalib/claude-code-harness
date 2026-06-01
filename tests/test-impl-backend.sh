@@ -69,6 +69,21 @@ got="$(env -u HARNESS_IMPL_BACKEND bash "$RESOLVE")"
 [ "$got" = "claude" ] || fail "(d) default should be claude, got '$got'"
 
 # ---------------------------------------------------------------------------
+# (d2) 呼び出し側が --default を渡すと未設定時の既定値だけ上書きする
+# ---------------------------------------------------------------------------
+reset_env_local
+got="$(env -u HARNESS_IMPL_BACKEND bash "$RESOLVE" --default cursor)"
+[ "$got" = "cursor" ] || fail "(d2) --default cursor should be used when unset, got '$got'"
+printf 'export HARNESS_IMPL_BACKEND=codex\n' > "${HARNESS_ENV_LOCAL}"
+got="$(env -u HARNESS_IMPL_BACKEND bash "$RESOLVE" --default cursor)"
+[ "$got" = "codex" ] || fail "(d2) file should still win over --default, got '$got'"
+got="$(HARNESS_IMPL_BACKEND=claude bash "$RESOLVE" --default cursor)"
+[ "$got" = "claude" ] || fail "(d2) env should still win over --default, got '$got'"
+if env -u HARNESS_IMPL_BACKEND bash "$RESOLVE" --default bogus >/dev/null 2>&1; then
+  fail "(d2) invalid --default should exit non-zero"
+fi
+
+# ---------------------------------------------------------------------------
 # (e) set-impl-backend が書き込み、resolve が読み戻す
 # ---------------------------------------------------------------------------
 reset_env_local
@@ -128,6 +143,10 @@ reset_env_local
 printf 'export HARNESS_IMPL_BACKEND=bogus\n' > "${HARNESS_ENV_LOCAL}"
 got="$(env -u HARNESS_IMPL_BACKEND bash "$RESOLVE" 2>/dev/null)"
 [ "$got" = "claude" ] || fail "(invalid-file) should fall back to claude, got '$got'"
+got="$(env -u HARNESS_IMPL_BACKEND bash "$RESOLVE" --default cursor 2>/dev/null)"
+[ "$got" = "claude" ] || fail "(invalid-file) should ignore --default and fall back to claude, got '$got'"
+got="$(HARNESS_IMPL_BACKEND=bogus bash "$RESOLVE" --default cursor 2>/dev/null)"
+[ "$got" = "claude" ] || fail "(invalid-env) should ignore --default and fall back to claude, got '$got'"
 
 # ---------------------------------------------------------------------------
 # ユーザースコープ（--user / HARNESS_USER_BACKEND_FILE）

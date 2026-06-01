@@ -30,7 +30,8 @@
     ],
     "defaultPrompt": [
       "Use $harness-plan to plan this change.",
-      "Use $harness-work to execute the next Plans.md task."
+      "Use $harness-work to execute the next Plans.md task.",
+      "Use $cursor-do / $cursor-ask / $cursor-review / $cursor-setup / $cursor-rescue for Cursor delegation."
     ],
     "websiteURL": "https://github.com/Chachamaru127/claude-code-harness",
     "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",

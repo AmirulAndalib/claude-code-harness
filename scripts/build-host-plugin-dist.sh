@@ -65,6 +65,26 @@ copy_tree() {
   cp -R "$src" "$dst"
 }
 
+copy_runtime_helpers() {
+  local dst_root="$1"
+  mkdir -p "${dst_root}/scripts"
+  for script in \
+    build-host-plugin-dist.sh \
+    calculate-effort.sh \
+    codex-companion.sh \
+    codex-primary-environment-guard.sh \
+    cursor-companion.sh \
+    model-routing.sh \
+    resolve-impl-backend.sh \
+    set-impl-backend.sh \
+    setup-cursor.sh; do
+    if [ -f "${ROOT_DIR}/scripts/${script}" ]; then
+      cp "${ROOT_DIR}/scripts/${script}" "${dst_root}/scripts/${script}"
+      chmod +x "${dst_root}/scripts/${script}" 2>/dev/null || true
+    fi
+  done
+}
+
 write_normalized_manifest() {
   local host="$1"
   local src_manifest="$2"
@@ -100,6 +120,108 @@ fs.writeFileSync(dstPath, serialized);
 NODE
 }
 
+write_generated_cursor_manifest() {
+  local dst_manifest="$1"
+  local version="0.0.0"
+  if [ -f "${ROOT_DIR}/VERSION" ]; then
+    version="$(cat "${ROOT_DIR}/VERSION")"
+  elif [ -f "${ROOT_DIR}/.codex-plugin/plugin.json" ]; then
+    version="$(node -e 'console.log(require(process.argv[1]).version || "0.0.0")' "${ROOT_DIR}/.codex-plugin/plugin.json")"
+  fi
+  node - "$dst_manifest" "$version" <<'NODE'
+const fs = require("fs");
+const [dstPath, version] = process.argv.slice(2);
+const manifest = {
+  name: "claude-code-harness",
+  version,
+  description: "Candidate Cursor adapter for Claude Code Harness Plan, Work, Review, and Release workflows.",
+  author: {
+    name: "Chachamaru",
+    url: "https://github.com/Chachamaru127"
+  },
+  homepage: "https://github.com/Chachamaru127/claude-code-harness",
+  repository: "https://github.com/Chachamaru127/claude-code-harness",
+  license: "MIT",
+  keywords: ["cursor", "skills", "workflow", "plan-work-review", "harness"],
+  skills: "./skills/",
+  agents: "./agents/",
+  interface: {
+    displayName: "Claude Code Harness for Cursor",
+    shortDescription: "Candidate Harness workflow adapter for Cursor",
+    longDescription: "Use Claude Code Harness skills in Cursor for evidence-backed planning, implementation, review, release, setup, sync, and team execution workflows.",
+    developerName: "Chachamaru",
+    category: "Coding",
+    capabilities: ["Read", "Write", "Interactive"],
+    defaultPrompt: [
+      "Use harness-plan to plan this change.",
+      "Use harness-work to execute the next Plans.md task."
+    ],
+    websiteURL: "https://github.com/Chachamaru127/claude-code-harness",
+    privacyPolicyURL: "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+    termsOfServiceURL: "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
+    brandColor: "#FF4500",
+    screenshots: []
+  }
+};
+fs.mkdirSync(require("path").dirname(dstPath), { recursive: true });
+fs.writeFileSync(dstPath, JSON.stringify(manifest, null, 2) + "\n");
+NODE
+}
+
+write_generated_cursor_agent() {
+  local role="$1"
+  local dst="$2"
+  mkdir -p "$(dirname "$dst")"
+  case "$role" in
+    worker)
+      cat >"$dst" <<'EOF'
+---
+name: worker
+description: Scoped implementation worker for a single Plans.md task in Cursor.
+model: composer-2.5-fast
+readonly: false
+---
+
+# Worker (Cursor adapter)
+
+Implement one assigned Plans.md task. Run focused validation. Return changed
+files, commands run, and blockers. Do not spawn subagents; return
+`advisor-request.v1` when policy requires Advisor input.
+EOF
+      ;;
+    reviewer)
+      cat >"$dst" <<'EOF'
+---
+name: reviewer
+description: Read-only reviewer for diffs, risk, and missing tests in Cursor.
+model: composer-2.5-fast
+readonly: true
+---
+
+# Reviewer (Cursor adapter)
+
+Review evidence-first. Report prioritized findings with file references. Do not
+edit files. Emit structured review output compatible with harness-review.
+EOF
+      ;;
+    advisor)
+      cat >"$dst" <<'EOF'
+---
+name: advisor
+description: Non-executing advisor for advisor-request.v1 in Cursor.
+model: claude-opus-4-7-thinking-xhigh
+readonly: true
+---
+
+# Advisor (Cursor adapter)
+
+Return `advisor-response.v1` only. Decisions: PLAN / CORRECTION / STOP.
+No code edits, no shell, no user-facing prose.
+EOF
+      ;;
+  esac
+}
+
 build_claude() {
   copy_tree "${ROOT_DIR}/.claude-plugin" "${OUT_DIR}/.claude-plugin"
   write_normalized_manifest "claude" "${ROOT_DIR}/.claude-plugin/plugin.json" "${OUT_DIR}/.claude-plugin/plugin.json"
@@ -120,6 +242,12 @@ build_codex() {
   mkdir -p "${OUT_DIR}/.codex-plugin"
   write_normalized_manifest "codex" "${ROOT_DIR}/.codex-plugin/plugin.json" "${OUT_DIR}/.codex-plugin/plugin.json"
   copy_tree "${ROOT_DIR}/codex/.codex/skills" "${OUT_DIR}/skills"
+  copy_tree "${ROOT_DIR}/skills" "${OUT_DIR}/cursor-skills"
+
+  # Codex skills call bundled Harness helpers through HARNESS_PLUGIN_ROOT.
+  # Keep this list narrow: these are runtime helpers needed by the shipped
+  # Codex skill surface, including cursor:setup which builds the Cursor pack.
+  copy_runtime_helpers "${OUT_DIR}"
 }
 
 normalize_cursor_skill_invocation() {
@@ -156,12 +284,36 @@ NODE
 
 build_cursor() {
   mkdir -p "${OUT_DIR}/.cursor-plugin"
-  write_normalized_manifest "cursor" "${ROOT_DIR}/.cursor-plugin/plugin.json" "${OUT_DIR}/.cursor-plugin/plugin.json"
-  copy_tree "${ROOT_DIR}/skills" "${OUT_DIR}/skills"
+  if [ -f "${ROOT_DIR}/.cursor-plugin/plugin.json" ]; then
+    write_normalized_manifest "cursor" "${ROOT_DIR}/.cursor-plugin/plugin.json" "${OUT_DIR}/.cursor-plugin/plugin.json"
+  else
+    write_generated_cursor_manifest "${OUT_DIR}/.cursor-plugin/plugin.json"
+  fi
+  local cursor_skill_source="${ROOT_DIR}/skills"
+  if [ -d "${ROOT_DIR}/cursor-skills" ]; then
+    cursor_skill_source="${ROOT_DIR}/cursor-skills"
+  fi
+  copy_tree "${cursor_skill_source}" "${OUT_DIR}/skills"
   normalize_cursor_skill_invocation "${OUT_DIR}/skills"
-  copy_tree "${ROOT_DIR}/.cursor/agents" "${OUT_DIR}/agents"
+  copy_runtime_helpers "${OUT_DIR}"
+  if [ -d "${ROOT_DIR}/.cursor/agents" ]; then
+    copy_tree "${ROOT_DIR}/.cursor/agents" "${OUT_DIR}/agents"
+  else
+    write_generated_cursor_agent worker "${OUT_DIR}/agents/worker.md"
+    write_generated_cursor_agent reviewer "${OUT_DIR}/agents/reviewer.md"
+    write_generated_cursor_agent advisor "${OUT_DIR}/agents/advisor.md"
+  fi
   mkdir -p "${OUT_DIR}/.cursor"
-  cp "${ROOT_DIR}/.cursor/AGENTS.md" "${OUT_DIR}/.cursor/AGENTS.md"
+  if [ -f "${ROOT_DIR}/.cursor/AGENTS.md" ]; then
+    cp "${ROOT_DIR}/.cursor/AGENTS.md" "${OUT_DIR}/.cursor/AGENTS.md"
+  else
+    cat >"${OUT_DIR}/.cursor/AGENTS.md" <<'EOF'
+# AGENTS.md — Cursor Bootstrap Route (Candidate)
+
+Use harness-plan for planning, harness-work for implementation,
+harness-review for review, and breezing for multi-task execution.
+EOF
+  fi
 }
 
 case "$HOST" in
