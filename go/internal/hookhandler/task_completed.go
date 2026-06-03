@@ -167,11 +167,16 @@ func (h *taskCompletedHandler) handle(input taskCompletedInput, rawData []byte, 
 	if totalTasks > 0 && completedCount >= totalTasks {
 		h.maybeFinalizeHarnessMem(ts)
 		// Phase 90: fold this session into the lifetime orchestration accumulator
-		// before any completion summary. Record-only and fail-open.
+		// before the summary. Record-only and fail-open.
 		orchestration.Run(h.projectRoot, input.SessionID)
 		resp := map[string]interface{}{
 			"continue":   false,
 			"stopReason": "all_tasks_completed",
+		}
+		// Phase 90: emit the orchestration scorecard summary ONCE, here at full
+		// completion (never per task). The HTML scorecard stays on-demand.
+		if summary := orchestration.Summary(h.projectRoot, input.SessionID); summary != "" {
+			resp["systemMessage"] = summary
 		}
 		if tsSeq != "" {
 			resp["terminalSequence"] = tsSeq

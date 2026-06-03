@@ -62,13 +62,44 @@ func TestRun_FailOpenWhenScriptMissing(t *testing.T) {
 	Run(t.TempDir(), "sess-x")
 }
 
-func TestResolveRollupScript_MissingReturnsEmpty(t *testing.T) {
+func TestResolveScript_MissingReturnsEmpty(t *testing.T) {
 	t.Setenv("CLAUDE_PLUGIN_ROOT", filepath.Join(t.TempDir(), "nope"))
-	if got := resolveRollupScript(); got != "" {
+	if got := resolveScript("orchestration-rollup.sh"); got != "" {
 		// os.Executable fallback might resolve in odd environments; only fail if a
 		// non-empty path was returned that does not actually exist.
 		if !fileExists(got) {
-			t.Fatalf("resolveRollupScript returned non-existent path: %q", got)
+			t.Fatalf("resolveScript returned non-existent path: %q", got)
 		}
+	}
+}
+
+// writeFakeNamedScript creates <pluginRoot>/scripts/<name> echoing the given line.
+func writeFakeNamedScript(t *testing.T, pluginRoot, name, echoLine string) {
+	t.Helper()
+	dir := filepath.Join(pluginRoot, "scripts")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	body := "#!/usr/bin/env bash\nprintf '%s\\n' \"" + echoLine + "\"\n"
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+}
+
+func TestSummary_ReturnsScriptStdout(t *testing.T) {
+	root := t.TempDir()
+	writeFakeNamedScript(t, root, "orchestration-scorecard.sh", "Codex 8 / Cursor 52")
+	t.Setenv("CLAUDE_PLUGIN_ROOT", root)
+
+	got := Summary(root, "sess-1")
+	if got != "Codex 8 / Cursor 52" {
+		t.Fatalf("Summary returned %q", got)
+	}
+}
+
+func TestSummary_FailOpenWhenScriptMissing(t *testing.T) {
+	t.Setenv("CLAUDE_PLUGIN_ROOT", filepath.Join(t.TempDir(), "nope"))
+	if got := Summary(t.TempDir(), "s"); got != "" {
+		t.Fatalf("expected empty summary when script missing, got %q", got)
 	}
 }
