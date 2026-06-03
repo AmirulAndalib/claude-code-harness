@@ -122,6 +122,42 @@ if [ "${FORMAT}" = "terminal" ]; then
   exit 0
 fi
 
+if [ "${FORMAT}" = "html-data" ]; then
+  # Flattened shape for scripts/render-html.sh (top-level scalars + a backends
+  # array). render-html.sh supports {{var}} and {{#section}} only — no nested
+  # dot access — so the nested scorecard.v1 is projected here.
+  project="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")"
+  gen="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '')"
+  jq -n \
+    --arg project "${project}" --arg gen "${gen}" \
+    --argjson observed "${observed}" --arg note "${note}" \
+    --argjson sc_codex "${sc_codex}" --arg st_codex "${st_codex}" \
+    --argjson sc_cursor "${sc_cursor}" --arg st_cursor "${st_cursor}" \
+    --argjson lt_codex "${lt_codex}" --argjson lt_cursor "${lt_cursor}" \
+    --argjson snc "${session_non_claude}" --argjson lnc "${lifetime_non_claude}" \
+    --argjson be "${backends_engaged}" \
+    '{
+      kind: "orchestration-scorecard",
+      project: $project,
+      generated_at: $gen,
+      observed: $observed,
+      note: $note,
+      session_codex: $sc_codex,
+      session_cursor: $sc_cursor,
+      session_non_claude: $snc,
+      backends_engaged: $be,
+      lifetime_codex: $lt_codex,
+      lifetime_cursor: $lt_cursor,
+      lifetime_non_claude: $lnc,
+      backends: [
+        { name: "Codex", session: ($sc_codex | tostring), lifetime: ($lt_codex | tostring), status: $st_codex },
+        { name: "Cursor", session: ($sc_cursor | tostring), lifetime: ($lt_cursor | tostring), status: $st_cursor },
+        { name: "Claude", session: "host", lifetime: "—", status: "host" }
+      ]
+    }'
+  exit 0
+fi
+
 jq -n \
   --arg sid "${SESSION_ID}" \
   --argjson observed "${observed}" \

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orchestration Scorecard: {{project}}</title>
+<style>
+  :root {
+    --bg: #FAFAFA;
+    --ink: #0F0F0F;
+    --muted: #6B6B6B;
+    --accent: #F58A4A;
+    --card: #FFFFFF;
+    --line: #ECECEC;
+    --used: #2E7D32;
+    --available: #B0832B;
+    --absent: #9AA0A6;
+    --host: #2C5A7A;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 48px 24px;
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "Noto Sans JP", system-ui, sans-serif;
+    word-break: keep-all; overflow-wrap: normal; line-height: 1.7;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  .eyebrow { color: var(--accent); font-weight: 700; letter-spacing: .08em; font-size: 13px; text-transform: uppercase; }
+  h1 { font-size: 28px; margin: 4px 0 2px; font-weight: 800; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+  .hero { background: var(--ink); color: var(--bg); border-radius: 14px; padding: 28px 32px; margin-bottom: 24px; }
+  .hero .label { font-size: 13px; color: #C9C9C9; letter-spacing: .04em; }
+  .hero .figures { display: flex; gap: 40px; margin-top: 10px; flex-wrap: wrap; }
+  .figure .num { font-size: 44px; font-weight: 800; color: var(--accent); line-height: 1; }
+  .figure .cap { font-size: 13px; color: #C9C9C9; margin-top: 6px; }
+  .engaged { margin-top: 18px; font-size: 14px; color: #E6E6E6; }
+  .engaged strong { color: var(--accent); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  .card .name { font-weight: 700; font-size: 16px; display: flex; align-items: center; justify-content: space-between; }
+  .badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; color: #FFFFFF; white-space: nowrap; }
+  .status-used { background: var(--used); }
+  .status-available { background: var(--available); }
+  .status-not-configured { background: var(--absent); }
+  .status-host { background: var(--host); }
+  .card .row { display: flex; justify-content: space-between; margin-top: 12px; font-size: 14px; color: var(--muted); }
+  .card .row b { color: var(--ink); font-size: 18px; }
+  .note { margin-top: 24px; padding: 14px 18px; background: #FFF4EC; border-left: 3px solid var(--accent); border-radius: 6px; font-size: 13px; color: #5A4632; }
+  .empty { background: var(--card); border: 1px dashed var(--line); border-radius: 12px; padding: 32px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Orchestration Scorecard</div>
+  <h1>{{project}}</h1>
+  <div class="meta">Generated at {{generated_at}}</div>
+
+  <div class="hero">
+    <div class="label">累計（このプロジェクト通算）</div>
+    <div class="figures">
+      <div class="figure"><div class="num">{{lifetime_codex}}</div><div class="cap">Codex 委譲</div></div>
+      <div class="figure"><div class="num">{{lifetime_cursor}}</div><div class="cap">Cursor 委譲</div></div>
+      <div class="figure"><div class="num">{{lifetime_non_claude}}</div><div class="cap">非 Claude 委譲 合計</div></div>
+    </div>
+    <div class="engaged">このセッション: Codex <strong>{{session_codex}}</strong> / Cursor <strong>{{session_cursor}}</strong> ・ engaged <strong>{{backends_engaged}}</strong>/3 backends</div>
+  </div>
+
+  <div class="cards">{{#backends}}
+    <div class="card">
+      <div class="name"><span>{{name}}</span><span class="badge status-{{status}}">{{status}}</span></div>
+      <div class="row"><span>このセッション</span><b>{{session}}</b></div>
+      <div class="row"><span>累計</span><b>{{lifetime}}</b></div>
+    </div>{{/backends}}
+  </div>
+
+  <div class="note">{{note}}</div>
+</div>
+</body>
+</html>
