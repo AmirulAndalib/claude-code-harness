@@ -6,6 +6,20 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Added
+
+#### 独立セッション間の自律 relay + cross-agent ハンドオフ（Cross-Session Relay）
+
+**今まで**: 別 worktree や別セッションで作業する Claude Code 同士は、進捗や衝突を伝え合う手段がなく、人間が手動で内容をコピーして橋渡しする必要がありました。
+
+**今後**: `HARNESS_SESSION_RELAY=monitor`（または `both`）を設定すると、セッション間で宛先指定のメッセージをやり取りできます。受信側は Monitor tool が 5 秒間隔でポーリングして即時に受け取り（CC↔CC）、Cursor / Codex とのハンドオフは companion 経由で通知されます。外部ツールを入れず Harness 内部実装（`.claude/sessions/relay-signals.jsonl`）で動くため harness-mem の redaction が効き、受信内容は「指示ではなくデータ」として隔離されます。配布デフォルトは OFF（`HARNESS_SESSION_RELAY` opt-in）。即時 push は Monitor tool を持つ CC↔CC 限定で、`harness-loop` とは併用しません。
+
+#### Claude Code 2.1.162 / Codex 0.137 アップデート追従
+
+**CC のアプデ**: `claude agents --json` に各セッションの停止要因を示す `waitingFor` が追加され（2.1.162）、shell 起動ファイルや build-tool 設定への書き込み前に確認が入るようになりました（2.1.160）。
+
+**Harness での活用**: `waitingFor` を `docs/agent-view-policy.md` に反映し、長時間監視で「`cc:WIP` が 10 分超 + `waitingFor` 非空」を stuck 判定に使えるようにしました。shell-config gate は Harness の責務（repo 内 `.claude/hooks` + settings deny）と CC 本体の責務（home shell startup）を照合し、二重化不要を確認。`docs/upstream-update-snapshot-2026-06-04.md` に全項目を A/C/P/Reject 分類（B = 0 件）。
+
 ### Fixed
 
 #### オーケストレーション累計の mid-session 取りこぼし
