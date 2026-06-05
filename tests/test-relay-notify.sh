@@ -57,6 +57,18 @@ if grep -qi "sk-do-not-leak\|SECRET_TOKEN" "$SIG" 2>/dev/null; then
   echo "FAIL test4: signal leaked secret-like content" >&2; fail=1
 fi
 
+# test 5: CLAUDE_CODE_SESSION_ID is the `from` fallback when HARNESS_RELAY_FROM is
+# unset (codex P1a: the Bash subprocess session id env is CLAUDE_CODE_SESSION_ID).
+rm -f "$SIG"
+HARNESS_SESSION_RELAY=both HARNESS_RELAY_TO=peerXXXXXXXX CLAUDE_CODE_SESSION_ID=ccsessAAAAAA01 \
+  relay_notify codex task 1
+if [ -f "$SIG" ]; then
+  grep -q '"from":"ccsessAAAAAA"' "$SIG" \
+    || { echo "FAIL test5: CLAUDE_CODE_SESSION_ID not used as from" >&2; fail=1; }
+else
+  echo "FAIL test5: CLAUDE_CODE_SESSION_ID fallback did not write a signal" >&2; fail=1
+fi
+
 if [ "$fail" = "0" ]; then
   echo "PASS: relay-notify — gate + addressing + structural redaction"
 else

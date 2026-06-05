@@ -21,7 +21,10 @@ type relayHookInput struct {
 	SessionID string `json:"session_id"`
 }
 
-type sessionStartRelayOutput struct {
+// relayContextOutput injects additionalContext WITHOUT a permissionDecision, so
+// the relay never approves the pending tool call. Used by both the SessionStart
+// directive and the passive PreToolUse poll.
+type relayContextOutput struct {
 	HookSpecificOutput struct {
 		HookEventName     string `json:"hookEventName"`
 		AdditionalContext string `json:"additionalContext,omitempty"`
@@ -55,7 +58,7 @@ func HandleSessionRelayStart(in io.Reader, out io.Writer) error {
 	directive := fmt.Sprintf(
 		"HARNESS cross-session relay (%s mode): invoke the Monitor tool now with "+
 			"these parameters, before any other action in this session.\n\n"+
-			"  command: bash %s %s %s\n"+
+			"  command: bash %q %q %q\n"+
 			"  description: cross-session relay stream\n"+
 			"  persistent: true\n\n"+
 			"This streams cross-session relay signals addressed to this session. Each "+
@@ -65,7 +68,7 @@ func HandleSessionRelayStart(in io.Reader, out io.Writer) error {
 		mode, watch, sessionID, projectRoot,
 	)
 
-	var output sessionStartRelayOutput
+	var output relayContextOutput
 	output.HookSpecificOutput.HookEventName = "SessionStart"
 	output.HookSpecificOutput.AdditionalContext = directive
 	outData, err := json.Marshal(output)
@@ -111,9 +114,11 @@ func HandleRelayPoll(in io.Reader, out io.Writer) error {
 		return nil
 	}
 
-	output := preToolAllowOutput{}
+	// additionalContext only — NO permissionDecision. A passive relay poll on a
+	// broad matcher (incl. Bash) must never approve the pending tool call, which
+	// would bypass ask/confirm rules. See codex review P1b (permission boundary).
+	output := relayContextOutput{}
 	output.HookSpecificOutput.HookEventName = "PreToolUse"
-	output.HookSpecificOutput.PermissionDecision = "allow"
 	output.HookSpecificOutput.AdditionalContext = wrapRelaySignals(signals)
 	outData, err := json.Marshal(output)
 	if err != nil {

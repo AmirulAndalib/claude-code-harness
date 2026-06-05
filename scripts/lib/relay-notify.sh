@@ -20,7 +20,9 @@ relay_notify() {
     *) return 0 ;;   # opt-in, default OFF
   esac
   local to="${HARNESS_RELAY_TO:-}"
-  local from="${HARNESS_RELAY_FROM:-${CLAUDE_SESSION_ID:-}}"
+  # CC exposes the Bash subprocess session id as CLAUDE_CODE_SESSION_ID; keep
+  # CLAUDE_SESSION_ID as a secondary fallback for older runtimes.
+  local from="${HARNESS_RELAY_FROM:-${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}}"
   [ -n "$to" ] && [ -n "$from" ] || return 0
 
   local lib_dir scripts_dir send
