@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -50,24 +51,43 @@ type Invocation struct {
 	Installed bool
 }
 
+// goosForInvocation / lookPathForInvocation はテスト注入用に分離した
+// runtime.GOOS / exec.LookPath。本番では差し替えない。
+var (
+	goosForInvocation     = runtime.GOOS
+	lookPathForInvocation = exec.LookPath
+)
+
 // ResolveInvocation finds an installed harness-mem CLI. If allowNpx is true,
 // it falls back to npx so setup/update can bootstrap a missing companion.
+//
+// Resolved script paths go through wrapScriptInvocation so that .js entry
+// points (and shebang scripts on Windows, where exec does not honor #!)
+// are launched via a JS runtime instead of being exec'd directly (#207).
 func ResolveInvocation(allowNpx bool) (Invocation, bool) {
 	if cli := os.Getenv("HARNESS_MEM_CLI"); cli != "" {
-		return Invocation{Name: cli, Installed: true}, true
+		return wrapScriptInvocation(Invocation{Name: cli, Installed: true}), true
 	}
 
 	home, _ := os.UserHomeDir()
 	if home != "" {
 		candidate := filepath.Join(home, ".harness-mem", "runtime", "harness-mem", "scripts", "harness-mem")
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return Invocation{Name: candidate, Installed: true}, true
+			return wrapScriptInvocation(Invocation{Name: candidate, Installed: true}), true
+		}
+		// Windows の npm レイアウトでは拡張子なしの shebang ラッパーが配置されず
+		// 隣の harness-mem.js が実体になる
+		if goosForInvocation == "windows" {
+			jsCandidate := candidate + ".js"
+			if info, err := os.Stat(jsCandidate); err == nil && !info.IsDir() {
+				return wrapScriptInvocation(Invocation{Name: jsCandidate, Installed: true}), true
+			}
 		}
 	}
 
 	if os.Getenv("HARNESS_MEM_DISABLE_PATH_LOOKUP") != "1" {
-		if path, err := exec.LookPath("harness-mem"); err == nil {
-			return Invocation{Name: path, Installed: true}, true
+		if path, err := lookPathForInvocation("harness-mem"); err == nil {
+			return wrapScriptInvocation(Invocation{Name: path, Installed: true}), true
 		}
 	}
 
@@ -88,6 +108,58 @@ func ResolveInvocation(allowNpx bool) (Invocation, bool) {
 		ArgPrefix: []string{"-y", "--package", pkg, "harness-mem"},
 		Installed: false,
 	}, true
+}
+
+// wrapScriptInvocation は OS が直接 exec できないスクリプトを JS runtime 経由の
+// 起動に変換する (#207)。
+//
+//   - .js / .mjs / .cjs: 全 OS で node (なければ bun) を前置する。
+//     Windows は shebang を解釈せず ".js は Win32 アプリではない" エラーになり、
+//     Unix でも shebang 非依存になるため一律で安全側に倒す
+//   - Windows の拡張子なし実ファイル: shebang が効かないため同様に前置する
+//
+// JS runtime が見つからない場合は元の Invocation を返し、従来の exec エラーに任せる。
+func wrapScriptInvocation(inv Invocation) Invocation {
+	if !needsJSRuntime(inv.Name) {
+		return inv
+	}
+	runtimeBin := findJSRuntime()
+	if runtimeBin == "" {
+		return inv
+	}
+	return Invocation{
+		Name:      runtimeBin,
+		ArgPrefix: append([]string{inv.Name}, inv.ArgPrefix...),
+		Installed: inv.Installed,
+	}
+}
+
+// needsJSRuntime は name が JS runtime 経由で起動すべきスクリプトかを返す。
+func needsJSRuntime(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".js", ".mjs", ".cjs":
+		return true
+	}
+	// Windows は shebang を解釈しないため、拡張子なしの実ファイル
+	// (= node shebang スクリプト) も JS runtime 経由で起動する。
+	// PATH 上のコマンド名 ("npx" 等) は os.Stat が失敗するので対象外。
+	if goosForInvocation == "windows" && filepath.Ext(name) == "" {
+		if info, err := os.Stat(name); err == nil && !info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+// findJSRuntime は利用可能な JS runtime の実行パスを返す。node を優先し、
+// なければ bun。どちらも無ければ空文字を返す。
+func findJSRuntime() string {
+	for _, bin := range []string{"node", "bun"} {
+		if path, err := lookPathForInvocation(bin); err == nil {
+			return path
+		}
+	}
+	return ""
 }
 
 func Run(ctx context.Context, command string, args []string, allowNpx bool) (CommandResult, error) {

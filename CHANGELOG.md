@@ -6,6 +6,14 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Fixed
+
+#### Windows で `harness mem status` / `harness mem doctor` が失敗する問題（#207）
+
+**今まで**: Windows では harness-mem CLI の実体（`harness-mem.js`）を直接 `fork/exec` しようとして「%1 is not a valid Win32 application」で失敗していました。Windows は shebang（`#!/usr/bin/env node`）を解釈しないため、`.js` をプロセスとして起動できません。
+
+**今後**: 解決した CLI パスが `.js` / `.mjs` / `.cjs`、または Windows 上の拡張子なし shebang スクリプトの場合、`node`（なければ `bun`）を前置して起動します。Windows の npm レイアウトで拡張子なしラッパーが無い場合は隣の `harness-mem.js` も自動探索します。`harness-mem.cmd` shim や Unix の従来挙動は変わりません。
+
 ### Added
 
 #### 独立セッション間の自律 relay + cross-agent ハンドオフ（Cross-Session Relay）
