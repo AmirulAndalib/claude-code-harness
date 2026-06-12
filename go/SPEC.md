@@ -160,7 +160,7 @@ CC 公式フック仕様に基づく、フィールドごとの分類。
 | harness.toml セクション | 生成先 | CC キー |
 |------------------------|--------|--------|
 | `[project]` name, version, description, author | `plugin.json` | name, version, description, author |
-| `[hooks]` | `hooks/hooks.json` + `.claude-plugin/hooks.json` | hooks |
+| `[hooks]` | `.claude-plugin/hooks.json` (`hooks/hooks.json` のコピー、source 不在時は skip。Phase 35.3 で動的生成予定) | hooks |
 | `[safety.permissions]` deny, ask | `settings.json` | permissions.deny, permissions.ask |
 | `[safety.sandbox]` | `settings.json` | sandbox |
 | `[agent]` default | `settings.json` | agent |

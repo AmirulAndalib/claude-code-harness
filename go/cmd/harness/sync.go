@@ -14,8 +14,7 @@ import (
 //
 // It reads harness.toml from the project root, then generates:
 //   - .claude-plugin/plugin.json   ← [project] section
-//   - hooks/hooks.json             ← current hooks.json template (Phase 35.3 will make this dynamic)
-//   - .claude-plugin/hooks.json    ← identical copy of hooks/hooks.json
+//   - .claude-plugin/hooks.json    ← copy of hooks/hooks.json, only when that source exists (plugin-development repos)
 //   - .claude-plugin/settings.json ← [agent] + [env] + [safety.permissions] + [safety.sandbox]
 //
 // The project root is determined by the first argument (or cwd if omitted).
