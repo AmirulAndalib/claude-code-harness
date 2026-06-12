@@ -8,6 +8,12 @@ Change history for claude-code-harness.
 
 ### Fixed
 
+#### Windows で `harness mem status` / `harness mem doctor` が失敗する問題（#207）
+
+**今まで**: Windows では harness-mem CLI の実体（`harness-mem.js`）を直接 `fork/exec` しようとして「%1 is not a valid Win32 application」で失敗していました。Windows は shebang（`#!/usr/bin/env node`）を解釈しないため、`.js` をプロセスとして起動できません。
+
+**今後**: Windows では runtime ディレクトリの `harness-mem.js`（node エントリ）を優先して解決し、JS runtime を前置して起動します。解決したパスが `.js` / `.mjs` / `.cjs` の場合は他 OS でも JS runtime を前置します（通常は `node`、shebang が `bun` を指す場合は bun を優先）。Windows の拡張子なしファイルは shebang が node / bun を指す場合のみ wrap し、bash スクリプト等には手を付けません。`harness-mem.cmd` shim と、Unix の標準レイアウト（拡張子なしラッパーの直接実行）の挙動は変わりません。
+
 #### Setup hook の auto-bootstrap が harness.toml を生成しない問題（#201）
 
 **今まで**: 初回セッションの Setup hook は CLAUDE.md / Plans.md / config.yaml を生成するものの `harness.toml` を作らないため、続く `harness sync` が「harness.toml not found」で失敗していました。CC エージェントが `harness --help` から `harness init` を自力発見してリカバリーするまで auto-bootstrap が止まる状態でした。
