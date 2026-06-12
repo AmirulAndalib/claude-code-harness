@@ -51,7 +51,7 @@ required_skill_terms=(
   "stop-on-clean"
   "↑この結果は Claude が要約します"
   "↑Claude will summarize this result"
-  "configured language"
+  "本文と同じ言語で出力"
 )
 
 required_reference_terms=(
