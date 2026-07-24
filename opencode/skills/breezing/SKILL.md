@@ -21,6 +21,7 @@ operator が `/harness-plan` や `/harness-review` を個別に指示する必�
 4. **Report**: 最終報告は easy 作法で出す（host session に `easy` skill があれば invoke してその作法に従う。無ければ `harness-work` の Completion Report テンプレート）。
 
 `--reviewer-only` / `--no-commit` 等の既存フラグは、この pipeline の該当段だけを動かす per-run override として働く。
+低リスクの高速 run で Phase D を省きたい時は `--no-review-gate` を渡す（Phase B の per-task review は省かれない。省くのは run 全体 diff への統合レビューだけ）。
 
 ## Narration Rules (UX Contract)
 
@@ -123,6 +124,7 @@ Lead は run 単位で、作業内容・量からフラットに backend を選�
 | `--parallel N` | Implementer 並列数 | auto |
 | `--no-commit` | 自動コミット抑制 | false |
 | `--no-discuss` | 計画議論スキップ | `--cursor` で true 既定 |
+| `--no-review-gate` | Phase D（Integrated Review Gate）をスキップ。Phase B の per-task review は維持 | false |
 | `--auto-mode` | Harness 側の Auto Mode rollout を明示。CC 2.1.111 で不要になった `--enable-auto-mode` とは別物 | false |
 
 ## Natural Language Backend Triggers

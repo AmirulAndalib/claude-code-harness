@@ -151,3 +151,21 @@ Purpose: Phase 121 closeout で記録した非 blocking 残余 edge 2 件を、E
   scope: Phase 122 / Task 122.3
   承認: 未承認 (実装完了後にユーザーへ確認)
 - secret-read / destructive: なし
+
+---
+
+## Phase 123: breezing default pipeline + backend/model 既定変更 (operator 裁定 2026-07-24) [P2]
+
+Purpose: operator 裁定 4 点を harness に反映する。(1) 実装 backend 既定を Native subagent (claude) に固定し、backend=claude 時の常時 Fallback 警告を resolver 不正値 fallback 時のみへ縮小、作業内容・量による per-run フラット判断基準を breezing / harness-work に明文化。(2) codex 委譲 catalog を gpt-5.6-sol へ更新 (standard/deep/review/advisor=xhigh、release/long-context=high、lite=gpt-5.4-mini 据え置き)。(3) harness-plan のスコープ既定を「今進められる全作業」に固定。(4) /breezing 単体で plan gate → work → Integrated Review Gate (fresh-context 独立 reviewer + codex second opinion、APPROVE まで最大 3 回) → easy 作法報告を完走する Default Pipeline を既定化。Spec skip reason: 実行時 routing / skill 運用の変更で product contract (spec.md) の対象外。advisor 系 gpt-5.4 チェーン (go sprint_contract + config-utils + テスト 3 本) は binary rebuild を要する別契約のため意図的に据え置き。team_validation_mode: manual-pass (独立 harness-review fork APPROVE + codex second opinion で検証)。unknown_data: gpt-5.6-terra の model ID はローカル未確認 (operator config で実在確認済みの sol を採用)。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 123.1 | `[lane:gate]` `[tdd:skip:config-docs-skill]` backend 既定 native 化 + codex gpt-5.6-sol xhigh + harness-plan 全量スコープ既定 + breezing Default Pipeline (skill 4 面 + mirrors + tests + docs + CHANGELOG。user-scope impl-backend.env も claude へ) | (a) test-model-routing / test-impl-backend / test-composer-backend-trigger / test-grok-adapter-candidate PASS, (b) validate-plugin 0 failed + check-consistency PASS, (c) mirror-state.v1 in-sync, (d) 独立 harness-review APPROVE | - | cc:done [c4fca26a] |
+| 123.2 | `[lane:gate]` `[tdd:skip:skill-docs]` review minor 指摘反映: Integrated Review Gate の opt-out flag `--no-review-gate` を breezing (claude/codex 変種) に追加 + 本 Phase の Plans.md 台帳 backfill | (a) breezing SKILL 両変種 + mirrors に flag 記載で in-sync, (b) check-consistency PASS | 123.1 | cc:WIP |
+
+事前確認 (plan-time pre-approval):
+- 事項: external-send — `git push origin <branch>` / `gh pr create` (配布プラグインとしての公開)
+  理由: 123.x の変更を配布 plugin に反映するための push / PR
+  scope: Phase 123 / Task 123.1-123.2
+  承認: 未承認 (レビュー完了後にユーザーへ確認)
+- secret-read / destructive: なし
