@@ -161,7 +161,7 @@ Purpose: operator 裁定 4 点を harness に反映する。(1) 実装 backend �
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
 | 123.1 | `[lane:gate]` `[tdd:skip:config-docs-skill]` backend 既定 native 化 + codex gpt-5.6-sol xhigh + harness-plan 全量スコープ既定 + breezing Default Pipeline (skill 4 面 + mirrors + tests + docs + CHANGELOG。user-scope impl-backend.env も claude へ) | (a) test-model-routing / test-impl-backend / test-composer-backend-trigger / test-grok-adapter-candidate PASS, (b) validate-plugin 0 failed + check-consistency PASS, (c) mirror-state.v1 in-sync, (d) 独立 harness-review APPROVE | - | cc:done [c4fca26a] |
-| 123.2 | `[lane:gate]` `[tdd:skip:skill-docs]` review minor 指摘反映: Integrated Review Gate の opt-out flag `--no-review-gate` を breezing (claude/codex 変種) に追加 + 本 Phase の Plans.md 台帳 backfill | (a) breezing SKILL 両変種 + mirrors に flag 記載で in-sync, (b) check-consistency PASS | 123.1 | cc:WIP |
+| 123.2 | `[lane:gate]` `[tdd:skip:skill-docs]` review minor 指摘反映: Integrated Review Gate の opt-out flag `--no-review-gate` を breezing (claude/codex 変種) に追加 + 本 Phase の Plans.md 台帳 backfill | (a) breezing SKILL 両変種 + mirrors に flag 記載で in-sync, (b) check-consistency PASS | 123.1 | cc:done [03454762] |
 
 事前確認 (plan-time pre-approval):
 - 事項: external-send — `git push origin <branch>` / `gh pr create` (配布プラグインとしての公開)
