@@ -47,10 +47,12 @@ model for complex reasoning and agentic coding, Sonnet 4.6 as the best speed /
 intelligence balance, and Haiku 4.5 as the fastest model. Official docs:
 https://platform.claude.com/docs/en/about-claude/models/overview
 
-Codex recommends `gpt-5.5` for most tasks, `gpt-5.4-mini` for lighter coding
-tasks and subagents, and `gpt-5.3-codex-spark` as an optional research-preview
-fast iteration model for ChatGPT Pro users. Official docs:
-https://developers.openai.com/codex/models
+Codex offers `gpt-5.6-sol` / `gpt-5.6-terra` as its top coding tier,
+`gpt-5.4-mini` for lighter coding tasks and subagents, and
+`gpt-5.3-codex-spark` as an optional research-preview fast iteration model for
+ChatGPT Pro users. Harness routes delegated Codex work to `gpt-5.6-sol` at
+`xhigh` (operator decision 2026-07-24; `terra` is the accepted alternative).
+Official docs: https://developers.openai.com/codex/models
 
 Codex config supports `model`, `review_model`, `model_reasoning_effort`, and
 agent concurrency settings such as `agents.max_threads` / `agents.max_depth`.
@@ -133,18 +135,18 @@ Notes:
 | Harness tier | Codex model | Reasoning effort | Use cases |
 | --- | --- | --- | --- |
 | `lite` | `gpt-5.4-mini` | `minimal` or `low` | explorer subagents, simple docs, small cleanup, cheap parallel fan-out |
-| `standard` | `gpt-5.5` | `medium` | normal implementation, test fixes, focused refactors |
-| `deep` | `gpt-5.5` | `high` or `xhigh` | cross-file architecture, security, migrations, failed-loop recovery |
-| `review` | `gpt-5.5` via `review_model` | `xhigh` | `/review`, companion review, adversarial diff review |
-| `release` | `gpt-5.5` | `high` | release-preflight and PR closeout evidence |
+| `standard` | `gpt-5.6-sol` | `xhigh` | normal implementation, test fixes, focused refactors |
+| `deep` | `gpt-5.6-sol` | `xhigh` | cross-file architecture, security, migrations, failed-loop recovery |
+| `review` | `gpt-5.6-sol` via `review_model` | `xhigh` | `/review`, companion review, adversarial diff review |
+| `release` | `gpt-5.6-sol` | `high` | release-preflight and PR closeout evidence |
 | `spark` | `gpt-5.3-codex-spark` | `low` | optional Pro-only real-time UI micro-iteration; never required |
 
 Recommended Codex baseline:
 
 ```toml
-model = "gpt-5.5"
-model_reasoning_effort = "high"
-review_model = "gpt-5.5"
+model = "gpt-5.6-sol"
+model_reasoning_effort = "xhigh"
+review_model = "gpt-5.6-sol"
 
 [agents]
 max_threads = 8
@@ -167,8 +169,8 @@ developer_instructions = "Inspect files and return concise evidence with paths. 
 # .codex/agents/worker.toml
 name = "worker"
 description = "Scoped implementation worker for a single task."
-model = "gpt-5.5"
-model_reasoning_effort = "medium"
+model = "gpt-5.6-sol"
+model_reasoning_effort = "xhigh"
 sandbox_mode = "workspace-write"
 developer_instructions = "Implement only the assigned task, run focused checks, and report changed files and validation."
 ```
@@ -177,7 +179,7 @@ developer_instructions = "Implement only the assigned task, run focused checks, 
 # .codex/agents/reviewer.toml
 name = "reviewer"
 description = "Read-only reviewer for diffs, risk, and missing tests."
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 developer_instructions = "Review evidence-first. Report prioritized findings with file and line references. Do not edit files."
@@ -194,7 +196,7 @@ Notes:
   outcomes less predictable.
 - `agents.max_threads = 8` is acceptable for Harness breezing because worker
   routing sends cheap exploration to `gpt-5.4-mini`; if all children use
-  `gpt-5.5 xhigh`, lower concurrency first.
+  `gpt-5.6-sol xhigh`, lower concurrency first.
 - Do not make Codex fast mode the default. It is a latency/credit trade-off,
   not an intelligence tier.
 
@@ -263,13 +265,13 @@ Notes:
 
 | Harness surface | Claude default | Codex default | Cursor default | Grok default | Why |
 | --- | --- | --- | --- | --- | --- |
-| Interactive operator session | `opusplan`, `high` | `gpt-5.5`, `high` | `composer-2.5-fast`, `medium` | `grok-composer-2.5-fast`, `medium` | strong default without forcing max spend |
-| `/harness-plan` | `opusplan` or Opus for non-trivial planning | `gpt-5.5`, `high` | `claude-opus-4-8-thinking-xhigh`, `xhigh` | `grok-4.5`, `high` | planning quality affects all downstream work |
-| `worker` | Sonnet 4.6, `medium` to `high` | `gpt-5.5`, `medium` | `composer-2.5-fast`, `medium` | `grok-composer-2.5-fast`, `medium` | implementation benefits from iteration and tests |
+| Interactive operator session | `opusplan`, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `medium` | `grok-composer-2.5-fast`, `medium` | strong default without forcing max spend |
+| `/harness-plan` | `opusplan` or Opus for non-trivial planning | `gpt-5.6-sol`, `xhigh` | `claude-opus-4-8-thinking-xhigh`, `xhigh` | `grok-4.5`, `high` | planning quality affects all downstream work |
+| `worker` | Sonnet 4.6, `medium` to `high` | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `medium` | `grok-composer-2.5-fast`, `medium` | implementation benefits from iteration and tests |
 | `explorer` / read-only fan-out | Haiku 4.5, `low` | `gpt-5.4-mini`, `low` | `composer-2-fast`, `low` | `grok-composer-2.5-fast`, `low` | cheap context isolation |
-| `reviewer` | Sonnet 4.6 `xhigh`; Opus 4.8 `xhigh` for high-risk | `gpt-5.5`, `xhigh` | `composer-2.5-fast`, `xhigh` (fresh-context pre-review only; primary verdict on brain) | `grok-4.5`, `high` | review is where deeper reasoning pays |
-| `advisor` | Opus 4.8, `xhigh` (Fable 5 via `HARNESS_BRAIN_MODEL=fable`) | `gpt-5.5`, `xhigh` | `claude-opus-4-8-thinking-xhigh`, `xhigh` | `grok-4.5`, `high` | blocked-loop decisions need high confidence |
-| `release` | Sonnet 4.6, `high` | `gpt-5.5`, `high` | `composer-2.5-fast`, `high` | `grok-4.5`, `high` | procedural but public-facing |
+| `reviewer` | Sonnet 4.6 `xhigh`; Opus 4.8 `xhigh` for high-risk | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `xhigh` (fresh-context pre-review only; primary verdict on brain) | `grok-4.5`, `high` | review is where deeper reasoning pays |
+| `advisor` | Opus 4.8, `xhigh` (Fable 5 via `HARNESS_BRAIN_MODEL=fable`) | `gpt-5.6-sol`, `xhigh` | `claude-opus-4-8-thinking-xhigh`, `xhigh` | `grok-4.5`, `high` | blocked-loop decisions need high confidence |
+| `release` | Sonnet 4.6, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `high` | `grok-4.5`, `high` | procedural but public-facing |
 
 ## Non-Goals
 

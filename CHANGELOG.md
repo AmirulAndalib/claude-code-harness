@@ -8,6 +8,32 @@ Change history for claude-code-harness.
 
 ### Added
 
+#### breezing Default Pipeline: plan → work → OK までレビュー → 報告を 1 コマンドで完走
+
+**今まで**: 「`/harness-plan` で計画 → `/breezing` → `/harness-review` を独立サブエージェント + Codex second opinion で OK が出るまで → easy で報告」という一連の流れを、operator が毎回 4 段の指示として打つ必要がありました。
+
+**今後**: `/breezing` 単体でこの pipeline 全体が既定動作になります。plan 未作成なら先に `harness-plan` を実行し (スコープ既定は「今進められる全作業」)、実装後は run 全体 diff への Integrated Review Gate (fresh-context 独立 reviewer + `codex-companion.sh review`) を APPROVE が出るまで最大 3 回反復し、最終報告は easy 作法で出します。
+
+#### harness-plan スコープ既定: 「今進められる全作業」
+
+**今まで**: 計画依頼の範囲解釈がセッション任せで、依頼者の意図 (着手可能な全作業) より狭い計画が作られることがありました。
+
+**今後**: 範囲の明示がない計画依頼は「現時点で着手可能なすべての作業」を既定スコープとして扱います。件数が多い場合も絞り込みではなく Required / Recommended / Optional / Reject の全量分類で提示し、除外は Reject 理由として明示します。
+
+### Changed
+
+#### 実装 backend の既定を Native subagent (claude) に、選択は作業内容でフラット判断
+
+**今まで**: breezing の backend は resolver 既定こそ `claude` でしたが、`backend=claude` になると「cursor を使うべきでは」という Fallback 警告が毎回出る設計で、実質 cursor 優先の運用でした。
+
+**今後**: `claude` (Native subagent、Worker/Reviewer は Sonnet 5 系 tier) が意図された既定になり、警告は resolver の不正値 fallback 時のみ出ます。Lead は作業内容・量に応じて per-run で `--backend codex|cursor` をフラットに選択できます (判断基準表を breezing SKILL に追加)。
+
+#### Codex 委譲モデルを gpt-5.6-sol / xhigh に更新
+
+**今まで**: `scripts/model-routing.sh` の codex catalog は standard=gpt-5.5/medium、deep=gpt-5.5/high で、委譲実装が 1 世代前のモデル・控えめな effort で走っていました。
+
+**今後**: standard / deep / review / advisor tier は `gpt-5.6-sol` の `xhigh` で委譲されます (release / long-context は `gpt-5.6-sol` の high、lite は gpt-5.4-mini のまま)。`codex-companion.sh` は呼び出し時に model-routing.sh を解決するため、追加設定なしで反映されます。
+
 #### HOTL session messaging: 人間もセッションも名前で呼び合える宛先付きメッセージ (Phase 121)
 
 **今まで**: セッション間の連絡は broadcast (全員宛のファイル変更通知) だけで、特定のセッションに「そのタスク、仕様が変わったよ」と一言伝える手段がありませんでした。人間が伝えたい場合は対象セッションの端末を探してコピペする必要がありました。また livemsg 配送路には sanitize や byte cap が無く、メッセージ本文が無防備にモデル文脈へ入る状態でした。

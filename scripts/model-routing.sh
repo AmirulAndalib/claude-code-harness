@@ -91,12 +91,14 @@ MODEL=""
 EFFORT=""
 
 if [ "$HOST" = "codex" ]; then
+  # Codex catalog (2026-07-24): gpt-5.6-sol at xhigh for delegated work/review
+  # (operator 裁定: Codex 委譲は gpt-5.6 sol/terra を xhigh で使う。sol を採用)。
   case "$TIER" in
     lite) MODEL="gpt-5.4-mini"; EFFORT="low" ;;
-    standard) MODEL="gpt-5.5"; EFFORT="medium" ;;
-    deep) MODEL="gpt-5.5"; EFFORT="high" ;;
-    review|advisor) MODEL="gpt-5.5"; EFFORT="xhigh" ;;
-    release|long-context) MODEL="gpt-5.5"; EFFORT="high" ;;
+    standard) MODEL="gpt-5.6-sol"; EFFORT="xhigh" ;;
+    deep) MODEL="gpt-5.6-sol"; EFFORT="xhigh" ;;
+    review|advisor) MODEL="gpt-5.6-sol"; EFFORT="xhigh" ;;
+    release|long-context) MODEL="gpt-5.6-sol"; EFFORT="high" ;;
     spark) MODEL="gpt-5.3-codex-spark"; EFFORT="low" ;;
     *) echo "ERROR: unknown codex tier: $TIER" >&2; exit 2 ;;
   esac

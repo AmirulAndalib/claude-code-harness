@@ -25,6 +25,14 @@ Harness の統合プランニングスキル。
 | `/harness-plan list` | `list` | `plans/manifest.json` の named Plans を一覧 |
 | `/harness-plan switch <name>` | `switch` | active plan を `.claude/state/active-plan.json` に保存 |
 
+## スコープ既定: 今進められる全作業（operator 裁定 2026-07-24）
+
+計画依頼（`create` / 引数なし起動 / 「計画して」）の既定解釈は **「現時点で着手可能なすべての作業」**。
+
+- ユーザーが範囲を明示しない限り、依頼文脈に入る open item（残 phase、未処理 follow-up、既知の改善点、依頼文で言及された問題すべて）を洗い出して計画に含める。勝手に最小サブセットへ絞らない
+- 件数が多い場合も絞り込みではなく、全量を Required / Recommended / Optional / Reject に分類して提示する。除外は Reject として理由を明示する（黙って落とさない）
+- 「一部だけ先に」が妥当と判断する場合は、絞った計画ではなく、全量計画の中の実行順序（Phase 分割 / Depends）として表現する
+
 ## Literal companion commands（CC 2.1.108+）
 
 - `/recap`: 久しぶりに戻った時に要約を取り直してから `sync` へ入る

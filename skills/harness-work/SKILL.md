@@ -84,17 +84,12 @@ bash "${HARNESS_PLUGIN_ROOT}/scripts/resolve-impl-backend.sh"
 env / `--cursor` / `--codex` / `--backend <v>` per-run flag / project `env.local` / user file の precedence は resolver が一括解決する（高い順: 明示フラグ > env > project file > user file > 既定値 `claude`）。プロジェクト設定はユーザースコープを上書きする。
 明示フラグ（`--backend` / `--cursor` / `--codex`）は env / file / default を常に上書きする。
 
-### Fallback 警告（backend = `claude` 確定時）
+### Backend 既定（`claude` は意図された既定、警告は不正値 fallback 時のみ）
 
-backend resolution 結果が `claude` のとき（resolver 出力が `claude`、または resolver 未経由で `claude` と確定）、host は起動 banner 直後に **1 行だけ**次を出す。フォーマットは `breezing` の Narration Rules「Fallback 警告」と同一（cross-ref: `skills/breezing/SKILL.md`）:
+既定 backend は `claude`（Native subagent）。resolver の未設定 fallback も `claude` であり、正常に `claude` へ解決された場合に警告は**出さない**（2026-07-24 operator 裁定。フォーマットは `breezing` の Narration Rules「Backend 既定と per-run のフラット判断」と同一、cross-ref: `skills/breezing/SKILL.md`）。
 
-```
-⚠️ backend=claude (via resolver / not via resolver) — composer/cursor を使う場合は `--cursor` or `bash "${HARNESS_PLUGIN_ROOT}/scripts/resolve-impl-backend.sh"` を確認
-```
-
-- **`via resolver` / `not via resolver`**: resolver 実行有無で literal を選ぶ
-- **確認先**: `--cursor` と bundled `resolve-impl-backend.sh`（`bash "${HARNESS_PLUGIN_ROOT}/scripts/resolve-impl-backend.sh"`）
-- env unset / default fallback で `claude` に落ちる罠を 1 行で可視化。同一 run 内で繰り返さない（`breezing` の冗長さ禁止と整合）
+- ⚠️ 警告を出すのは resolver が **不正値 fallback** の stderr 警告を出した時だけ。banner 直後に 1 行、同一 run 内で繰り返さない
+- Lead は作業内容・量に応じて per-run で backend をフラットに選んでよい。選ぶ時は resolver への明示 override（`--backend <v>` / `--codex` / `--cursor`）を使う
 
 ### 自然言語 backend trigger
 

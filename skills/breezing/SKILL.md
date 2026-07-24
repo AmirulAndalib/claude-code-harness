@@ -21,6 +21,21 @@ user-invocable: true
 
 > **後方互換エイリアス**: `harness-work` をチーム実行モードで動かします。
 
+## Default Pipeline（plan → work → review → report を 1 コマンドで完走）
+
+`/breezing` は「計画 → 実装 → OK が出るまでレビュー → 報告」を 1 回の起動で完走する。
+operator が `/harness-plan` や `/harness-review` を個別に指示する必要はない（operator 裁定 2026-07-24）。
+
+1. **Plan gate**: 依頼スコープに対応する task が Plans.md に無い、または不足している場合、先に `harness-plan` を実行して task を生成してから続行する。既に plan がある場合はそのまま Phase 0 へ。plan 生成時のスコープは harness-plan の「スコープ既定: 今進められる全作業」に従う。
+2. **Work**: 既存の Phase 0 → A → B → C（per-task review 含む）。
+3. **Integrated Review Gate（Phase D、既定 ON）**: Phase C 完了後、run 全体の diff（`{base_ref}..HEAD`）に `harness-review` を実行する。
+   - fresh-context の独立 reviewer subagent（実装 Worker と会話状態を共有しない）と、`bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" review --base "${base_ref}"` の second opinion を併走させる
+   - いずれかが REQUEST_CHANGES 相当 → 修正 → 再レビュー。**APPROVE が出るまで反復する**（最大 3 回。未収束は human escalation で停止し、findings と修正状況を報告する）
+   - primary verdict（`APPROVE | REQUEST_CHANGES`）は brain（claude host）が出す。role-scoped 制約は維持
+4. **Report**: 最終報告は easy 作法で出す（host session に `easy` skill があれば invoke してその作法に従う。無ければ `harness-work` の Completion Report テンプレート）。
+
+`--reviewer-only` / `--no-commit` 等の既存フラグは、この pipeline の該当段だけを動かす per-run override として働く。
+
 ## Narration Rules (UX Contract)
 
 敵は **冗長さ** であって進捗報告ではない。**起動時に実行計画を簡潔に明示してから実行を開始する**。見やすい進捗報告は歓迎する。冗長な繰り返し・中身のない前置きだけを禁ずる。
@@ -39,19 +54,20 @@ user-invocable: true
 
 banner 1 行 (`🚀 <backend> / <model> / <branch> / <task>`) + 計画 2-4 行。1 秒以内に出し、即 Step 1 へ。
 
-### Fallback 警告（backend = `claude` 確定時）
+### Backend 既定と per-run のフラット判断（2026-07-24 operator 裁定）
 
-resolver 出力が `claude`、または resolver 未経由で backend が `claude` と確定した場合、**起動 banner 直後に 1 行だけ**次を出す（計画行の前）:
+既定 backend は **`claude`（Native subagent）**。resolver の未設定 fallback も `claude` であり、これは罠ではなく意図された既定。
+⚠️ 警告は resolver が **不正値 fallback** の stderr 警告を出した時だけ banner 直後に 1 行で出す（正常に `claude` へ解決された場合は出さない。同一 run 内で繰り返さない）。
 
-```
-⚠️ backend=claude (via resolver / not via resolver) — composer/cursor を使う場合は `--cursor` or `bash "${HARNESS_PLUGIN_ROOT}/scripts/resolve-impl-backend.sh"` を確認
-```
+Lead は run 単位で、作業内容・量からフラットに backend を選んでよい。選ぶ時は resolver への明示 override（`--backend <v>` / `--codex` / `--cursor`）を使う。env 直読みは引き続き禁止:
 
-- **`via resolver` / `not via resolver`**: resolver を実行したかで literal を選ぶ（経由時 `via resolver`、未経由時 `not via resolver`）
-- **確認先**: `--cursor` flag と bundled `resolve-impl-backend.sh`（`bash "${HARNESS_PLUGIN_ROOT}/scripts/resolve-impl-backend.sh"`）の 2 つを必ず含める
-- **env unset 罠の可視化**: default / env / file 解決で `claude` に落ちたことを 1 行で示し、cursor 意図なら override または persistent default を促す
+| 作業の性質 | 推奨 backend | 理由 |
+|---|---|---|
+| 通常の実装・修正・テスト（既定） | `claude` (native) | Worker 契約（`worker-report.v1` / self_review 5 件）が全部効く |
+| 大規模で独立性の高い一括実装、Claude 側 rate limit 回避 | `codex` | deep tier を xhigh で委譲できる（model は `model-routing.sh` が解決） |
+| UI 大量生成、lean な高速委譲 | `cursor` | lean path（worktree 隔離 + Lead diff review） |
 
-「禁止 (= 冗長さ)」節と衝突しない: この警告は banner 直後 **1 行に圧縮**し、同一 run 内で繰り返さない（計画行・進捗行に同内容を言い換えない）。
+モデル ID は skill に書かない。`bash "${HARNESS_PLUGIN_ROOT}/scripts/model-routing.sh" --host <backend> --role worker` が正本。
 
 ### 進捗報告は出してよい (見やすい範囲で)
 
@@ -223,9 +239,9 @@ rm -f "$CODEX_PROMPT"
 backend 判定は **必ず resolver 経由**。`HARNESS_IMPL_BACKEND` env を直接読んで backend を決めてはならない。
 env / `--cursor` per-run flag / project `env.local` / user file を
 `bash "${HARNESS_PLUGIN_ROOT}/scripts/resolve-impl-backend.sh"` で precedence 解決し、その出力を backend として使う
-（env unset でも project / user file から拾える）。永続 default を cursor にしたい場合は
-`bash "${HARNESS_PLUGIN_ROOT}/scripts/set-impl-backend.sh" cursor` で project / user file に書き込み、
-run 開始時に resolver が解決する。review / advisor ロールは Opus に固定したまま。
+（env unset でも project / user file から拾える）。永続 default を変えたい場合は
+`bash "${HARNESS_PLUGIN_ROOT}/scripts/set-impl-backend.sh" <claude|codex|cursor> [--user]` で project / user file に書き込み、
+run 開始時に resolver が解決する（現行の operator 既定はユーザースコープで `claude`）。review / advisor ロールは brain に固定したまま。
 バックエンド選択の正本（precedence、role-scope、self_review スキップ、cursor banner）は
 `harness-work` の「Execution Backend Selection（実装バックエンド選択）」を参照する。
 

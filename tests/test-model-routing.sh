@@ -85,7 +85,7 @@ printf '%s' "${grok_env}" | grep -q '^GROK_MODEL=grok-composer-2.5-fast$' || {
 }
 
 codex_args="$(bash "${ROUTER}" --host codex --tier review --format args | tr '\n' ' ')"
-printf '%s' "${codex_args}" | grep -q -- '--model gpt-5.5' || {
+printf '%s' "${codex_args}" | grep -q -- '--model gpt-5.6-sol' || {
   echo "codex args must include review model"
   exit 1
 }
@@ -156,7 +156,7 @@ fable_cursor_advisor="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host cursor
 }
 
 fable_codex_advisor="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host codex --role advisor --field model)"
-[ "${fable_codex_advisor}" = "gpt-5.5" ] || {
+[ "${fable_codex_advisor}" = "gpt-5.6-sol" ] || {
   echo "fable brain opt-in must not touch the codex model catalog"
   exit 1
 }
