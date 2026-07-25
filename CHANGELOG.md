@@ -20,6 +20,12 @@ Change history for claude-code-harness.
 
 **今後**: 範囲の明示がない計画依頼は「現時点で着手可能なすべての作業」を既定スコープとして扱います。件数が多い場合も絞り込みではなく Required / Recommended / Optional / Reject の全量分類で提示し、除外は Reject 理由として明示します。
 
+#### Opus 5 の brain opt-in (`HARNESS_BRAIN_MODEL=opus5`)
+
+**今まで**: brain tier (deep / advisor) の切替は `opus` (claude-opus-4-8) / `fable` (claude-fable-5) の 2 択でした。
+
+**今後**: 2026-07-24 リリースの Opus 5 を `HARNESS_BRAIN_MODEL=opus5` で opt-in できます (`claude-opus-5` / xhigh)。既定は従来どおり `opus` (4.8) のままで、切替は operator の明示判断に委ねます。
+
 ### Changed
 
 #### 実装 backend の既定を Native subagent (claude) に、選択は作業内容でフラット判断

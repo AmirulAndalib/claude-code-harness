@@ -167,6 +167,12 @@ fable_grok_advisor="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host grok --r
   exit 1
 }
 
+opus5_claude_advisor="$(HARNESS_BRAIN_MODEL=opus5 bash "${ROUTER}" --host claude --role advisor --field model)"
+[ "${opus5_claude_advisor}" = "claude-opus-5" ] || {
+  echo "opus5 brain opt-in must route the claude advisor tier to claude-opus-5"
+  exit 1
+}
+
 if HARNESS_BRAIN_MODEL=bogus bash "${ROUTER}" --host claude --role advisor >/dev/null 2>&1; then
   echo "unknown HARNESS_BRAIN_MODEL value should fail loudly"
   exit 1

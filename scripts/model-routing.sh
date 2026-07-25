@@ -80,11 +80,14 @@ fi
 
 # Brain opt-in: HARNESS_BRAIN_MODEL switches the claude-host brain tiers
 # (deep/advisor) only. codex/cursor/grok catalogs are host-side and stay untouched.
+# opus5 added 2026-07-25 (Opus 5 released 2026-07-24); default stays opus (4.8)
+# until operator flips it deliberately.
 CLAUDE_BRAIN_MODEL="claude-opus-4-8"
 case "${HARNESS_BRAIN_MODEL:-opus}" in
   opus) ;;
+  opus5) CLAUDE_BRAIN_MODEL="claude-opus-5" ;;
   fable) CLAUDE_BRAIN_MODEL="claude-fable-5" ;;
-  *) echo "ERROR: unknown HARNESS_BRAIN_MODEL: ${HARNESS_BRAIN_MODEL} (use opus|fable)" >&2; exit 2 ;;
+  *) echo "ERROR: unknown HARNESS_BRAIN_MODEL: ${HARNESS_BRAIN_MODEL} (use opus|opus5|fable)" >&2; exit 2 ;;
 esac
 
 MODEL=""
