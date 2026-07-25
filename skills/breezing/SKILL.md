@@ -27,12 +27,13 @@ user-invocable: true
 operator が `/harness-plan` や `/harness-review` を個別に指示する必要はない（operator 裁定 2026-07-24）。
 
 1. **Plan gate**: 依頼スコープに対応する task が Plans.md に無い、または不足している場合、先に `harness-plan` を実行して task を生成してから続行する。既に plan がある場合はそのまま Phase 0 へ。plan 生成時のスコープは harness-plan の「スコープ既定: 今進められる全作業」に従う。
-2. **Work**: 既存の Phase 0 → A → B → C（per-task review 含む）。
-3. **Integrated Review Gate（Phase D、既定 ON）**: Phase C 完了後、run 全体の diff（`{base_ref}..HEAD`）に `harness-review` を実行する。
+2. **Work**: 既存の Phase 0 → A → B（per-task review 含む）。
+3. **Integrated Review Gate（Phase D、既定 ON）**: Phase B 完了後、**Phase C の最終化（完了報告・run 完了宣言）より前に**、run 全体の diff に `harness-review` を実行する。
+   - review target: 通常 run は `{base_ref}..HEAD`。`--no-commit` run は commit range が空になりうるため、**working tree（未 commit 変更 + untracked ファイル）を対象にする**
    - fresh-context の独立 reviewer subagent（実装 Worker と会話状態を共有しない）と、`bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" review --base "${base_ref}"` の second opinion を併走させる
-   - いずれかが REQUEST_CHANGES 相当 → 修正 → 再レビュー。**APPROVE が出るまで反復する**（最大 3 回。未収束は human escalation で停止し、findings と修正状況を報告する）
+   - いずれかが REQUEST_CHANGES 相当 → 修正 → 再レビュー。**APPROVE が出るまで反復する**（最大 3 回）。未収束の場合は影響 task の marker を `cc:WIP` に戻し、human escalation で停止して findings と修正状況を報告する
    - primary verdict（`APPROVE | REQUEST_CHANGES`）は brain（claude host）が出す。role-scoped 制約は維持
-4. **Report**: 最終報告は easy 作法で出す（host session に `easy` skill があれば invoke してその作法に従う。無ければ `harness-work` の Completion Report テンプレート）。
+4. **Finalize + Report（Phase C）**: gate の APPROVE を得てから Plans.md 更新・commit・完了報告を確定する。gate 未通過のまま run を「完了」として報告してはならない。最終報告は easy 作法で出す（host session に `easy` skill があれば invoke してその作法に従う。無ければ `harness-work` の Completion Report テンプレート）。
 
 `--reviewer-only` / `--no-commit` 等の既存フラグは、この pipeline の該当段だけを動かす per-run override として働く。
 低リスクの高速 run で Phase D を省きたい時は `--no-review-gate` を渡す（Phase B の per-task review は省かれない。省くのは run 全体 diff への統合レビューだけ）。

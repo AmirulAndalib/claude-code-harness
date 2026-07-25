@@ -42,9 +42,12 @@ frontmatter model, then main conversation model. Therefore Harness must not set
 `CLAUDE_CODE_SUBAGENT_MODEL` by default because it would flatten per-agent
 routing. Official docs: https://code.claude.com/docs/en/sub-agents
 
-Anthropic's current model table positions Claude Opus 4.8 as the most capable
-model for complex reasoning and agentic coding, Sonnet 4.6 as the best speed /
-intelligence balance, and Haiku 4.5 as the fastest model. Official docs:
+Anthropic's current lineup is the Claude 5 family: Fable 5 (Mythos-class, the
+most intelligent generally available model), Opus 5 for complex reasoning and
+agentic coding, Sonnet 5 as the best speed / intelligence balance, and Haiku
+4.5 as the fastest model. Harness retired Opus 4.8 from its claude catalog on
+2026-07-25 (operator decision): brain = Opus 5, review = Fable 5,
+worker = Sonnet 5. Official docs:
 https://platform.claude.com/docs/en/about-claude/models/overview
 
 Codex offers `gpt-5.6-sol` / `gpt-5.6-terra` as its top coding tier,
@@ -86,9 +89,9 @@ guaranteed for every Harness user.
 | --- | --- | --- | --- |
 | `lite` | `claude-haiku-4-5` or `haiku` | `low` or `medium` | read-only search, docs cleanup, simple summaries, cheap side research |
 | `standard` | `claude-sonnet-5` | `medium` by default, `high` for code-risk tasks | normal worker implementation, setup, tests, scoped refactors |
-| `deep` | `claude-opus-4-8` | `xhigh` | architecture, security, migration, cross-repo decisions, repeated failures |
-| `review` | default reviewer: `claude-sonnet-5`; adversarial/final reviewer: `claude-opus-4-8` | `xhigh` | normal review stays cost-aware; high-risk gates use Opus |
-| `advisor` | `claude-opus-4-8` | `xhigh` | PLAN / CORRECTION / STOP decisions after blocked execution |
+| `deep` | `claude-opus-5` | `xhigh` | architecture, security, migration, cross-repo decisions, repeated failures |
+| `review` | `claude-fable-5` | `xhigh` | independent review; primary verdict tier (operator decision 2026-07-25) |
+| `advisor` | `claude-opus-5` | `xhigh` | PLAN / CORRECTION / STOP decisions after blocked execution |
 | `release` | `claude-sonnet-5` | `high` | release preflight, changelog, version/tag/GitHub Release checks |
 | `long-context` | `sonnet[1m]` | `high` | large repo reading, long sessions, context-heavy comparison |
 
@@ -99,14 +102,15 @@ Recommended Claude session default:
   "model": "opusplan",
   "availableModels": [
     "opusplan",
-    "claude-opus-4-8",
+    "claude-opus-5",
+    "claude-fable-5",
     "claude-sonnet-5",
     "claude-haiku-4-5",
     "sonnet[1m]"
   ],
   "effortLevel": "high",
   "env": {
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-8",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5"
   }
@@ -122,13 +126,14 @@ Notes:
 - Do not set `max` in shared settings. `max` is session-only and should be used
   only for explicit one-off experiments.
 - `ultrathink` is a legacy free-text marker. Do not use it for durable routing.
-  On Claude Opus 4.8, control reasoning depth with `effort` (`high`/`xhigh`), not
-  prompt markers. If reasoning looks shallow on a hard task, raise effort rather
-  than prompting around it.
+  On the Claude 5 family, control reasoning depth with `effort` (`high`/`xhigh`),
+  not prompt markers. If reasoning looks shallow on a hard task, raise effort
+  rather than prompting around it.
 - `HARNESS_BRAIN_MODEL=fable` opts the `deep` / `advisor` tiers into
-  `claude-fable-5` (Fable 5). Unset, empty, or `opus` keeps `claude-opus-4-8`;
-  any other value exits 2 instead of falling back silently. The opt-in is
-  claude-host only and never changes the `standard` / `review` tiers.
+  `claude-fable-5` (Fable 5). Unset, empty, `opus`, or `opus5` keeps
+  `claude-opus-5`; any other value exits 2 instead of falling back silently.
+  The opt-in is claude-host only and never changes the `standard` / `review`
+  tiers.
 
 ## Codex Routing
 
@@ -206,9 +211,9 @@ Notes:
 | --- | --- | --- | --- |
 | `lite` | `composer-2-fast` | `low` | read-only exploration, cheap fan-out |
 | `standard` | `composer-2.5-fast` | `medium` | normal worker implementation |
-| `deep` | `claude-opus-4-8-thinking-xhigh` | `xhigh` | architecture, security, recovery |
+| `deep` | `claude-fable-5` | `xhigh` | architecture, security, recovery |
 | `review` | `composer-2.5-fast` | `xhigh` | harness-review / reviewer subagent |
-| `advisor` | `claude-opus-4-8-thinking-xhigh` | `xhigh` | advisor-request decisions |
+| `advisor` | `claude-fable-5` | `xhigh` | advisor-request decisions |
 | `release` | `composer-2.5-fast` | `high` | release preflight wording checks |
 | `long-context` | `gemini-3.1-pro` | `high` | large repo reads when available |
 
@@ -266,12 +271,12 @@ Notes:
 | Harness surface | Claude default | Codex default | Cursor default | Grok default | Why |
 | --- | --- | --- | --- | --- | --- |
 | Interactive operator session | `opusplan`, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `medium` | `grok-composer-2.5-fast`, `medium` | strong default without forcing max spend |
-| `/harness-plan` | `opusplan` or Opus for non-trivial planning | `gpt-5.6-sol`, `xhigh` | `claude-opus-4-8-thinking-xhigh`, `xhigh` | `grok-4.5`, `high` | planning quality affects all downstream work |
-| `worker` | Sonnet 4.6, `medium` to `high` | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `medium` | `grok-composer-2.5-fast`, `medium` | implementation benefits from iteration and tests |
+| `/harness-plan` | `opusplan` or Opus 5 for non-trivial planning | `gpt-5.6-sol`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.5`, `high` | planning quality affects all downstream work |
+| `worker` | Sonnet 5, `medium` to `high` | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `medium` | `grok-composer-2.5-fast`, `medium` | implementation benefits from iteration and tests |
 | `explorer` / read-only fan-out | Haiku 4.5, `low` | `gpt-5.4-mini`, `low` | `composer-2-fast`, `low` | `grok-composer-2.5-fast`, `low` | cheap context isolation |
-| `reviewer` | Sonnet 4.6 `xhigh`; Opus 4.8 `xhigh` for high-risk | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `xhigh` (fresh-context pre-review only; primary verdict on brain) | `grok-4.5`, `high` | review is where deeper reasoning pays |
-| `advisor` | Opus 4.8, `xhigh` (Fable 5 via `HARNESS_BRAIN_MODEL=fable`) | `gpt-5.6-sol`, `xhigh` | `claude-opus-4-8-thinking-xhigh`, `xhigh` | `grok-4.5`, `high` | blocked-loop decisions need high confidence |
-| `release` | Sonnet 4.6, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `high` | `grok-4.5`, `high` | procedural but public-facing |
+| `reviewer` | Fable 5, `xhigh` (primary verdict tier) | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `xhigh` (fresh-context pre-review only; primary verdict on brain) | `grok-4.5`, `high` | review is where deeper reasoning pays |
+| `advisor` | Opus 5, `xhigh` (Fable 5 via `HARNESS_BRAIN_MODEL=fable`) | `gpt-5.6-sol`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.5`, `high` | blocked-loop decisions need high confidence |
+| `release` | Sonnet 5, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `high` | `grok-4.5`, `high` | procedural but public-facing |
 
 ## Non-Goals
 

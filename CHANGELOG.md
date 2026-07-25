@@ -20,11 +20,11 @@ Change history for claude-code-harness.
 
 **今後**: 範囲の明示がない計画依頼は「現時点で着手可能なすべての作業」を既定スコープとして扱います。件数が多い場合も絞り込みではなく Required / Recommended / Optional / Reject の全量分類で提示し、除外は Reject 理由として明示します。
 
-#### Opus 5 の brain opt-in (`HARNESS_BRAIN_MODEL=opus5`)
+#### Claude catalog を Claude 5 世代へ全面更新 (Opus 4.8 全廃)
 
-**今まで**: brain tier (deep / advisor) の切替は `opus` (claude-opus-4-8) / `fable` (claude-fable-5) の 2 択でした。
+**今まで**: claude host の brain tier (deep / advisor) は claude-opus-4-8、review tier は claude-sonnet-5、cursor の brain 系 tier は claude-opus-4-8-thinking-xhigh でした。
 
-**今後**: 2026-07-24 リリースの Opus 5 を `HARNESS_BRAIN_MODEL=opus5` で opt-in できます (`claude-opus-5` / xhigh)。既定は従来どおり `opus` (4.8) のままで、切替は operator の明示判断に委ねます。
+**今後**: Opus 5 リリース (2026-07-24) を受けた operator 裁定で、Opus 4.8 を catalog から全廃しました。brain = `claude-opus-5` / xhigh (既定。`HARNESS_BRAIN_MODEL=opus|opus5` も同値、`fable` で Fable 5 に切替)、review = `claude-fable-5` / xhigh、worker = `claude-sonnet-5`、cursor の brain 系 tier = `claude-fable-5` / xhigh。spec (execution-backends-and-distribution.md) と model-routing-policy.md も同期しています。
 
 ### Changed
 

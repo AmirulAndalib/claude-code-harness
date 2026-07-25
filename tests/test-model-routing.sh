@@ -25,8 +25,8 @@ claude_advisor_effort="$(bash "${ROUTER}" --host claude --role advisor --field e
 }
 
 claude_advisor_model="$(bash "${ROUTER}" --host claude --role advisor --field model)"
-[ "${claude_advisor_model}" = "claude-opus-4-8" ] || {
-  echo "claude advisor must route to claude-opus-4-8"
+[ "${claude_advisor_model}" = "claude-opus-5" ] || {
+  echo "claude advisor must route to claude-opus-5"
   exit 1
 }
 
@@ -37,8 +37,8 @@ cursor_worker_model="$(bash "${ROUTER}" --host cursor --role worker --field mode
 }
 
 cursor_advisor_model="$(bash "${ROUTER}" --host cursor --role advisor --field model)"
-[ "${cursor_advisor_model}" = "claude-opus-4-8-thinking-xhigh" ] || {
-  echo "cursor advisor must route to claude-opus-4-8-thinking-xhigh"
+[ "${cursor_advisor_model}" = "claude-fable-5" ] || {
+  echo "cursor advisor must route to claude-fable-5"
   exit 1
 }
 
@@ -102,14 +102,14 @@ fi
 # --- Fable brain opt-in (HARNESS_BRAIN_MODEL) ---
 
 unset_default_model="$(env -u HARNESS_BRAIN_MODEL bash "${ROUTER}" --host claude --role advisor --field model)"
-[ "${unset_default_model}" = "claude-opus-4-8" ] || {
-  echo "unset HARNESS_BRAIN_MODEL must keep claude-opus-4-8"
+[ "${unset_default_model}" = "claude-opus-5" ] || {
+  echo "unset HARNESS_BRAIN_MODEL must keep claude-opus-5"
   exit 1
 }
 
 empty_default_model="$(HARNESS_BRAIN_MODEL= bash "${ROUTER}" --host claude --role advisor --field model)"
-[ "${empty_default_model}" = "claude-opus-4-8" ] || {
-  echo "empty HARNESS_BRAIN_MODEL must keep claude-opus-4-8"
+[ "${empty_default_model}" = "claude-opus-5" ] || {
+  echo "empty HARNESS_BRAIN_MODEL must keep claude-opus-5"
   exit 1
 }
 
@@ -132,8 +132,8 @@ fable_advisor_effort="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host claude
 }
 
 opus_explicit_model="$(HARNESS_BRAIN_MODEL=opus bash "${ROUTER}" --host claude --role advisor --field model)"
-[ "${opus_explicit_model}" = "claude-opus-4-8" ] || {
-  echo "HARNESS_BRAIN_MODEL=opus must keep claude-opus-4-8"
+[ "${opus_explicit_model}" = "claude-opus-5" ] || {
+  echo "HARNESS_BRAIN_MODEL=opus must keep claude-opus-5"
   exit 1
 }
 
@@ -144,13 +144,13 @@ fable_worker_model="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host claude -
 }
 
 fable_reviewer_model="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host claude --role reviewer --field model)"
-[ "${fable_reviewer_model}" = "claude-sonnet-5" ] || {
-  echo "fable brain opt-in must not change the primary review tier"
+[ "${fable_reviewer_model}" = "claude-fable-5" ] || {
+  echo "fable brain opt-in must not change the primary review tier (fixed at claude-fable-5)"
   exit 1
 }
 
 fable_cursor_advisor="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host cursor --role advisor --field model)"
-[ "${fable_cursor_advisor}" = "claude-opus-4-8-thinking-xhigh" ] || {
+[ "${fable_cursor_advisor}" = "claude-fable-5" ] || {
   echo "fable brain opt-in must not touch the cursor model catalog"
   exit 1
 }
