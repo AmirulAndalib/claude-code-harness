@@ -171,3 +171,23 @@ Purpose: operator 裁定 4 点を harness に反映する。(1) 実装 backend �
   scope: Phase 123 / Task 123.1-123.2
   承認: 未承認 (レビュー完了後にユーザーへ確認)
 - secret-read / destructive: なし
+
+---
+
+## Phase 124: Claude 5 unhobbling — 常時ロード context の rightsizing (Anthropic context engineering 指針 2026-07-25 反映) [P2]
+
+Purpose: Claude 5 世代指針 (Anthropic Tariq 記事: system prompt 80% 削減でも eval 非劣化、rules→judgment / 全部先頭→progressive disclosure) を harness の context 面に適用する。実測: 常時注入は project CLAUDE.md 13KB + user CLAUDE.md 10.8KB + `.claude/rules/` 19 ファイル **103.2KB** で、支配項は rules 層。うち v3-architecture.md は廃止済み v3 の歴史記録、command-editing.md は自ら DEPRECATED を名乗る文書で、どちらも毎セッション注入されている。**削らない領域 (governance 契約)**: R01-R13 / deny・ask / worker-report.v1・self_review schema / test-quality (改ざん禁止) / Risk Gates — 記事の「highly important areas は拘束維持」に該当。削る対象は判断で足りる style 指導・歴史記録・状況限定 rule の常時注入。opus-4-7-prompt-audit.md はテスト gate 非接続 (grep で機械 enforcement なしを確認済み) のため doc 改訂のみで安全に世代交代できる。Spec skip reason: context 配線の最適化で product contract 不変。team_validation_mode: not_required_lightweight (棚卸し結果の適用は 124.3 で operator 承認を挟む)。unknown_data: CC の rules `paths` frontmatter による scope 制御の正確な挙動 (124.1 で実測)。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 124.1 | `[lane:gate]` `[tdd:skip:context-audit]` `.claude/rules/` 19 ファイルを 3 分類: (i) 常時必須 (governance 契約), (ii) 状況ロード化 (`paths` frontmatter / skill references/ 移設 / CLAUDE.md からのポインタ参照化), (iii) 廃止 (v3-architecture → `.claude/memory/archive/`、command-editing 削除)。`paths` frontmatter の実挙動を 1 rule で実測してから適用 | (a) before/after KB 表 (目標: 常時注入 rules ≤ 30KB), (b) governance 契約 rule の常時ロード維持を明記, (c) check-consistency の rule 存在チェック非破壊 | - | cc:TODO |
+| 124.2 | `[lane:gate]` `[tdd:skip:skill-docs]` SKILL.md rightsizing: harness-work (958 行) / harness-release (535) / breezing (521) / harness-plan (462) を references/ 分割で 500 行以下へ。旧世代向け防御ブロック (違反例の列挙、fork auto-start の禁止行動 literal、重複 Narration 例) は「判断に任せる」方向で圧縮。frontmatter 契約 (schema 名・enum・回数上限) は非接触 | (a) 4 skill が 500 行以下, (b) mirror in-sync, (c) validate-plugin 0 failed, (d) 各 skill の削減 diff に「契約維持 / style 削減」の区分メモ | 124.1 | cc:TODO |
+| 124.3 | `[lane:gate]` `[tdd:skip:standard-doc]` agent prompt 基準の世代交代: opus-4-7-prompt-audit.md を claude-5-prompt-standard.md へ置換。維持: schema 名・列挙値固定、回数上限の数字、wrapper command 完全一致、権限境界 1 行判定。撤廃: 曖昧語 blanket 禁止 (判断領域)、例文必須主義 (記事: examples は探索を狭める → interface 設計で示す)。operator 承認後に agents/*.md へ適用 | (a) 新 standard に維持/撤廃の対比表, (b) operator 承認記録, (c) agents/worker.md・reviewer.md・advisor.md の契約 (worker-report.v1 / review-result.v1 / advisor-response.v1) 非破壊で style 圧縮 | 124.1 | cc:TODO |
+| 124.4 | `[lane:gate]` `[tdd:skip:verification]` 検証: 全 gate green + 常時ロード before/after 実測 + breezing 1 run の挙動 spot check (pipeline 契約が維持されているか) | (a) validate-plugin 0 failed + check-consistency PASS, (b) before/after KB 表を CHANGELOG に記載, (c) /breezing 1 run で plan gate → work → review gate → easy 報告の完走 evidence | 124.2, 124.3 | cc:TODO |
+
+事前確認 (plan-time pre-approval):
+- 事項: destructive — `.claude/rules/v3-architecture.md` の archive 移設と `command-editing.md` の削除 (git 履歴には残る)
+  理由: 124.1 の (iii) 廃止分類の実行に必要
+  scope: Phase 124 / Task 124.1
+  承認: 未承認 (実行前にユーザーへ確認)
+- secret-read / external-send: なし
