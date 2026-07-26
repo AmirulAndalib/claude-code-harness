@@ -4,6 +4,19 @@
 
 CC frontmatter の `effort` フィールドと Anthropic API の effort パラメータの対応関係、および Harness における採用方針を定義する。
 
+## Opus 5 移行ノート（2026-07-26 実測）
+
+Opus 4.8 は 2026-07-25 の operator 裁定（`feat(routing,breezing): retire Opus 4.8` commit `d5d1b28d`）で harness routing catalog から退役した。brain tier は `claude-opus-5` へ全面移行済み。本ドキュメント内の Opus 4.8 固有の記述（thinking 既定 off、`xhigh` フォールバック挙動など）は、退役前に確立された観測として歴史的に残す。
+
+Opus 5 (`claude-opus-5`) での effort 挙動を `claude` CLI v2.1.220 で実測した（各コマンド 1 回のみ実行、timeout 想定 120s）:
+
+| コマンド | 実測結果 |
+|---|---|
+| `claude --model claude-opus-5 -p "reply exactly: OK"` | 完了まで約 3-4 分（exit 0）。標準出力は空行のみで、指示した `OK` という文字列は返らなかった |
+| `claude --model claude-opus-5 --effort xhigh -p "reply exactly: OK"` | 完了まで約 10 分（exit 0）。標準出力は `OK` ではなく、リポジトリの状態（skill mirror drift、`claude-opus-5` 追加タスク、`bin/harness` shim 注意点）に言及する文脈依存の応答だった |
+
+両方とも指示した「`OK` とだけ返す」を守らなかった。ネストした `claude` CLI 呼び出しがユーザーレベルの memory / プロジェクト文脈を引き継いだ可能性があるが、原因は本実測だけでは特定できない。`xhigh` 指定時に応答時間が約 3 倍（3-4 分 → 約 10 分）に伸びたことは観測事実として記録するが、これが effort tier 自体の効果か、文脈量の違いによるものかは未実測 (unknown)。ダウングレードの有無など、より深い内部挙動は本実測の範囲では判定できない。
+
 ## CC Frontmatter と API Effort の対応マトリクス
 
 CC v2.1.72 で `max` が廃止され、v2.1.111 で `xhigh` が追加された。
