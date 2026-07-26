@@ -17,6 +17,7 @@ entries:
       - "Plans.md"
       - "docs/social/"
       - "skills/claude-codex-upstream-update/"
+      - "docs/rules/migration-policy.md"
 
   - id: guardrails-rules-ts
     kind: path
@@ -25,6 +26,7 @@ entries:
     reason: "TypeScript guardrail rules file; replaced by go/internal/guardrail/rules.go"
     allowlist:
       - "go/"
+      - "docs/rules/migration-policy.md"
 
   - id: ts-guardrail-engine-concept
     kind: concept
@@ -42,6 +44,7 @@ entries:
       - "docs/positioning-notes.md"
       - "docs/release-copy-phase21.md"
       - "Plans.md"
+      - "docs/rules/migration-policy.md"
 
   - id: skill-gogcli-ops
     kind: path
@@ -90,3 +93,15 @@ entries:
       - "Plans.md"
       - "templates/registry/"
       - "docs/reports/"
+
+  - id: rule-command-editing
+    kind: path
+    pattern: ".claude/rules/command-editing.md"
+    removed_in: "Phase 124.1"
+    reason: "v2.17.0 で commands→skills 移行済み、DEPRECATED バナー付きのまま残っていた legacy command 規約ファイルを削除 (常時ロード context 棚卸し、Phase 124.1)。規約は skill-editing.md に統合済み"
+    allowlist:
+      - "CHANGELOG.md"
+      - ".claude/memory/archive/"
+      - "Plans.md"
+      - "templates/registry/"
+      - "docs/rules/skill-editing-templates.md"

@@ -72,6 +72,9 @@ Harness の統合実行スキル。
 | `codex` | Codex CLI | `bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" task --write "<prompt>"` |
 | `cursor` | cursor-agent（model `composer-2.5-fast`） | `bash "${HARNESS_PLUGIN_ROOT}/scripts/cursor-companion.sh" task --write --workspace <worktree> "<prompt>"` |
 
+Codex 呼び出しのガバナンス詳細（禁止事項・verdict マッピング等）は
+[references/codex-cli-only.md](${CLAUDE_SKILL_DIR}/references/codex-cli-only.md) を参照。
+
 ### 解決手順
 
 run 開始時に 1 回だけ解決する。**resolver 経由が backend 選択の唯一の正規入口**。

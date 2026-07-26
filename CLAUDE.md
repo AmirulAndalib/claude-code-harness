@@ -30,7 +30,7 @@ Use `./scripts/sync-version.sh bump` only when cutting a release.
 
 ### CHANGELOG
 
-Details: [.claude/rules/github-release.md](.claude/rules/github-release.md) (Keep a Changelog format; include Before/After tables for major changes)
+Details: [skills/harness-release/references/github-release.md](skills/harness-release/references/github-release.md) (Keep a Changelog format; include Before/After tables for major changes)
 
 ### Language
 
@@ -122,7 +122,7 @@ Details: [docs/CLAUDE-commands.md](docs/CLAUDE-commands.md)
 
 変更が必要な場合はユーザーに手動操作を依頼すること。
 
-- Cursor 実装バックエンド利用時のルール: [.claude/rules/cursor-cli-only.md](.claude/rules/cursor-cli-only.md)
+- Cursor 実装バックエンド利用時のルール: [skills/cursor-do/references/cursor-cli-only.md](skills/cursor-do/references/cursor-cli-only.md)
 
 外部 API への sandbox allowlist 設定 (Firecrawl / web スクレイプ等): [docs/sandbox-allowlist-recipe.md](docs/sandbox-allowlist-recipe.md) — `~/.claude/settings.json` への patch 手順を SSOT 化。`templates/sandbox-settings.json.template` と数値・項目を同期。
 
@@ -150,9 +150,9 @@ Details & handoff: [docs/CLAUDE-commands.md](docs/CLAUDE-commands.md)
 
 Details: [.claude/rules/test-quality.md](.claude/rules/test-quality.md) / [.claude/rules/implementation-quality.md](.claude/rules/implementation-quality.md)
 
-- Migration policy: [.claude/rules/migration-policy.md](.claude/rules/migration-policy.md) - deleted-concepts.yaml の運用ルール (Phase 40 で導入)
-- Active watching test policy: [.claude/rules/active-watching-test-policy.md](.claude/rules/active-watching-test-policy.md) - 外部 daemon / opt-in ファイル監視機能の 3 状態テスト規約 (Phase 50 で導入、D40 / P29 運用ルール化)
-- Cross-repo handoff: [.claude/rules/cross-repo-handoff.md](.claude/rules/cross-repo-handoff.md) - claude-code-harness ↔ harness-mem 責任境界 + 2 経路 handoff workflow (Phase 65 で codify、D42 の shareable policy 部分)
+- Migration policy: [docs/rules/migration-policy.md](docs/rules/migration-policy.md) - deleted-concepts.yaml の運用ルール (Phase 40 で導入)
+- Active watching test policy: [docs/rules/active-watching-test-policy.md](docs/rules/active-watching-test-policy.md) - 外部 daemon / opt-in ファイル監視機能の 3 状態テスト規約 (Phase 50 で導入、D40 / P29 運用ルール化)
+- Cross-repo handoff: [docs/rules/cross-repo-handoff.md](docs/rules/cross-repo-handoff.md) - claude-code-harness ↔ harness-mem 責任境界 + 2 経路 handoff workflow (Phase 65 で codify、D42 の shareable policy 部分)
 
 ## North Star
 
