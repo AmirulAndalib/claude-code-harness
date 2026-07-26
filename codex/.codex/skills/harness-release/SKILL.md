@@ -513,6 +513,11 @@ Claude plugin project の場合、dry-run でも `python3 "${HARNESS_PLUGIN_ROOT
 
 このスキルはこれらの見出しを機械的に解析するため、見出しの表記揺れ（`### Fix` / `### Bug Fixes` 等）は認識できません。KaCL 標準の見出しを使用してください。
 
+GitHub Release notes の必須フォーマット・CHANGELOG の「今まで/今後」記法・merge 方式（squash 不採用）の詳細は
+[github-release.md](${CLAUDE_SKILL_DIR}/references/github-release.md) を参照。
+SemVer 判定基準・バッチリリース方針・Release Train Proposal の詳細は
+[versioning.md](${CLAUDE_SKILL_DIR}/references/versioning.md) を参照。
+
 ## 出荷前の受け入れ判断（非エンジニア向け）
 
 リリース確定の前に `harness-accept` を提案する。各合格条件が満たされたかと ship/wait/reject の
