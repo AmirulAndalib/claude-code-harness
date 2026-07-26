@@ -121,6 +121,7 @@ entries:
       - "docs/upstream-update-snapshot-2026-05-15.md"
       - "docs/task-budgets-research.md"
       - "docs/smoke-test-v4.2.0.md"
+      - ".claude/memory/session-log.md"
       - "skills/harness-work/SKILL.md"
       - "skills/harness-work/references/"
       - "opencode/skills/harness-work/SKILL.md"

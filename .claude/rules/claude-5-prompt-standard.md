@@ -1,11 +1,6 @@
 ---
 description: Claude 5 世代の agent prompt 監査基準（opus-4-7-prompt-audit.md の後継）
-globs:
-  - "agents/worker.md"
-  - "agents/reviewer.md"
-  - "agents/advisor.md"
-  - "agents/test-wiring-auditor.md"
-  - "docs/team-composition.md"
+paths: "agents/worker.md, agents/reviewer.md, agents/advisor.md, agents/test-wiring-auditor.md, docs/team-composition.md"
 ---
 
 # Claude 5 Prompt Standard
