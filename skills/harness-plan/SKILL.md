@@ -120,41 +120,10 @@ Security gate は秘密情報の実読取を要求しない。
 
 ### Lane Taxonomy + Stage Gate
 
-Fast / Gate / Release は **新 skill ではなく Plans metadata** として扱う。
-Plans.md の 5 column テンプレート（Task / 内容 / DoD / Depends / Status）は変更しない。
-lane / stage / TDD / unknown などの metadata は **内容（Content）または DoD の先頭** に埋め込む。
-
-**Lane Taxonomy** — 各 task の Content か DoD 先頭に、次のいずれか 1 つを付ける:
-
-| タグ | 用途 |
-|------|------|
-| `[lane:fast]` | low-risk local work（refactor / docs / typo） |
-| `[lane:gate]` | spec / workflow / mirror / guardrail を触る変更（大半の機能実装） |
-| `[lane:release]` | public artifact / version / tag / GitHub Release を出す変更 |
-
-**Stage gate** — planning output（`create` / product-impacting `add`）は、次の 5 段階で構造化する:
-
-1. **検証・調査** — research evidence を残し、unknown data を明示する
-2. **実装計画確定** — lane タグ + DoD を確定する
-3. **実装(TDD)** — `[tdd:required]` または `[tdd:skip:<reason>]` を各 task に付ける
-4. **レビュー** — review artifact（`harness-review` または companion review）を DoD に落とす
-5. **PR closeout** — evidence pack → PR body（release が必要なら別 `[lane:release]` gate へ）
-
-stage gate は planning セクションの見出しまたは task 群の前置きとして出力し、
-各 stage に対応する task を Plans.md 行として生成する。
-release closeout は `[lane:release]` task または `harness-release` へ委譲してよい。
-
-**Unknown data contract** — AI が見えていない data / failed search / missing fixture / API unavailable は
-`not_observed != absent` 原則で **`unknown`** と明示する。`absent` と断定しない。
-
-| 観測状態 | 出力 |
-|---------|------|
-| 確認済みで存在しない | `absent`（evidence 必須） |
-| 検索失敗・未読・API 不可・fixture 欠落 | `unknown` |
-| 確認できた事実 | 通常の evidence 記述 |
-
-`create` / `add` の出力契約には、調査段（stage 1）で `unknown` 一覧または
-`unknown_data: [...]` を残す。DoD に「未確認の前提を absent と書かない」を含めてよい。
+Fast / Gate / Release は **新 skill ではなく Plans metadata** として扱う。Plans.md の 5 column テンプレート（Task / 内容 / DoD / Depends / Status）は変更せず、
+lane（`[lane:fast]` / `[lane:gate]` / `[lane:release]`）・stage（検証→計画→TDD実装→レビュー→PR closeout の 5 段階）・unknown data contract（`not_observed != absent`、確認できない事実は `unknown` と明示）を
+**内容（Content）または DoD の先頭**に埋め込む。タグ一覧・worked example・stage 別 DoD 例は
+[references/create.md](${CLAUDE_SKILL_DIR}/references/create.md) を参照。
 
 ### create — 計画作成
 
@@ -327,23 +296,9 @@ product-impacting な追加では、上の「spec.md / Plans.md 二正本チェ�
 
 ### sync — 進捗同期
 
-実装状況と Plans.md を照合し、差分を検出・更新する。
-
-See [references/sync.md](${CLAUDE_SKILL_DIR}/references/sync.md)
-
-**フロー**:
-1. Plans.md の現状取得
-2. Plans.md フォーマット検出（v1: 3 カラム / v2: 5 カラム）
-3. git status / git log から実装状況取得
-4. エージェントトレース確認（`.claude/state/agent-trace.jsonl`）
-5. Plans.md と実装の差分検出
-6. 未更新マーカーの自動修正提案
-7. 次のアクション提示
-
-**レトロスペクティブ**（デフォルト ON）:
-`cc:完了` タスクが 1 件以上あれば自動的に振り返りを実行する。
-見積もり精度、ブロック原因パターン、スコープ変動を分析し、学びを記録。
-`sync --no-retro` で明示的にスキップ可能。
+実装状況と Plans.md を照合し、差分を検出・更新する（Plans.md 現状取得 → フォーマット検出 → git 状況取得 → agent trace 分析 → 差分検出 → マーカー修正提案 → 次アクション提示）。
+`cc:完了` タスクが 1 件以上あれば、見積もり精度・ブロック原因・スコープ変動を分析するレトロスペクティブをデフォルト ON で実行する（`sync --no-retro` でスキップ）。
+Step 0-6 の完全版・harness-mem への記録手順は [references/sync.md](${CLAUDE_SKILL_DIR}/references/sync.md) を参照。
 
 ### team mode / issue bridge
 
@@ -360,7 +315,7 @@ Plans.md は正本のまま維持し、GitHub Issue 連携は opt-in の team mo
 
 ### named Plans
 
-複数の Plans.md を使う場合は `plans/manifest.json` を正本にして、名前で選択する。
+複数の Plans.md を使う場合は `plans/manifest.json` を正本にして、名前で選択する（1 run では 1 つの named plan だけを使う。long-running / CI / issue bridge では active pointer に頼らず `--plan <name>` を渡す。manifest path は project root 相対のみ）。
 
 ```bash
 scripts/plan-registry.sh list
@@ -369,39 +324,15 @@ scripts/plans-issue-bridge.sh --plan roadmap --format markdown
 node scripts/generate-sprint-contract.js --plan roadmap 9.1.1
 ```
 
-運用ルール:
-
-- 1 run では 1 つの named plan だけを使う
-- long-running / CI / issue bridge では active pointer に頼らず `--plan <name>` を渡す
-- manifest path は project root 相対のみ。絶対パス、`..`、repo 外 symlink は拒否される
-
-参照:
-
-- `docs/plans/named-plans.md`
+参照: `docs/plans/named-plans.md`
 
 ## Plans.md フォーマット規約
 
 ### フォーマット
 
-```markdown
-# [プロジェクト名] Plans.md
-
-作成日: YYYY-MM-DD
-
----
-
-## Phase N: フェーズ名
-
-| Task | 内容 | DoD | Depends | Status |
-|------|------|-----|---------|--------|
-| N.1  | 説明 | テスト通過 | - | cc:TODO |
-| N.2  | 説明 | lint エラー 0 | N.1 | cc:WIP |
-| N.3  | 説明 | マイグレーション実行可能 | N.1, N.2 | cc:完了 |
-```
-
-**DoD（Definition of Done）**: 検証可能な完了条件を 1 行で記述。「いい感じ」「ちゃんと動く」は禁止。Yes/No で判定できる形にする。
-
-**Depends**: タスク間の依存関係。`-`（依存なし）、タスク番号（`N.1`）、カンマ区切り（`N.1, N.2`）、フェーズ依存（`Phase N`）。
+5 カラム（Task / 内容 / DoD / Depends / Status）の Markdown table。DoD は Yes/No 判定できる検証可能な 1 行（「いい感じ」「ちゃんと動く」は禁止）。
+Depends は `-`（依存なし）/ タスク番号 / カンマ区切り複数 / フェーズ依存のいずれか。生成テンプレート全文（Purpose 行含む）は
+[references/create.md](${CLAUDE_SKILL_DIR}/references/create.md) を参照。
 
 ### TDD tags
 

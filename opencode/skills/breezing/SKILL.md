@@ -70,17 +70,11 @@ Lead は run 単位で、作業内容・量からフラットに backend を選�
 - **3 行以上の経緯振り返り**: 結論を引き伸ばす長い前置き。経緯が必要なら 1 行に圧縮
 - **起動シーケンス中の ★ Insight ブロック**: Insight は最終 report で 1 回のみ
 
-違反例 (冗長):
+例 (違反 → 正常):
 ```
-× 「composer 2.5 使うモード」= cursor backend で Composer に委託、ですね（と解釈の言い換え）
-× 「前回 Reviewer が止まったので別系統に逃がすのは理にかなっています」（3 行以上の振り返り）
-× 「使い方を確認します」 → bash → 「呼べます」（中身のない前置き + 同じ事実の 2 回言い換え）
-```
-
-正常例 (簡潔 + 計画明示):
-```
-🚀 cursor / composer-2.5-fast / feat/hah-11-golden-rule-lint / Reviewer
-これから: backend resolve → composer に advisory findings 委譲 (read-only) → brain 一次レビューで verdict 確定
+× 「composer 2.5 使うモード」= cursor backend で Composer に委託、ですね（解釈の言い換え、中身のない前置き）
+○ 🚀 cursor / composer-2.5-fast / feat/hah-11-golden-rule-lint / Reviewer
+  これから: backend resolve → composer に advisory findings 委譲 (read-only) → brain 一次レビューで verdict 確定
 ```
 
 ## Quick Reference
@@ -100,18 +94,9 @@ Lead は run 単位で、作業内容・量からフラットに backend を選�
 
 ## Brief Composer v0
 
-`/breezing` の argument-hint（`all|N-M|--codex|--cursor|--reviewer-only|--parallel N|--no-commit|--no-discuss|--auto-mode`）の**どれにも一致しない自由文入力**向けの分解・確認フロー。
-
-1. **分類** — Lead は `bash scripts/breezing-brief.sh classify "<args>"` を実行する。
-   - 出力 `structured` → 既存の structured 引数経路（上記 Quick Reference）へそのまま進む。
-   - 出力 `free-text` → 次ステップへ。
-2. **分解** — Lead の LLM が自由文を **3〜7 個の subtasks** に分解し、`brief-card.v1` JSON カードを組み立てる（schema: `templates/schemas/brief-card.v1.json`）。v0 では `breezing-brief.sh` は LLM を呼ばない。
-3. **提示** — カード（goal / subtasks[id,title,dod] / scope_files / risk_notes / confidence）をユーザーに提示する。`confidence` は `high` | `medium` | `low` のいずれか。
-4. **確定** — ユーザー Yes/No の後、`bash scripts/breezing-brief.sh confirm <yes|no> <card.json>` を実行する。
-   - `yes` → `DISPATCH: <subtask 数>` を出力し、既存 team 経路（worktree-per-task）へ渡す。
-   - `no` → `DISPATCH: 0`（実行 0 件の dry 契約）。
-
-検証のみ必要な場合: `bash scripts/breezing-brief.sh validate <card.json>`（exit 0 = valid）。
+argument-hint のどれにも一致しない自由文入力は `bash scripts/breezing-brief.sh classify "<args>"` で `structured` / `free-text` を判定する。
+`free-text` は 3〜7 個の subtasks に分解した `brief-card.v1` カードをユーザーに提示し、`breezing-brief.sh confirm <yes|no> <card.json>` で確定する。
+分解ロジック・schema・`DISPATCH` 契約の詳細は [references/lean-path-detail.md](${CLAUDE_SKILL_DIR}/references/lean-path-detail.md) を参照。
 
 ## Options
 
@@ -241,18 +226,8 @@ run 開始時に resolver が解決する（現行の operator 既定はユー�
 `bash "${HARNESS_PLUGIN_ROOT}/scripts/resolve-impl-backend.sh"` の出力が `cursor` のときに有効
 （`--cursor` は resolver への明示 override として precedence 最上位）。Worker 層を介在させず Lead が直接 `cursor-companion.sh` を呼ぶ（Phase 85 SSOT、`.claude/rules/cursor-cli-only.md` Topology 節）。
 
-#### 削除される step（claude backend と比べて節約）
-
-| Step | 削除理由 | 節約秒数 |
-|---|---|---|
-| `claude-code-harness:worker` agent spawn | cursor backend は Worker 介在なし | 5-30s |
-| self_review 5 件ゲート | `worker-report.v1` が cursor では生成されないため不要 | 10-60s × retry |
-| sprint-contract 3 段チェーン (generate→enrich→ensure) | Worker 契約不要なら contract 不要 | 2-5s × N |
-| Phase 0 Q1-Q3 interactive | `--no-discuss all` 既定 (Plans/Depends は Lead が直読み) | 15-30s |
-| Effort スコアリング | cursor backend では ultrathink 注入不要 | 0.5-1s × N |
-| Plans.md re-parse (per task) | session 内 cache (mtime+hash で短絡) | 3-8s |
-
-合計 baseline `15-35s` → target `3-7s` で 1 タスク目の cursor 委譲開始までを短縮。
+cursor backend は Worker agent spawn / self_review 5 件ゲート / sprint-contract 3 段チェーン / Phase 0 interactive / effort スコアリングを省略し、baseline `15-35s` → target `3-7s` で 1 タスク目の委譲を開始する。節約内訳の全表は
+[references/lean-path-detail.md](${CLAUDE_SKILL_DIR}/references/lean-path-detail.md) を参照。
 
 #### 既定 flow（cursor backend）
 
@@ -280,10 +255,7 @@ Worker 実装は既完了（別系統 = claude / Codex で済んだ）、advisor
 read mode で省略できるもの: 専用 `.git` worktree / cursor 出力の取り込みレビュー / cherry-pick / `worker-report.v1` / self_review 5 件。**省略不可**: 対象 diff への brain 一次レビュー（verdict 確定）。
 read mode でも保持必要: `.cursorignore` / egress allowlist (`*.cursor.sh`) / permissions.json (best-effort)。詳細は `.claude/rules/cursor-cli-only.md` 「Read mode delegation (lean path)」節を参照。
 
-**用途**:
-- Anthropic 側 server rate limit で Reviewer が止まった時に advisory findings を先に集めておく前倒し（brain verdict の代替にはならない — verdict は brain 復帰後に確定）
-- Worker 完了済みで Reviewer だけ別系統に分散
-- Codex review が auth 失敗した時の manual fallback
+**用途**（rate limit 時の前倒し集約 / Reviewer だけ別系統に分散 / Codex review auth 失敗時の fallback、詳細は [references/lean-path-detail.md](${CLAUDE_SKILL_DIR}/references/lean-path-detail.md)）。
 
 #### Cursor adapter support claim
 
@@ -373,35 +345,8 @@ heartbeat を増やして安心感を作るのではなく、status / log / drif
 
 ### Monitor ツール活用ガイド (CC 2.1.98+)
 
-長時間実行コマンドを監視する時は、ポーリング (Read で定期的にファイル末尾を読む) ではなく **Monitor ツール** を使用する。Monitor はバックグラウンドプロセスの stdout 各行を逐次通知として Lead に届けるため、polling より低レイテンシかつ低トークン消費で状況を把握できる。
-
-**適用例**:
-- `go test ./... -v` の実行中進捗監視
-- `gh run watch` による GitHub Actions 進捗追跡
-- `npm run build --watch` / `vite build --watch` のビルドエラー即時検知
-- `codex-companion.sh status <job-id>` での Codex job 完了検知
-- `docker-compose logs -f` / `kubectl logs -f` のデプロイログ追跡
-
-**使い分けの判断基準**:
-
-| 対象 | Monitor 使う? | 理由 |
-|---|---|---|
-| Agent (Worker / Reviewer) の完了監視 | 不要 | Agent 層が自前で完了通知する |
-| `run_in_background: true` で投げた shell process | 推奨 | stdout 各行を逐次通知で拾える |
-| 短時間の一発コマンド (`go test` 1 回実行) | 不要 | 通常の Bash tool 実行で十分 |
-| 長時間 tail / watch / stream 系コマンド | 推奨 | polling より効率的 |
-
-**Breezing Lead での典型パターン**:
-
-```
-Lead:
-  Task(Worker1, ...)           ← Agent 完了待ち (Monitor 不要)
-  Task(Worker2, ...)           ← 同上
-  Bash(run_in_background, "gh run watch --exit-status")
-  Monitor(tailCommand="...")   ← CI 失敗を即時検知 → Worker に修正指示
-```
-
-これにより Lead が「Worker 完了 → CI 失敗検知 → 修正指示」の反応速度を上げられる。
+`run_in_background: true` で投げた長時間 shell process（`gh run watch`、build --watch 等）は、ポーリングではなく **Monitor ツール**で stdout を逐次通知として拾う。Agent (Worker/Reviewer) の完了監視や短時間の一発コマンドには不要。
+使い分け表・典型パターンは [references/monitor-and-learning.md](${CLAUDE_SKILL_DIR}/references/monitor-and-learning.md) を参照。
 
 ### Review Policy（全モード統一）
 
@@ -427,67 +372,17 @@ Breezing モードでもレビューは **Codex exec 優先 → 内部 Reviewer 
 
 ### Phase 0: Planning Discussion（構造化 3 問チェック）
 
-全タスク実行前に、以下の 3 問で計画の健全性を確認する。
-`--no-discuss` 指定時は全スキップ。
-
-**Q1. スコープ確認**:
-> 「{{N}} 件のタスクを実行します。スコープは適切ですか？」
-
-多すぎる場合は優先度（Required > Recommended > Optional）で絞り込みを提案。
-
-**Q2. 依存関係確認**（Plans.md に Depends カラムがある場合のみ）:
-> 「タスク {{X}} は {{Y}} に依存しています。実行順序は合っていますか？」
-
-Depends カラムを読み取り、依存チェーンを表示。循環依存があればエラー。
-
-**Q3. リスクフラグ**（`[needs-spike]` タスクがある場合のみ）:
-> 「タスク {{Z}} は [needs-spike] です。先に spike しますか？」
-
-spike 未完了の `[needs-spike]` タスクがある場合、spike を先行実行するか確認。
-
-3 問とも問題なければ、Phase A に進む（合計 30 秒で完了する設計）。
+全タスク実行前に、スコープ（Q1）・依存関係（Q2、Depends カラムがある時のみ）・リスクフラグ（Q3、`[needs-spike]` がある時のみ）の 3 問で計画の健全性を確認する（合計 30 秒設計）。
+`--no-discuss` 指定時は全スキップ。3 問の具体文言と判定ロジックは [references/lean-path-detail.md](${CLAUDE_SKILL_DIR}/references/lean-path-detail.md) を参照。
 
 ### Universal Violations Injection（セッション内 Worker 間の学習伝播）
 
-同一 `/breezing` 起動内で蓄積された Reviewer の universal gotchas を次 Worker の briefing 冒頭に自動注入する。**同一セッション内のみ有効**（セッション終了で破棄、`session-memory` には書かない）。
-
-```python
-# Phase A 開始時に Lead プロセスの in-memory 配列を初期化
-universal_violations = []  # List[str] — このセッション内で蓄積
-
-# Phase B で Worker を spawn する直前、briefing 冒頭に注入:
-def build_worker_briefing(task, contract_path):
-    header = ""
-    if universal_violations:
-        header = (
-            "🚨 同一セッションで既に検出された universal 違反（再発禁止）:\n"
-            + "\n".join(f"- {v}" for v in universal_violations)
-            + "\n\n"
-        )
-    return header + f"タスク: {task.内容}\nDoD: {task.DoD}\ncontract_path: {contract_path}\nmode: breezing"
-
-# Reviewer が review-result.v1 を返した後、Lead が scope="universal" のみ抽出して累積:
-for update in reviewer_result.memory_updates:
-    # 後方互換: 文字列は task-specific 扱い → 無視
-    if isinstance(update, str):
-        continue
-    if update.get("scope") == "universal":
-        universal_violations.append(update["text"])
-```
-
-**方針**: 過剰設計回避のため、`session-memory` や `decisions.md` への永続化は行わない。Lead プロセスの in-memory 配列に保持するだけで、`/breezing` セッション終了時に破棄する（issue #87 本文の方針）。
+同一 `/breezing` 起動内で蓄積された Reviewer の universal gotchas を次 Worker の briefing 冒頭に自動注入する。**同一セッション内のみ有効**（セッション終了で破棄、`session-memory` には書かない）。実装（in-memory 配列 + briefing 注入コード）は
+[references/monitor-and-learning.md](${CLAUDE_SKILL_DIR}/references/monitor-and-learning.md) を参照。
 
 ### 依存グラフに基づくタスク割り当て
 
-Plans.md に Depends カラムがある場合（v2 フォーマット）、依存グラフに従ってタスクを実行する:
-
-1. **Depends が `-` のタスク**を先に実行。独立タスクが複数あれば並列 spawn 可能
-2. 各 Worker 完了後、Lead がレビュー→cherry-pick（harness-work Phase B 参照）
-3. 依存元タスクが main に cherry-pick されたら、そのタスクに依存していたタスクを次に実行
-4. 全タスクが完了するまで繰り返す
-
-> **注意**: 各タスクの「Worker 完了→レビュー→cherry-pick」は逐次処理。
-> 並列化できるのは独立タスク（Depends が `-`）の Worker spawn 部分のみ。
+Plans.md に Depends カラムがある場合（v2 フォーマット）、`Depends` が `-` の独立タスクを先に並列 spawn し、各 Worker 完了後に Lead がレビュー→cherry-pick する（harness-work Phase B 参照）。依存元が main に入ったら、それに依存していたタスクを次に実行し、全タスク完了まで繰り返す。逐次処理なのは「Worker 完了→レビュー→cherry-pick」で、並列化できるのは独立タスクの Worker spawn 部分のみ。詳細は [references/lean-path-detail.md](${CLAUDE_SKILL_DIR}/references/lean-path-detail.md) を参照。
 
 ## Codex Native Orchestration
 
