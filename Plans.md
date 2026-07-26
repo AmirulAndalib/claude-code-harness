@@ -143,7 +143,7 @@ Purpose: Phase 121 closeout で記録した非 blocking 残余 edge 2 件を、E
 |------|------|-----|---------|--------|
 | 122.1 | `[lane:gate]` `[tdd:required]` `FormatSessionTeamList` (`go/internal/hookhandler/session_team_view.go:166-197`) を lease 判定と同じ union へ: shared presence 一覧に `LoadLiveSessionsFromActiveJSON` 由来のみのセッションを追記 (label=short id, task/since 空)。liveness 判定は filename+mtime (presence 側) / active.json last_seen (roster 側) の既存規則を変えない | (a) RED: 「active.json のみのセッションが list に出る」を期待するテストが現実装で fail する実測を記録, (b) presence + active.json 両方に居るセッションの重複表示なし, (c) 既存 session_team_view / Phase 120 presence テスト非退行, (d) spec の presence card 契約に union 1 行追記, (e) `cd go && go test ./internal/hookhandler/... -count=1` PASS + gofmt clean | - | cc:done [66eadf07; RED 実測 "TestSessionTeamView_ListIncludesActiveJSONOnlySession FAIL" 引用確認。既存 helper (readActiveJSON / sessionShortID) 流用で重複実装なし。Lead 独立検証: hookhandler PASS + gofmt clean + 実機 list 表示] |
 | 122.2 | `[lane:gate]` `[tdd:required]` `inbox check --from-env` (`go/cmd/harness/inbox_check.go:127-131`) の Resolve 失敗時に stdin session_id fallback を追加し claude 経路 (`resolveInboxAgentFromStdin`) と揃える。team は `HARNESS_LIVEMSG_TEAM` → "default"。fallback 到達も不能なら stderr に理由 1 行 (`livemsg: identity unresolved (set HARNESS_LIVEMSG_TEAM/AGENT or run under breezing)`) を出して return 0 (fail-open 非退行) | (a) RED: 「env 無し + stdin session_id あり → agent=session_id で配達」を期待するテストが現実装で fail する実測を記録, (b) env あり時は env 優先 (既存テスト非退行), (c) stdin も無い時の stderr 理由 1 行 + exit 0, (d) `docs/claude-livemsg-delivery.md` に fallback チェーン表を追記, (e) `cd go && go test ./cmd/... -count=1` PASS + gofmt clean | - | cc:done [77fd2869; RED 実測 "TestInboxCheck_FromEnvStdinSessionIDFallback FAIL" 引用確認。Resolve 失敗を共通 env→stdin fallback へ合流させる形 (121.2 厳格裁定の意図的更新、fail-open 非退行)。Lead 独立検証: cmd PASS + gofmt clean + 実機 smoke 3 面 (stdin 解決 silent / 完全不明で診断 1 行 exit 0)] |
-| 122.3 | `[lane:gate]` `[tdd:skip:docs-closeout]` closeout: CHANGELOG [Unreleased] 追記 (今まで/今後形式)、binary 4 平台再ビルド (`bin/harness` shim 非接触)、gates (`tests/validate-plugin.sh` / `scripts/ci/check-consistency.sh`)、PR | (a) validate 0 failed, (b) consistency PASS, (c) PR CI green 後 merge commit で main へ | 122.1, 122.2 | cc:wip |
+| 122.3 | `[lane:gate]` `[tdd:skip:docs-closeout]` closeout: CHANGELOG [Unreleased] 追記 (今まで/今後形式)、binary 4 平台再ビルド (`bin/harness` shim 非接触)、gates (`tests/validate-plugin.sh` / `scripts/ci/check-consistency.sh`)、PR | (a) validate 0 failed, (b) consistency PASS, (c) PR CI green 後 merge commit で main へ | 122.1, 122.2 | cc:done [b91459b8; PR #268 merge commit baa94c5d (CI 9/9 pass、CodeRabbit 含む)。validate 127/0 + consistency + ledger OK] |
 
 事前確認 (plan-time pre-approval):
 - 事項: external-send — `git push origin <branch>` / `gh pr create` / `gh pr merge --merge` (PR closeout)
@@ -151,3 +151,53 @@ Purpose: Phase 121 closeout で記録した非 blocking 残余 edge 2 件を、E
   scope: Phase 122 / Task 122.3
   承認: 未承認 (実装完了後にユーザーへ確認)
 - secret-read / destructive: なし
+
+---
+
+## Phase 123: breezing default pipeline + backend/model 既定変更 (operator 裁定 2026-07-24) [P2]
+
+Purpose: operator 裁定 4 点を harness に反映する。(1) 実装 backend 既定を Native subagent (claude) に固定し、backend=claude 時の常時 Fallback 警告を resolver 不正値 fallback 時のみへ縮小、作業内容・量による per-run フラット判断基準を breezing / harness-work に明文化。(2) codex 委譲 catalog を gpt-5.6-sol へ更新 (standard/deep/review/advisor=xhigh、release/long-context=high、lite=gpt-5.4-mini 据え置き)。(3) harness-plan のスコープ既定を「今進められる全作業」に固定。(4) /breezing 単体で plan gate → work → Integrated Review Gate (fresh-context 独立 reviewer + codex second opinion、APPROVE まで最大 3 回) → easy 作法報告を完走する Default Pipeline を既定化。Spec skip reason: 実行時 routing / skill 運用の変更で product contract (spec.md) の対象外。advisor 系 gpt-5.4 チェーン (go sprint_contract + config-utils + テスト 3 本) は binary rebuild を要する別契約のため意図的に据え置き。team_validation_mode: manual-pass (独立 harness-review fork APPROVE + codex second opinion で検証)。unknown_data: gpt-5.6-terra の model ID はローカル未確認 (operator config で実在確認済みの sol を採用)。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 123.1 | `[lane:gate]` `[tdd:skip:config-docs-skill]` backend 既定 native 化 + codex gpt-5.6-sol xhigh + harness-plan 全量スコープ既定 + breezing Default Pipeline (skill 4 面 + mirrors + tests + docs + CHANGELOG。user-scope impl-backend.env も claude へ) | (a) test-model-routing / test-impl-backend / test-composer-backend-trigger / test-grok-adapter-candidate PASS, (b) validate-plugin 0 failed + check-consistency PASS, (c) mirror-state.v1 in-sync, (d) 独立 harness-review APPROVE | - | cc:done [c4fca26a] |
+| 123.2 | `[lane:gate]` `[tdd:skip:skill-docs]` review minor 指摘反映: Integrated Review Gate の opt-out flag `--no-review-gate` を breezing (claude/codex 変種) に追加 + 本 Phase の Plans.md 台帳 backfill | (a) breezing SKILL 両変種 + mirrors に flag 記載で in-sync, (b) check-consistency PASS | 123.1 | cc:done [03454762] |
+| 123.3 | `[lane:gate]` `[tdd:skip:config-docs-skill]` codex second opinion (retry 完走) の REQUEST_CHANGES 対応 + Opus 5 裁定反映: (P1) Integrated Review Gate を Phase C 最終化前へ移動 + 未収束時 cc:WIP 差し戻し、(P1) --no-commit run の review target を working tree に、(P2) breezing-brief classifier に --no-review-gate 追加、(P2) spec/policy doc の HARNESS_BRAIN_MODEL 契約同期。加えて operator 裁定 (2026-07-25) で claude catalog を Claude 5 世代へ全面更新 (4.8 全廃: brain=claude-opus-5 / review=claude-fable-5 / worker=claude-sonnet-5、cursor brain 系=claude-fable-5) | (a) test-model-routing / test-breezing-brief PASS, (b) validate-plugin 0 failed + check-consistency PASS, (c) mirror in-sync, (d) codex 指摘 4 件すべて反映 | 123.2 | cc:done [d5d1b28d] |
+| 123.4 | `[lane:gate]` `[tdd:required]` follow-up: go/cmd/harness/validate.go の validModelNames に claude-opus-5 を追加 (frontmatter で Opus 5 を宣言可能に) + 4 平台 binary rebuild + effort-level-policy.md の Opus 5 実測再検証 (xhigh downgrade 挙動が 4.8 記述のまま) | (a) validate.go に claude-opus-5、(b) binary drift gate green、(c) effort 挙動の実測 evidence を docs に反映 | 123.3 | cc:done [5226c567; TDD RED 実測 "TestValidateSkills_Opus5ModelAccepted FAIL" 引用確認。binary rebuild c1a1ef25 + drift gate OK。effort 実測は nested CLI の context bleed を unknown と明記] |
+
+事前確認 (plan-time pre-approval):
+- 事項: external-send — `git push origin <branch>` / `gh pr create` (配布プラグインとしての公開)
+  理由: 123.x の変更を配布 plugin に反映するための push / PR
+  scope: Phase 123 / Task 123.1-123.2
+  承認: 未承認 (レビュー完了後にユーザーへ確認)
+- secret-read / destructive: なし
+
+---
+
+## Phase 124: Claude 5 unhobbling — 常時ロード context の rightsizing (Anthropic context engineering 指針 2026-07-25 反映) [P2]
+
+Purpose: Claude 5 世代指針 (Anthropic Tariq 記事: system prompt 80% 削減でも eval 非劣化、rules→judgment / 全部先頭→progressive disclosure) を harness の context 面に適用する。実測: 常時注入は project CLAUDE.md 13KB + user CLAUDE.md 10.8KB + `.claude/rules/` 19 ファイル **103.2KB** で、支配項は rules 層。うち v3-architecture.md は廃止済み v3 の歴史記録、command-editing.md は自ら DEPRECATED を名乗る文書で、どちらも毎セッション注入されている。**削らない領域 (governance 契約)**: R01-R13 / deny・ask / worker-report.v1・self_review schema / test-quality (改ざん禁止) / Risk Gates — 記事の「highly important areas は拘束維持」に該当。削る対象は判断で足りる style 指導・歴史記録・状況限定 rule の常時注入。opus-4-7-prompt-audit.md はテスト gate 非接続 (grep で機械 enforcement なしを確認済み) のため doc 改訂のみで安全に世代交代できる。Spec skip reason: context 配線の最適化で product contract 不変。team_validation_mode: not_required_lightweight (棚卸し結果の適用は 124.3 で operator 承認を挟む)。unknown_data: CC の rules `paths` frontmatter による scope 制御の正確な挙動 (124.1 で実測)。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 124.1 | `[lane:gate]` `[tdd:skip:context-audit]` `.claude/rules/` 19 ファイルを 3 分類: (i) 常時必須 (governance 契約), (ii) 状況ロード化 (`paths` frontmatter / skill references/ 移設 / CLAUDE.md からのポインタ参照化), (iii) 廃止 (v3-architecture → `.claude/memory/archive/`、command-editing 削除)。`paths` frontmatter の実挙動を 1 rule で実測してから適用 | (a) before/after KB 表 (目標: 常時注入 rules ≤ 30KB), (b) governance 契約 rule の常時ロード維持を明記, (c) check-consistency の rule 存在チェック非破壊 | - | cc:done [54becc3a+8242a860; 実測 103.2KB→29.2KB (71.7%減、trunk 再実測 29,946B 一致)。stub 化 12 + why 分離 5 + archive/削除 2。test-quality/implementation-quality は paths frontmatter 済で対象外と判明。consistency + validate 127/0 + retired-alias 0 hits] |
+| 124.2 | `[lane:gate]` `[tdd:skip:skill-docs]` SKILL.md rightsizing: harness-work (958 行) / harness-release (535) / breezing (521) / harness-plan (462) を references/ 分割で 500 行以下へ。旧世代向け防御ブロック (違反例の列挙、fork auto-start の禁止行動 literal、重複 Narration 例) は「判断に任せる」方向で圧縮。frontmatter 契約 (schema 名・enum・回数上限) は非接触 | (a) 4 skill が 500 行以下, (b) mirror in-sync, (c) validate-plugin 0 failed, (d) 各 skill の削減 diff に「契約維持 / style 削減」の区分メモ | 124.1 | cc:done [b36a55f7; 958→450 / 535→379 / 521→416 / 462→393。literal pin 12 テスト個別 green。cherry-pick conflict 1 件 (backend 警告節の裁定巻き戻し) は Lead が trunk 裁定側で解消] |
+| 124.3 | `[lane:gate]` `[tdd:skip:standard-doc]` agent prompt 基準の世代交代: opus-4-7-prompt-audit.md を claude-5-prompt-standard.md へ置換。維持: schema 名・列挙値固定、回数上限の数字、wrapper command 完全一致、権限境界 1 行判定。撤廃: 曖昧語 blanket 禁止 (判断領域)、例文必須主義 (記事: examples は探索を狭める → interface 設計で示す)。operator 承認後に agents/*.md へ適用 | (a) 新 standard に維持/撤廃の対比表, (b) operator 承認記録, (c) agents/worker.md・reviewer.md・advisor.md の契約 (worker-report.v1 / review-result.v1 / advisor-response.v1) 非破壊で style 圧縮 | 124.1 | cc:done [950c54d5+fcf7bba7; 新基準 4,008B (paths frontmatter で agents/*.md scoped)。agents 3 本は Phase 44.4 監査済みで撤廃対象ゼロと確認し意図的非変更。retired entry + scan 0 hits] |
+| 124.4 | `[lane:gate]` `[tdd:skip:verification]` 検証: 全 gate green + 常時ロード before/after 実測 + breezing 1 run の挙動 spot check (pipeline 契約が維持されているか) | (a) validate-plugin 0 failed + check-consistency PASS, (b) before/after KB 表を CHANGELOG に記載, (c) /breezing 1 run で plan gate → work → review gate → easy 報告の完走 evidence | 124.2, 124.3 | cc:done [60852548; gates 全 green (validate 127/0 + consistency PASS ×3)、KB 表は CHANGELOG [Unreleased] Phase 124 エントリに記載、(c) は本 run (2026-07-26 /breezing all) が plan gate (Phase 125 起票)→work 5 task→Phase D 統合レビュー APPROVE (独立 fork、codex は MCP wedge ×2 で codified fallback)→easy 報告の全段完走 evidence] |
+
+事前確認 (plan-time pre-approval):
+- 事項: destructive — `.claude/rules/v3-architecture.md` の archive 移設と `command-editing.md` の削除 (git 履歴には残る)
+  理由: 124.1 の (iii) 廃止分類の実行に必要
+  scope: Phase 124 / Task 124.1
+  承認: 未承認 (実行前にユーザーへ確認)
+- secret-read / external-send: なし
+
+---
+
+## Phase 125: Stop hook 無限ブロック修正 (Issue #269、operator 起票 2026-07-26) [P1]
+
+Purpose: v5.3.1 の Stop hook (`go/internal/hookhandler/stop_session_evaluator.go:73-94`) は Plans.md の WIP > 0 で無条件 `decision: block` を返し、再入 (`stop_hook_active: true`) でも判定を変えない。調査のみのセッションでは WIP を減らす正当手段がなく、実測 12 連続発火でセッション終了不能 (cx-harness、WIP 32 件)。Issue #269 期待動作案 1 (再入上限) を採用: 初回 Stop は従来どおり block (marker 遷移の nudge 価値を維持)、再入時 (`stop_hook_active=true`) は WIP が残っていても systemMessage 警告 + `ok: true` で停止を許可する。状態ファイル不要 (stop_hook_active が CC 側の再入シグナル)。既存テスト `StoppedStateDoesNotBypassWIP` 等の期待値変更は Issue #269 を根拠とする意図的仕様変更として commit に明記する (test-quality: 弱体化ではなく仕様更新)。案 2 (session が Plans.md に触れたか) / 案 3 (config knob) は今回見送り、再発時の follow-up とする。Spec skip reason: hook 挙動の bugfix で product contract の追加なし。team_validation_mode: not_required_lightweight。unknown_data: なし。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 125.1 | `[lane:gate]` `[tdd:required]` Stop 再入時 (stop_hook_active=true) は WIP 残でも警告 + 停止許可へ変更。初回 block は維持。コード内コメント (「ホスト側 block cap が最終ガード」の破れた前提) も実態に合わせ更新 | (a) RED: 「stop_hook_active=true + WIP>0 → ok:true + systemMessage 警告」を期待するテストが現実装で fail する実測記録, (b) 初回 (stop_hook_active=false) の block 非退行, (c) 既存テストの期待値変更は Issue #269 参照付きで最小限, (d) `cd go && go test ./internal/hookhandler/... -count=1` PASS + gofmt clean, (e) Issue #269 へ修正 commit を参照するコメント投稿 (close は release 後) | - | cc:done [026524d3; RED 実測 "ReentryAllowsStopWithWarning FAIL decision=block" 引用確認。既存 StopHookActiveProgressPolicy の期待値変更は Issue #269 根拠で最小限。hookhandler 18.8s PASS + binary rebuild + drift gate OK] |

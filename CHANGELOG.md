@@ -6,6 +6,10 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [5.4.0] - 2026-07-26
+
+### テーマ: Claude 5 世代適応 — context unhobbling・モデル catalog 全面更新・breezing 自律 pipeline
+
 ### Added
 
 #### HOTL session messaging: 人間もセッションも名前で呼び合える宛先付きメッセージ (Phase 121)
@@ -32,7 +36,57 @@ Change history for claude-code-harness.
 
 **今後**: `session list` は lease 判定と同一の生存集合 (presence ∪ active.json) を表示します (roster のみのセッションは短縮 ID label で追記)。`--from-env` は env で解決できない場合に hook stdin の `session_id` へ fallback し (claude host と同じ経路)、それでも不明なら `livemsg: identity unresolved (...)` を stderr に 1 行出して従来どおり fail-open します。host 別の解決順は `docs/claude-livemsg-delivery.md` の fallback チェーン表が正本です。
 
+#### breezing Default Pipeline: plan → work → OK までレビュー → 報告を 1 コマンドで完走
+
+**今まで**: 「`/harness-plan` で計画 → `/breezing` → `/harness-review` を独立サブエージェント + Codex second opinion で OK が出るまで → easy で報告」という一連の流れを、operator が毎回 4 段の指示として打つ必要がありました。
+
+**今後**: `/breezing` 単体でこの pipeline 全体が既定動作になります。plan 未作成なら先に `harness-plan` を実行し (スコープ既定は「今進められる全作業」)、実装後は run 全体 diff への Integrated Review Gate (fresh-context 独立 reviewer + `codex-companion.sh review`) を APPROVE が出るまで最大 3 回反復し、最終報告は easy 作法で出します。
+
+#### harness-plan スコープ既定: 「今進められる全作業」
+
+**今まで**: 計画依頼の範囲解釈がセッション任せで、依頼者の意図 (着手可能な全作業) より狭い計画が作られることがありました。
+
+**今後**: 範囲の明示がない計画依頼は「現時点で着手可能なすべての作業」を既定スコープとして扱います。件数が多い場合も絞り込みではなく Required / Recommended / Optional / Reject の全量分類で提示し、除外は Reject 理由として明示します。
+
+#### `harness validate` が claude-opus-5 を受理 (Phase 123.4)
+
+**今まで**: agent/skill frontmatter に `model: claude-opus-5` を書くと validate が「認識できないモデル名」で reject していました (Opus 5 は 2026-07-24 リリース)。
+
+**今後**: validModelNames に claude-opus-5 を追加し、TDD (RED→GREEN) + 4 平台 binary rebuild + drift gate green で反映済みです。
+
+#### Claude 5 unhobbling: 毎セッション注入される context を 1/3 に削減 (Phase 124)
+
+**今まで**: セッション開始のたびに `.claude/rules/` の 19 ファイル 103.2KB が無条件で Claude の context に注入されていました。中には廃止済み v3 構成の歴史記録 (v3-architecture.md) や、冒頭で自ら DEPRECATED と宣言する文書 (command-editing.md) まで含まれ、Anthropic の Claude 5 指針 (過剰な常時ルールは判断を鈍らせる) に照らして逆効果の状態でした。SKILL.md も最大 958 行 (harness-work) まで肥大していました。
+
+**今後**: governance 契約 (報酬ハック防止・deny 面・Risk Gates) は常時ロードのまま維持し、状況限定ルールは pointer stub 化 (正本は skills references / docs/rules へ)、廃止文書は archive/削除しました。
+
+| 面 | Before | After |
+|---|---|---|
+| 常時注入 rules | 103.2KB (19 ファイル) | **29.2KB** (71.7% 削減) |
+| harness-work SKILL.md | 958 行 | 450 行 |
+| breezing / harness-release / harness-plan | 521 / 535 / 462 行 | 416 / 379 / 393 行 |
+
+agent prompt 監査基準も世代交代しました: opus-4-7-prompt-audit.md (曖昧語 blanket 禁止・例文必須) を退役し、契約条項 (schema 名・列挙値・回数上限・wrapper command・権限境界) だけ残す claude-5-prompt-standard.md に置換 (agents/*.md 編集時のみ paths frontmatter でロード)。
+
 ### Changed
+
+#### 実装 backend の既定を Native subagent (claude) に、選択は作業内容でフラット判断
+
+**今まで**: breezing の backend は resolver 既定こそ `claude` でしたが、`backend=claude` になると「cursor を使うべきでは」という Fallback 警告が毎回出る設計で、実質 cursor 優先の運用でした。
+
+**今後**: `claude` (Native subagent、Worker/Reviewer は Sonnet 5 系 tier) が意図された既定になり、警告は resolver の不正値 fallback 時のみ出ます。Lead は作業内容・量に応じて per-run で `--backend codex|cursor` をフラットに選択できます (判断基準表を breezing SKILL に追加)。
+
+#### Codex 委譲モデルを gpt-5.6-sol / xhigh に更新
+
+**今まで**: `scripts/model-routing.sh` の codex catalog は standard=gpt-5.5/medium、deep=gpt-5.5/high で、委譲実装が 1 世代前のモデル・控えめな effort で走っていました。
+
+**今後**: standard / deep / review / advisor tier は `gpt-5.6-sol` の `xhigh` で委譲されます (release / long-context は `gpt-5.6-sol` の high、lite は gpt-5.4-mini のまま)。`codex-companion.sh` は呼び出し時に model-routing.sh を解決するため、追加設定なしで反映されます。
+
+#### Claude catalog を Claude 5 世代へ全面更新 (Opus 4.8 全廃)
+
+**今まで**: claude host の brain tier (deep / advisor) は claude-opus-4-8、review tier は claude-sonnet-5、cursor の brain 系 tier は claude-opus-4-8-thinking-xhigh でした。
+
+**今後**: Opus 5 リリース (2026-07-24) を受けた operator 裁定で、Opus 4.8 を catalog から全廃しました。brain = `claude-opus-5` / xhigh (既定。`HARNESS_BRAIN_MODEL=opus|opus5` も同値、`fable` で Fable 5 に切替)、review = `claude-fable-5` / xhigh、worker = `claude-sonnet-5`、cursor の brain 系 tier = `claude-fable-5` / xhigh。spec (execution-backends-and-distribution.md) と model-routing-policy.md も同期しています。
 
 #### PreCompact: Plans.md 未 commit でブロックせず自動 commit して続行 (Phase 121.6)
 
@@ -47,6 +101,12 @@ Change history for claude-code-harness.
 **今まで**: ファイル編集の貸出札 (lease) は全 worktree 共有なのに、持ち主の生存確認は自分の worktree の名簿 (`active.json`) しか見ていませんでした。別 worktree で生存中のセッションが持つ札は、60 分の TTL が切れると「死んだセッションの札」と誤判定され、横取り可能になっていました (spec の「TTL 満了 AND 名簿不在」契約が実質 TTL-only に縮退)。
 
 **今後**: 各セッションが共有側 (`git --git-common-dir` 親) の `.claude/sessions/live-sessions/<session_id>` に presence ファイルを持ち、生存判定は「共有 presence ∪ ローカル名簿」の union になります。別 worktree の生存保持者の lease は TTL 後も保護されます。presence dir 不在時は従来挙動に fallback (not-configured, silent)。ローカル名簿・bash 版 script のスキーマは非接触です。
+
+#### Stop hook が調査のみのセッションを無限ブロックする問題 (Issue #269, Phase 125)
+
+**今まで**: Plans.md に `cc:WIP` タスクが残っていると、Stop hook が停止を無条件でブロックし続けました。調査・整理だけのセッションには WIP を減らす正当な手段がなく、実測で同一メッセージが 12 回連続発火してセッションを終了できませんでした。
+
+**今後**: 初回の Stop は従来どおりブロックして marker 遷移を促しますが、再入 (`stop_hook_active: true`) 時は WIP が残っていても警告 (systemMessage) を出して停止を許可します。状態ファイルの追加なしで無限ブロックを根絶しました。
 
 ## [5.3.1] - 2026-07-20
 
@@ -5456,7 +5516,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.3.1...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.4.0...HEAD
+[5.4.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.3.1...v5.4.0
 [5.3.1]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.3.0...v5.3.1
 [5.3.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.2.0...v5.3.0
 [5.2.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.1.0...v5.2.0
