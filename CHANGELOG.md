@@ -6,6 +6,10 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [5.4.0] - 2026-07-26
+
+### テーマ: Claude 5 世代適応 — context unhobbling・モデル catalog 全面更新・breezing 自律 pipeline
+
 ### Added
 
 #### HOTL session messaging: 人間もセッションも名前で呼び合える宛先付きメッセージ (Phase 121)
@@ -5512,7 +5516,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.3.1...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.4.0...HEAD
+[5.4.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.3.1...v5.4.0
 [5.3.1]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.3.0...v5.3.1
 [5.3.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.2.0...v5.3.0
 [5.2.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.1.0...v5.2.0
