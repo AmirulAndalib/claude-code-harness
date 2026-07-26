@@ -191,3 +191,13 @@ Purpose: Claude 5 世代指針 (Anthropic Tariq 記事: system prompt 80% 削減
   scope: Phase 124 / Task 124.1
   承認: 未承認 (実行前にユーザーへ確認)
 - secret-read / external-send: なし
+
+---
+
+## Phase 125: Stop hook 無限ブロック修正 (Issue #269、operator 起票 2026-07-26) [P1]
+
+Purpose: v5.3.1 の Stop hook (`go/internal/hookhandler/stop_session_evaluator.go:73-94`) は Plans.md の WIP > 0 で無条件 `decision: block` を返し、再入 (`stop_hook_active: true`) でも判定を変えない。調査のみのセッションでは WIP を減らす正当手段がなく、実測 12 連続発火でセッション終了不能 (cx-harness、WIP 32 件)。Issue #269 期待動作案 1 (再入上限) を採用: 初回 Stop は従来どおり block (marker 遷移の nudge 価値を維持)、再入時 (`stop_hook_active=true`) は WIP が残っていても systemMessage 警告 + `ok: true` で停止を許可する。状態ファイル不要 (stop_hook_active が CC 側の再入シグナル)。既存テスト `StoppedStateDoesNotBypassWIP` 等の期待値変更は Issue #269 を根拠とする意図的仕様変更として commit に明記する (test-quality: 弱体化ではなく仕様更新)。案 2 (session が Plans.md に触れたか) / 案 3 (config knob) は今回見送り、再発時の follow-up とする。Spec skip reason: hook 挙動の bugfix で product contract の追加なし。team_validation_mode: not_required_lightweight。unknown_data: なし。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 125.1 | `[lane:gate]` `[tdd:required]` Stop 再入時 (stop_hook_active=true) は WIP 残でも警告 + 停止許可へ変更。初回 block は維持。コード内コメント (「ホスト側 block cap が最終ガード」の破れた前提) も実態に合わせ更新 | (a) RED: 「stop_hook_active=true + WIP>0 → ok:true + systemMessage 警告」を期待するテストが現実装で fail する実測記録, (b) 初回 (stop_hook_active=false) の block 非退行, (c) 既存テストの期待値変更は Issue #269 参照付きで最小限, (d) `cd go && go test ./internal/hookhandler/... -count=1` PASS + gofmt clean, (e) Issue #269 へ修正 commit を参照するコメント投稿 (close は release 後) | - | cc:TODO |
