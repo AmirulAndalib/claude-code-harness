@@ -8,6 +8,34 @@ Change history for claude-code-harness.
 
 ### Added
 
+#### Claude 5 unhobbling: 毎セッション注入される context を 1/3 に削減 (Phase 124)
+
+**今まで**: セッション開始のたびに `.claude/rules/` の 19 ファイル 103.2KB が無条件で Claude の context に注入されていました。中には廃止済み v3 構成の歴史記録 (v3-architecture.md) や、冒頭で自ら DEPRECATED と宣言する文書 (command-editing.md) まで含まれ、Anthropic の Claude 5 指針 (過剰な常時ルールは判断を鈍らせる) に照らして逆効果の状態でした。SKILL.md も最大 958 行 (harness-work) まで肥大していました。
+
+**今後**: governance 契約 (報酬ハック防止・deny 面・Risk Gates) は常時ロードのまま維持し、状況限定ルールは pointer stub 化 (正本は skills references / docs/rules へ)、廃止文書は archive/削除しました。
+
+| 面 | Before | After |
+|---|---|---|
+| 常時注入 rules | 103.2KB (19 ファイル) | **29.2KB** (71.7% 削減) |
+| harness-work SKILL.md | 958 行 | 450 行 |
+| breezing / harness-release / harness-plan | 521 / 535 / 462 行 | 416 / 379 / 393 行 |
+
+agent prompt 監査基準も世代交代しました: opus-4-7-prompt-audit.md (曖昧語 blanket 禁止・例文必須) を退役し、契約条項 (schema 名・列挙値・回数上限・wrapper command・権限境界) だけ残す claude-5-prompt-standard.md に置換 (agents/*.md 編集時のみ paths frontmatter でロード)。
+
+#### `harness validate` が claude-opus-5 を受理 (Phase 123.4)
+
+**今まで**: agent/skill frontmatter に `model: claude-opus-5` を書くと validate が「認識できないモデル名」で reject していました (Opus 5 は 2026-07-24 リリース)。
+
+**今後**: validModelNames に claude-opus-5 を追加し、TDD (RED→GREEN) + 4 平台 binary rebuild + drift gate green で反映済みです。
+
+### Fixed
+
+#### Stop hook が調査のみのセッションを無限ブロックする問題 (Issue #269, Phase 125)
+
+**今まで**: Plans.md に `cc:WIP` タスクが残っていると、Stop hook が停止を無条件でブロックし続けました。調査・整理だけのセッションには WIP を減らす正当な手段がなく、実測で同一メッセージが 12 回連続発火してセッションを終了できませんでした。
+
+**今後**: 初回の Stop は従来どおりブロックして marker 遷移を促しますが、再入 (`stop_hook_active: true`) 時は WIP が残っていても警告 (systemMessage) を出して停止を許可します。状態ファイルの追加なしで無限ブロックを根絶しました。
+
 #### breezing Default Pipeline: plan → work → OK までレビュー → 報告を 1 コマンドで完走
 
 **今まで**: 「`/harness-plan` で計画 → `/breezing` → `/harness-review` を独立サブエージェント + Codex second opinion で OK が出るまで → easy で報告」という一連の流れを、operator が毎回 4 段の指示として打つ必要がありました。
