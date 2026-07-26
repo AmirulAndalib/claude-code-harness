@@ -50,7 +50,7 @@ CC frontmatter の `effort` は引き続き有効で、Opus 4.8 では推論深�
 1. `docs/CLAUDE-feature-table.md` の v2.1.111 セクションに `xhigh effort` が `A: 明示追従対象` として記録されている
 2. 同ファイルの Opus 4.7 セクションにも `xhigh effort` が `A: 明示追従対象` として記録されている
 3. `docs/cc-2.1.99-2.1.111-impact.md` に v2.1.111 での `xhigh` 追加が文書化されている
-4. Harness の `opus-4-7-prompt-audit.md` にて「`xhigh`: 呼び出し側が選ぶ推論強度」と定義されている
+4. Harness の `claude-5-prompt-standard.md` にて「`xhigh`: 呼び出し側が選ぶ推論強度」と定義されている
 
 `xhigh` を frontmatter に書いた場合、CC は Opus 4.8 に最高 effort tier のリクエストを送る。非 Opus 4.8 モデル（Sonnet 系など）ではサイレントに `high` 相当へダウングレードされる。reject や error にはならない。
 
@@ -129,13 +129,13 @@ Harness の方針:
 - `xhigh` は「賢くなる魔法」ではなく、より深く考えるための余白
 - 曖昧な指示のままだと、深く考えてもズレた方向に精密化される
 - Opus 4.8 以外のモデルでは `xhigh` を指定しても `high` 相当にフォールバックするため、期待した効果が出ない場合がある
-- `opus-4-7-prompt-audit.md` の合格条件 5: `xhigh` は「呼び出し側が選ぶ推論強度」であり、agent prompt が free-text marker から推測するものではない
+- `claude-5-prompt-standard.md`「維持する規律 5」: `xhigh` は「呼び出し側が選ぶ推論強度」であり、agent prompt が free-text marker から推測するものではない
 
 ## 関連ファイル
 
 - `docs/CLAUDE-feature-table.md` — v2.1.111 / Opus 4.7 の機能一覧
 - `docs/cc-2.1.99-2.1.111-impact.md` — xhigh 追加の詳細
 - `docs/claude-code-setup-mcp-telemetry-provider.md` — `${CLAUDE_EFFORT}` と setup guidance
-- `.claude/rules/opus-4-7-prompt-audit.md` — xhigh の運用ノブ定義
+- `.claude/rules/claude-5-prompt-standard.md` — xhigh の運用ノブ定義
 - `agents/reviewer.md` — Reviewer effort 設定
 - `agents/advisor.md` — Advisor effort 設定

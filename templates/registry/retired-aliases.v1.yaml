@@ -105,3 +105,24 @@ entries:
       - "Plans.md"
       - "templates/registry/"
       - "docs/rules/skill-editing-templates.md"
+
+  - id: rule-opus-4-7-prompt-audit
+    kind: path
+    pattern: "opus-4-7-prompt-audit"
+    removed_in: "Phase 124.3"
+    reason: "Opus 4.7 世代の agent prompt 監査基準を Claude 5 世代向け claude-5-prompt-standard.md に置換 (operator 承認 2026-07-26)。Anthropic の Claude 5 ガイダンス (例文の大量提示は探索空間を狭める / ルールで縛るより判断に任せる) と衝突する条項 (曖昧語 blanket 禁止、行動指示への逐語要素一律必須化、before/after 例の大量記録義務) を撤廃し、契約系条項 (schema 名・列挙値・回数上限・wrapper command・権限境界・effort tier 指定) のみ維持して後継ファイルに引き継いだ"
+    allowlist:
+      - "CHANGELOG.md"
+      - ".claude/memory/archive/"
+      - "Plans.md"
+      - "templates/registry/"
+      - "docs/CLAUDE-feature-table.md"
+      - "docs/opus-4-7-impact.md"
+      - "docs/upstream-update-snapshot-2026-05-15.md"
+      - "docs/task-budgets-research.md"
+      - "docs/smoke-test-v4.2.0.md"
+      - "skills/harness-work/SKILL.md"
+      - "skills/harness-work/references/"
+      - "opencode/skills/harness-work/SKILL.md"
+      - ".claude/rules/claude-5-prompt-standard.md"
+      - "codex/AGENTS.md"
