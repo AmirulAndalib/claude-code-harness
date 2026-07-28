@@ -10,10 +10,12 @@ package policy
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/Chachamaru127/claude-code-harness/go/pkg/hookproto"
+	"github.com/Chachamaru127/claude-code-harness/go/pkg/shellscan"
 )
 
 // tddEnforceLevelMax mirrors config.TDDEnforceLevelMax ("max") as a plain
@@ -212,6 +214,14 @@ var Rules = []GuardRule{
 				return nil
 			}
 			if isUnderProjectRoot(filePath, ctx.ProjectRoot) {
+				return nil
+			}
+			physicalPath := filePath
+			if !filepath.IsAbs(physicalPath) && ctx.ProjectRoot != "" {
+				physicalPath = filepath.Join(ctx.ProjectRoot, physicalPath)
+			}
+			resolvedPath, err := evalSymlinksAllowMissing(physicalPath)
+			if err == nil && shellscan.IsAllowlistedTempPath(resolvedPath) {
 				return nil
 			}
 			// Work mode skips confirmation

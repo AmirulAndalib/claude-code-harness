@@ -1,6 +1,8 @@
 package policy
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -432,8 +434,23 @@ func TestR03_SedInPlaceEnvWriteOutOfScope(t *testing.T) {
 func TestR04_WriteOutsideProject(t *testing.T) {
 	ctx := makeCtx("Write", map[string]interface{}{"file_path": "/tmp/malicious.sh"})
 	result := EvaluateRules(ctx)
+	// Intentional behavior change: OS-managed scratch paths no longer trigger R04.
+	if result.Decision != hookproto.DecisionApprove {
+		t.Errorf("expected approve for OS temporary path, got %s", result.Decision)
+	}
+}
+
+func TestR04_WriteOutsideProjectNonTemporary(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := makeCtx("Write", map[string]interface{}{
+		"file_path": filepath.Join(home, "r04-outside-project.txt"),
+	})
+	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionAsk {
-		t.Errorf("expected ask, got %s", result.Decision)
+		t.Errorf("expected ask for non-temporary external path, got %s", result.Decision)
 	}
 }
 
@@ -442,6 +459,86 @@ func TestR04_WriteInsideProject(t *testing.T) {
 	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionApprove {
 		t.Errorf("expected approve, got %s", result.Decision)
+	}
+}
+
+func TestR04_WriteToConfiguredTemporaryRoots(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	customTMPDIR := filepath.Join(wd, ".r04-tmpdir")
+	customHome := filepath.Join(wd, ".r04-home")
+	t.Setenv("TMPDIR", customTMPDIR)
+	t.Setenv("HOME", customHome)
+
+	cases := []string{
+		filepath.Join(customTMPDIR, "prompt.md"),
+		filepath.Join(customHome, "Library", "Caches", "draft.md"),
+	}
+	for _, filePath := range cases {
+		t.Run(filePath, func(t *testing.T) {
+			ctx := makeCtx("Write", map[string]interface{}{"file_path": filePath})
+			result := EvaluateRules(ctx)
+			if result.Decision != hookproto.DecisionApprove {
+				t.Errorf("expected approve for OS temporary path %q, got %s", filePath, result.Decision)
+			}
+		})
+	}
+}
+
+func TestR04_TemporarySymlinkOutsideIsNotSkipped(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempRoot, err := os.MkdirTemp("/tmp", "harness-r04-symlink-")
+	if err != nil {
+		t.Skipf("cannot create /tmp fixture: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tempRoot) })
+
+	link := filepath.Join(tempRoot, "outside")
+	if err := os.Symlink(home, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	filePath := filepath.Join(link, "r04-outside-project.txt")
+	ctx := makeCtx("Write", map[string]interface{}{"file_path": filePath})
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Errorf("expected ask for temporary symlink resolving outside, got %s", result.Decision)
+	}
+}
+
+func TestR04_UnresolvableTemporarySymlinkIsNotSkipped(t *testing.T) {
+	tempRoot, err := os.MkdirTemp("/tmp", "harness-r04-loop-")
+	if err != nil {
+		t.Skipf("cannot create /tmp fixture: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tempRoot) })
+
+	first := filepath.Join(tempRoot, "first")
+	second := filepath.Join(tempRoot, "second")
+	if err := os.Symlink(second, first); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(first, second); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	ctx := makeCtx("Write", map[string]interface{}{
+		"file_path": filepath.Join(first, "r04-unresolvable.txt"),
+	})
+	// R02 intentionally fail-closes an unresolvable path with deny before R04.
+	// Exercise R04 directly to pin its own fallback without weakening R02.
+	r04Index := ruleIndex("R04:confirm-write-outside-project")
+	if r04Index < 0 {
+		t.Fatal("R04 rule is not registered")
+	}
+	r04 := Rules[r04Index]
+	result := r04.Evaluate(ctx)
+	if result == nil || result.Decision != hookproto.DecisionAsk {
+		t.Errorf("expected ask for unresolvable temporary symlink, got %#v", result)
 	}
 }
 
@@ -454,7 +551,13 @@ func TestR04_RelativePath(t *testing.T) {
 }
 
 func TestR04_WorkModeBypass(t *testing.T) {
-	ctx := makeCtx("Write", map[string]interface{}{"file_path": "/tmp/file.txt"})
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := makeCtx("Write", map[string]interface{}{
+		"file_path": filepath.Join(home, "r04-work-mode.txt"),
+	})
 	ctx.WorkMode = true
 	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionApprove {

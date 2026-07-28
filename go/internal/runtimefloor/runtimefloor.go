@@ -465,8 +465,6 @@ func checkWorktreeEscape(cmd string, ctx Context) Decision {
 		worktreeRoot = filepath.Clean(ctx.WorktreeRoot)
 	}
 
-	tempRoots := allowlistedTempRoots()
-
 	for _, target := range targets {
 		expanded, ok := expandPathTarget(target)
 		if !ok {
@@ -479,51 +477,13 @@ func checkWorktreeEscape(cmd string, ctx Context) Decision {
 		if pathUnderWorktree(abs, worktreeRoot) {
 			continue
 		}
-		if pathUnderAnyRoot(abs, tempRoots) {
+		if shellscan.IsAllowlistedTempPath(abs) {
 			continue
 		}
 		return stop(CategoryWorktreeEscape, "rm "+target,
 			"destructive command outside task worktree requires human approval")
 	}
 	return Decision{}
-}
-
-// allowlistedTempRoots lists OS-managed scratch roots where a destructive rm
-// carries no data-loss risk. The set covers /tmp, /var/tmp, their macOS
-// /private/* canonical forms, the $TMPDIR override, and per-user cache roots
-// (~/.cache on Linux, ~/Library/Caches on macOS). Worktree-escape stays in
-// effect for everything else (Desktop, Documents, repo-adjacent paths).
-func allowlistedTempRoots() []string {
-	roots := []string{
-		"/tmp",
-		"/var/tmp",
-		"/private/tmp",
-		"/private/var/tmp",
-	}
-	if t := strings.TrimSpace(os.Getenv("TMPDIR")); t != "" {
-		if abs, err := filepath.Abs(t); err == nil {
-			roots = append(roots, filepath.Clean(abs))
-		} else {
-			roots = append(roots, filepath.Clean(t))
-		}
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		roots = append(roots, filepath.Join(home, ".cache"))
-		roots = append(roots, filepath.Join(home, "Library", "Caches"))
-	}
-	return roots
-}
-
-func pathUnderAnyRoot(absPath string, roots []string) bool {
-	for _, root := range roots {
-		if root == "" {
-			continue
-		}
-		if pathUnderWorktree(absPath, root) {
-			return true
-		}
-	}
-	return false
 }
 
 func expandPathTarget(target string) (string, bool) {

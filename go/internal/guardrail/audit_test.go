@@ -26,7 +26,8 @@ func TestEvaluatePreTool_AuditsFloorRuleAndWarnDecisions(t *testing.T) {
 	t.Setenv("HARNESS_BREEZING_ROLE", "")
 
 	projectRoot := t.TempDir()
-	outsideRoot := t.TempDir()
+	// Task 126.3 approves OS temporary roots, so keep the R04 fixture under the package directory.
+	outsideRoot := newNonTemporaryAuditFixture(t)
 	floorCommand := "gh release create v9.9.9-audit-floor-known"
 	askPath := filepath.Join(outsideRoot, "audit-rule-ask-known.txt")
 	denyCommand := "sudo printf audit-rule-deny-known"
@@ -309,7 +310,8 @@ func TestEvaluatePreTool_AuditFailureIsFailOpen(t *testing.T) {
 
 func TestEvaluatePreTool_AuditRootDoesNotChangeRuleEvaluationRoot(t *testing.T) {
 	evaluationRoot := t.TempDir()
-	auditRoot := t.TempDir()
+	// Task 126.3 approves OS temporary roots, so keep the R04 fixture under the package directory.
+	auditRoot := newNonTemporaryAuditFixture(t)
 	t.Setenv("HARNESS_PROJECT_ROOT", evaluationRoot)
 	t.Setenv("PROJECT_ROOT", "")
 
@@ -334,6 +336,24 @@ func TestEvaluatePreTool_AuditRootDoesNotChangeRuleEvaluationRoot(t *testing.T) 
 	if _, err := os.Stat(filepath.Join(evaluationRoot, guardrailAuditRelativePath)); !os.IsNotExist(err) {
 		t.Fatalf("audit record used evaluation root instead of explicit audit root: err=%v", err)
 	}
+}
+
+func newNonTemporaryAuditFixture(t *testing.T) string {
+	t.Helper()
+	workingDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get package working directory: %v", err)
+	}
+	fixtureRoot, err := os.MkdirTemp(workingDir, ".guardrail-audit-")
+	if err != nil {
+		t.Fatalf("create non-temporary audit fixture: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(fixtureRoot); err != nil {
+			t.Errorf("remove audit fixture %s: %v", fixtureRoot, err)
+		}
+	})
+	return fixtureRoot
 }
 
 func hookResultRuleID(t *testing.T, result hookproto.HookResult) string {
