@@ -224,6 +224,12 @@ Historical L3 note: an earlier bridge subsystem prototyped a `bridge-event.v1` e
     (release-preflight fail-closed host smoke, validate-plugin, CI, independent
     test-wiring auditor, binary drift gate); the distributed default stays the
     human stop, and a missing or unparseable config fails safe to stop.
+  - `plan-preapproval.v2` is not a third runtime-floor exception. The Go
+    preapproval reader is wired only to the `ask` branch of guardrail rule R12
+    (`confirm-direct-push-protected-branch`). It never runs before or inside the
+    five runtime-floor category checks, and it never overrides R12 `deny`.
+    Therefore the exhaustive runtime-floor exception list remains exactly
+    `runtimefloor.secretAllow` and `runtimefloor.releaseAuto`.
   - Destructive-removal syntax is scanned by the shared `go/pkg/shellscan`
     package so the runtime floor and R05 cannot evolve separate coverage.
     Dangerous forms are the union of recursive `rm` short flags (including
@@ -236,7 +242,8 @@ Historical L3 note: an earlier bridge subsystem prototyped a `bridge-event.v1` e
     Runtime Floor rejects worktree escapes, R05 may skip its `ask` only when
     every extracted target and `ProjectRoot` resolve through symlinks and every
     real target is inside the real project root. GNU and BSD `find` global
-    options are parsed; BSD `-f path` contributes `path` as a search root.
+    options are parsed; BSD `-f path`, `-fpath`, and combined `-Efpath`
+    contribute `path` as a search root.
     Missing targets are classified from the nearest resolvable ancestor. Empty
     extraction, shell-expanded or
     argument-producer-appended targets, relative targets combined with

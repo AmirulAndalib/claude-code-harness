@@ -980,7 +980,9 @@ func TestDangerousRemovalParityWithRuntimeFloor(t *testing.T) {
 		"rm --recursive --force /opt/runtimefloor-outside",
 		"find /opt/runtimefloor-outside -delete",
 		"find -E /opt/runtimefloor-outside -delete",
+		"find -EH /opt/runtimefloor-outside -delete",
 		"find -f /opt/runtimefloor-outside . -delete",
+		"find -Ef/opt/runtimefloor-outside . -delete",
 		`find /opt/runtimefloor-outside -exec rm -rf {} \;`,
 		"rm -f /System/runtimefloor-outside",
 		"rm -f ~/Library/runtimefloor-outside",
@@ -1318,6 +1320,43 @@ func TestR12_PushToMainInvalidPolicyDefaultsAsk(t *testing.T) {
 	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionAsk {
 		t.Errorf("expected ask, got %s", result.Decision)
+	}
+}
+
+func TestR12_PushToMainConsumesPreapprovalOnlyForAskPolicy(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		policy        string
+		wantDecision  hookproto.HookDecision
+		wantCallbacks int
+	}{
+		{name: "ask is suppressed", policy: "ask", wantDecision: hookproto.DecisionApprove, wantCallbacks: 1},
+		{name: "deny is not suppressed", policy: "deny", wantDecision: hookproto.DecisionDeny, wantCallbacks: 0},
+		{name: "allow needs no approval", policy: "allow", wantDecision: hookproto.DecisionApprove, wantCallbacks: 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := makeCtx("Bash", map[string]interface{}{"command": "git push origin main"})
+			ctx.ProtectedBranchPushPolicy = tt.policy
+			callbacks := 0
+			ctx.ConsumePlanPreapproval = func(operation, command string) bool {
+				callbacks++
+				if operation != "external-send" {
+					t.Fatalf("operation = %q, want external-send", operation)
+				}
+				if command != "git push origin main" {
+					t.Fatalf("command = %q, want exact command", command)
+				}
+				return true
+			}
+
+			result := EvaluateRules(ctx)
+			if result.Decision != tt.wantDecision {
+				t.Fatalf("decision = %q, want %q: %#v", result.Decision, tt.wantDecision, result)
+			}
+			if callbacks != tt.wantCallbacks {
+				t.Fatalf("preapproval callback count = %d, want %d", callbacks, tt.wantCallbacks)
+			}
+		})
 	}
 }
 

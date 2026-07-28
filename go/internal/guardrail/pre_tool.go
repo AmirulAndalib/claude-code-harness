@@ -140,6 +140,7 @@ func BuildContext(input hookproto.HookInput) hookproto.RuleContext {
 		CodexMode:                 codexMode,
 		BreezingRole:              breezingRole,
 		ProtectedBranchPushPolicy: resolveProtectedBranchPushPolicy(input, projectRoot),
+		ConsumePlanPreapproval:    newPlanPreapprovalConsumer(projectRoot, input),
 		ProtectedPathAskList:      resolveProtectedPathAskList(input, projectRoot),
 		TddEnforceLevel:           tddRuntime.Level,
 		TddHookEnabled:            tddRuntime.HookEnabled,
@@ -202,6 +203,9 @@ func resolveAuditRoot(input hookproto.HookInput) string {
 }
 
 func evaluatePreTool(input hookproto.HookInput) hookproto.HookResult {
+	// Plan preapprovals are intentionally absent from this runtime-floor path.
+	// The five floor categories remain non-overridable except for their two
+	// explicit operator-configured exceptions (secretAllow and releaseAuto).
 	if input.ToolName == "Bash" {
 		if command, ok := input.ToolInput["command"].(string); ok {
 			worktreeRoot := input.CWD

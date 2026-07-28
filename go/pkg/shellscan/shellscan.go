@@ -447,12 +447,29 @@ func envChangesDirectory(tokens []string) bool {
 
 func findContextIndeterminate(tokens []string) bool {
 	for _, token := range tokens {
-		if token == "-L" || token == "-follow" ||
+		if findOptionFollowsSymlinks(token) || token == "-follow" ||
 			token == "-files0-from" || strings.HasPrefix(token, "-files0-from=") {
 			return true
 		}
 	}
 	return false
+}
+
+func findOptionFollowsSymlinks(token string) bool {
+	if token == "-L" {
+		return true
+	}
+	if len(token) < 3 || token[0] != '-' {
+		return false
+	}
+	options := token[1:]
+	if fIndex := strings.IndexRune(options, 'f'); fIndex >= 0 {
+		if strings.HasPrefix(token, "-files0-from") || !isBSDGlobalOptionSequence(options[:fIndex]) {
+			return false
+		}
+		options = options[:fIndex]
+	}
+	return isBSDGlobalOptionSequence(options) && strings.ContainsRune(options, 'L')
 }
 
 func dangerousRemoval(command string, depth int) (bool, []string) {
@@ -596,12 +613,16 @@ func dangerousFind(tokens []string) (bool, []string) {
 				options = false
 				continue
 			}
-			if options && arg == "-f" {
-				if j+1 < len(tokens) {
-					j++
-					targets = append(targets, tokens[j])
+			if options {
+				if attachedRoot, needsNext, ok := parseFindFileRootOption(arg); ok {
+					if needsNext && j+1 < len(tokens) {
+						j++
+						targets = append(targets, tokens[j])
+					} else if attachedRoot != "" {
+						targets = append(targets, attachedRoot)
+					}
+					continue
 				}
-				continue
 			}
 			if options && isFindGlobalOption(arg) {
 				if arg == "-D" && j+1 < len(tokens) {
@@ -613,6 +634,7 @@ func dangerousFind(tokens []string) (bool, []string) {
 				break
 			}
 			targets = append(targets, arg)
+			options = false
 		}
 		if len(targets) == 0 {
 			targets = []string{"."}
@@ -630,8 +652,25 @@ func isFindGlobalOption(token string) bool {
 	if len(token) < 2 || token[0] != '-' {
 		return false
 	}
-	for _, option := range token[1:] {
-		if !strings.ContainsRune("EXdsx", option) {
+	return isBSDGlobalOptionSequence(token[1:])
+}
+
+func parseFindFileRootOption(token string) (attachedRoot string, needsNext bool, ok bool) {
+	if len(token) < 2 || token[0] != '-' || strings.HasPrefix(token, "-files0-from") {
+		return "", false, false
+	}
+	options := token[1:]
+	fIndex := strings.IndexRune(options, 'f')
+	if fIndex < 0 || !isBSDGlobalOptionSequence(options[:fIndex]) {
+		return "", false, false
+	}
+	attachedRoot = options[fIndex+1:]
+	return attachedRoot, attachedRoot == "", true
+}
+
+func isBSDGlobalOptionSequence(options string) bool {
+	for _, option := range options {
+		if !strings.ContainsRune("EHLPXdsx", option) {
 			return false
 		}
 	}

@@ -141,9 +141,10 @@ when every extracted target resolves inside `ProjectRoot`, which is the task
 worktree. Both the target and project root are resolved through symlinks before
 comparison. For a target that does not exist, R05 resolves the nearest existing
 ancestor and then appends the missing suffix. The shared `find` target extractor
-recognizes GNU global options and BSD `-E`, `-X`, `-d`, `-s`, and `-x`. A BSD
-`-f path` argument is collected as a search root rather than discarded as an
-option value.
+recognizes GNU global options and combined BSD `-E`, `-H`, `-L`, `-P`, `-X`,
+`-d`, `-s`, and `-x`. A combined option containing `-L` retains `ask`. A BSD
+`-f path`, `-fpath`, or combined `-Efpath` argument is collected as a search
+root rather than discarded as an option value.
 
 R05 retains `ask` when no target can be extracted, a target requires shell
 expansion or can be appended by `xargs` or `parallel`, a relative target follows

@@ -408,6 +408,13 @@ var Rules = []GuardRule{
 			case ProtectedBranchPushPolicyAllow:
 				return nil
 			default:
+				// Plan preapproval can suppress this guardrail confirmation,
+				// but never the explicit deny branch above or the runtime
+				// action hard floor evaluated before policy rules.
+				if ctx.ConsumePlanPreapproval != nil &&
+					ctx.ConsumePlanPreapproval("external-send", command) {
+					return nil
+				}
 				return &hookproto.HookResult{
 					Decision: hookproto.DecisionAsk,
 					Reason:   "Direct push to main/master. Run it after user confirmation? (setting: protected_branch_push=ask)",

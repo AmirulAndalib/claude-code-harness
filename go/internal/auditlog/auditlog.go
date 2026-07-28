@@ -69,7 +69,7 @@ func Record(projectRoot string, input hookproto.HookInput, result hookproto.Hook
 		return
 	}
 
-	_ = withFileLock(logFile+".lock", func() error {
+	_ = WithFileLock(logFile+".lock", func() error {
 		file, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
 			return err

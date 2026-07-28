@@ -460,7 +460,7 @@ else
 fi
 
 if bash "$PLUGIN_ROOT/tests/test-plan-preapproval.sh" >/dev/null 2>&1; then
-    pass_test "plan-preapproval.v1 schema と secret-read runtimefloor bridge が動作します (test-plan-preapproval.sh)"
+    pass_test "plan-preapproval.v1/v2 schema と scoped secret-read runtimefloor bridge が動作します (test-plan-preapproval.sh)"
 else
     fail_test "plan-preapproval の契約テストに失敗 — 'bash tests/test-plan-preapproval.sh' で詳細確認"
 fi
