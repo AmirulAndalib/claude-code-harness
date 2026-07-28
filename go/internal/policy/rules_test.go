@@ -1,9 +1,13 @@
 package policy
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Chachamaru127/claude-code-harness/go/internal/runtimefloor"
 	"github.com/Chachamaru127/claude-code-harness/go/pkg/hookproto"
 )
 
@@ -431,8 +435,23 @@ func TestR03_SedInPlaceEnvWriteOutOfScope(t *testing.T) {
 func TestR04_WriteOutsideProject(t *testing.T) {
 	ctx := makeCtx("Write", map[string]interface{}{"file_path": "/tmp/malicious.sh"})
 	result := EvaluateRules(ctx)
+	// Intentional behavior change: OS-managed scratch paths no longer trigger R04.
+	if result.Decision != hookproto.DecisionApprove {
+		t.Errorf("expected approve for OS temporary path, got %s", result.Decision)
+	}
+}
+
+func TestR04_WriteOutsideProjectNonTemporary(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := makeCtx("Write", map[string]interface{}{
+		"file_path": filepath.Join(home, "r04-outside-project.txt"),
+	})
+	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionAsk {
-		t.Errorf("expected ask, got %s", result.Decision)
+		t.Errorf("expected ask for non-temporary external path, got %s", result.Decision)
 	}
 }
 
@@ -441,6 +460,86 @@ func TestR04_WriteInsideProject(t *testing.T) {
 	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionApprove {
 		t.Errorf("expected approve, got %s", result.Decision)
+	}
+}
+
+func TestR04_WriteToConfiguredTemporaryRoots(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	customTMPDIR := filepath.Join(wd, ".r04-tmpdir")
+	customHome := filepath.Join(wd, ".r04-home")
+	t.Setenv("TMPDIR", customTMPDIR)
+	t.Setenv("HOME", customHome)
+
+	cases := []string{
+		filepath.Join(customTMPDIR, "prompt.md"),
+		filepath.Join(customHome, "Library", "Caches", "draft.md"),
+	}
+	for _, filePath := range cases {
+		t.Run(filePath, func(t *testing.T) {
+			ctx := makeCtx("Write", map[string]interface{}{"file_path": filePath})
+			result := EvaluateRules(ctx)
+			if result.Decision != hookproto.DecisionApprove {
+				t.Errorf("expected approve for OS temporary path %q, got %s", filePath, result.Decision)
+			}
+		})
+	}
+}
+
+func TestR04_TemporarySymlinkOutsideIsNotSkipped(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempRoot, err := os.MkdirTemp("/tmp", "harness-r04-symlink-")
+	if err != nil {
+		t.Skipf("cannot create /tmp fixture: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tempRoot) })
+
+	link := filepath.Join(tempRoot, "outside")
+	if err := os.Symlink(home, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	filePath := filepath.Join(link, "r04-outside-project.txt")
+	ctx := makeCtx("Write", map[string]interface{}{"file_path": filePath})
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Errorf("expected ask for temporary symlink resolving outside, got %s", result.Decision)
+	}
+}
+
+func TestR04_UnresolvableTemporarySymlinkIsNotSkipped(t *testing.T) {
+	tempRoot, err := os.MkdirTemp("/tmp", "harness-r04-loop-")
+	if err != nil {
+		t.Skipf("cannot create /tmp fixture: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tempRoot) })
+
+	first := filepath.Join(tempRoot, "first")
+	second := filepath.Join(tempRoot, "second")
+	if err := os.Symlink(second, first); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(first, second); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	ctx := makeCtx("Write", map[string]interface{}{
+		"file_path": filepath.Join(first, "r04-unresolvable.txt"),
+	})
+	// R02 intentionally fail-closes an unresolvable path with deny before R04.
+	// Exercise R04 directly to pin its own fallback without weakening R02.
+	r04Index := ruleIndex("R04:confirm-write-outside-project")
+	if r04Index < 0 {
+		t.Fatal("R04 rule is not registered")
+	}
+	r04 := Rules[r04Index]
+	result := r04.Evaluate(ctx)
+	if result == nil || result.Decision != hookproto.DecisionAsk {
+		t.Errorf("expected ask for unresolvable temporary symlink, got %#v", result)
 	}
 }
 
@@ -453,7 +552,13 @@ func TestR04_RelativePath(t *testing.T) {
 }
 
 func TestR04_WorkModeBypass(t *testing.T) {
-	ctx := makeCtx("Write", map[string]interface{}{"file_path": "/tmp/file.txt"})
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := makeCtx("Write", map[string]interface{}{
+		"file_path": filepath.Join(home, "r04-work-mode.txt"),
+	})
 	ctx.WorkMode = true
 	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionApprove {
@@ -482,6 +587,14 @@ func TestR05_RmRfWorkMode(t *testing.T) {
 	}
 }
 
+func TestR05_RmRecursiveShortFlagOnly(t *testing.T) {
+	ctx := makeCtx("Bash", map[string]interface{}{"command": "rm -r /var/data"})
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Errorf("expected ask, got %s", result.Decision)
+	}
+}
+
 func TestR05_RmFOnly(t *testing.T) {
 	// rm -f (without -r) should NOT trigger R05
 	ctx := makeCtx("Bash", map[string]interface{}{"command": "rm -f temp.txt"})
@@ -492,7 +605,9 @@ func TestR05_RmFOnly(t *testing.T) {
 }
 
 func TestR05_RmRecursive(t *testing.T) {
-	ctx := makeCtx("Bash", map[string]interface{}{"command": "rm --recursive ./dir"})
+	// Keep this syntax-coverage assertion outside the project. Relative targets
+	// are intentionally approved by the worktree-scoped R05 contract below.
+	ctx := makeCtx("Bash", map[string]interface{}{"command": "rm --recursive /var/data"})
 	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionAsk {
 		t.Errorf("expected ask, got %s", result.Decision)
@@ -500,7 +615,9 @@ func TestR05_RmRecursive(t *testing.T) {
 }
 
 func TestR05_FindDelete(t *testing.T) {
-	ctx := makeCtx("Bash", map[string]interface{}{"command": "find . -name '*.tmp' -delete"})
+	// Keep this syntax-coverage assertion outside the project. Worktree-local
+	// find deletion is covered by TestR05_RelativeTargetInsideProject.
+	ctx := makeCtx("Bash", map[string]interface{}{"command": "find /var/data -name '*.tmp' -delete"})
 	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionAsk {
 		t.Errorf("expected ask, got %s", result.Decision)
@@ -508,7 +625,9 @@ func TestR05_FindDelete(t *testing.T) {
 }
 
 func TestR05_FindExecRmRf(t *testing.T) {
-	ctx := makeCtx("Bash", map[string]interface{}{"command": `find . -type f -exec rm -rf {} \;`})
+	// Keep this syntax-coverage assertion outside the project. Worktree-local
+	// recursive deletion is covered by the scoped approval tests below.
+	ctx := makeCtx("Bash", map[string]interface{}{"command": `find /var/data -type f -exec rm -rf {} \;`})
 	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionAsk {
 		t.Errorf("expected ask, got %s", result.Decision)
@@ -536,6 +655,354 @@ func TestR05_MacOSUserLibrary(t *testing.T) {
 	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionAsk {
 		t.Errorf("expected ask, got %s", result.Decision)
+	}
+}
+
+func TestR05_AbsoluteTargetInsideProject(t *testing.T) {
+	projectRoot := t.TempDir()
+	buildDir := filepath.Join(projectRoot, "build")
+	if err := os.Mkdir(buildDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := makeCtx("Bash", map[string]interface{}{
+		"command": fmt.Sprintf("rm -rf %q", buildDir),
+	})
+	ctx.ProjectRoot = projectRoot
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionApprove {
+		t.Fatalf("expected approve for worktree-local deletion, got %s: %s", result.Decision, result.Reason)
+	}
+}
+
+func TestR05_TargetOutsideProject(t *testing.T) {
+	projectRoot := t.TempDir()
+	outside := t.TempDir()
+
+	ctx := makeCtx("Bash", map[string]interface{}{
+		"command": fmt.Sprintf("rm -rf %q", outside),
+	})
+	ctx.ProjectRoot = projectRoot
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("expected ask for deletion outside worktree, got %s", result.Decision)
+	}
+}
+
+func TestR05_NoExtractableTargets(t *testing.T) {
+	ctx := makeCtx("Bash", map[string]interface{}{"command": "xargs rm -rf"})
+	ctx.ProjectRoot = t.TempDir()
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("expected ask when no deletion target can be extracted, got %s", result.Decision)
+	}
+}
+
+func TestR05_XargsCanAppendDynamicTargets(t *testing.T) {
+	commands := []string{
+		"printf '/private/tmp/r05-outside\\n' | xargs rm -rf ./build",
+		"printf '/private/tmp/r05-outside\\n' | x'args' rm -rf ./build",
+	}
+	for _, command := range commands {
+		t.Run(command, func(t *testing.T) {
+			ctx := makeCtx("Bash", map[string]interface{}{"command": command})
+			ctx.ProjectRoot = t.TempDir()
+			result := EvaluateRules(ctx)
+			if result.Decision != hookproto.DecisionAsk {
+				t.Fatalf("expected ask when xargs can append unextracted deletion targets, got %s", result.Decision)
+			}
+		})
+	}
+}
+
+func TestR05_DynamicTarget(t *testing.T) {
+	ctx := makeCtx("Bash", map[string]interface{}{"command": `rm -rf "$BUILD_DIR"`})
+	ctx.ProjectRoot = t.TempDir()
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("expected ask when a deletion target requires shell expansion, got %s", result.Decision)
+	}
+}
+
+func TestR05_DynamicCommandContext(t *testing.T) {
+	commands := []string{
+		`"$RUNNER" rm -rf ./build`,
+		`/private/tmp/rm -rf ./build`,
+		`PATH=/private/tmp/evil-bin rm -rf ./build`,
+		`env PATH=/private/tmp/evil-bin rm -rf ./build`,
+		`LD_PRELOAD=/private/tmp/evil.so rm -rf ./build`,
+		`PATH=/private/tmp/evil-bin; rm -rf ./build`,
+		`find . -maxdepth 0 -exec /private/tmp/rm -rf ./build \;`,
+		`find . -maxdepth 0 -exec env PATH=/private/tmp/evil-bin rm -rf ./build \;`,
+		`find . -maxdepth 0 -exec find /private/tmp/r05-outside -delete \;`,
+		`find "-$FOLLOW" . -delete`,
+		`producer=xargs; printf '/private/tmp/r05-outside\n' | "$producer" rm -rf ./build`,
+		`printf '/private/tmp/r05-outside\n' | $'xargs' rm -rf ./build`,
+		`changer=cd; "$changer" /private/tmp && rm -rf ./build`,
+		"rm -rf ./build `printf /private/tmp/r05-outside`",
+		"find -files0-from /private/tmp/removal-targets -delete",
+	}
+	for _, command := range commands {
+		t.Run(command, func(t *testing.T) {
+			ctx := makeCtx("Bash", map[string]interface{}{"command": command})
+			ctx.ProjectRoot = t.TempDir()
+			result := EvaluateRules(ctx)
+			if result.Decision != hookproto.DecisionAsk {
+				t.Fatalf("expected ask when shell expansion makes deletion context indeterminate, got %s", result.Decision)
+			}
+		})
+	}
+}
+
+func TestR05_WorktreeTargetWithFDDuplication(t *testing.T) {
+	projectRoot := t.TempDir()
+	buildDir := filepath.Join(projectRoot, "build")
+	if err := os.Mkdir(buildDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := makeCtx("Bash", map[string]interface{}{"command": "rm -rf ./build 2>&1"})
+	ctx.ProjectRoot = projectRoot
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionApprove {
+		t.Fatalf("expected approve for local removal with fd duplication, got %s: %s", result.Decision, result.Reason)
+	}
+}
+
+func TestR05_SymlinkInsideProjectPointsOutside(t *testing.T) {
+	projectRoot := t.TempDir()
+	outside := t.TempDir()
+	link := filepath.Join(projectRoot, "external-build")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	ctx := makeCtx("Bash", map[string]interface{}{
+		"command": fmt.Sprintf("rm -rf %q", filepath.Join(link, "missing-child")),
+	})
+	ctx.ProjectRoot = projectRoot
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("expected ask for worktree symlink resolving outside, got %s", result.Decision)
+	}
+}
+
+func TestR05_SymlinkBeforeParentTraversal(t *testing.T) {
+	projectRoot := t.TempDir()
+	outside := t.TempDir()
+	outsideDir := filepath.Join(outside, "dir")
+	if err := os.Mkdir(outsideDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(projectRoot, "external")
+	if err := os.Symlink(outsideDir, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	target := link + string(filepath.Separator) + ".." + string(filepath.Separator) + "victim"
+
+	ctx := makeCtx("Bash", map[string]interface{}{
+		"command": fmt.Sprintf("rm -rf %q", target),
+	})
+	ctx.ProjectRoot = projectRoot
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("expected ask when parent traversal follows a symlink, got %s", result.Decision)
+	}
+}
+
+func TestR05_PrecedingSegmentCanCreateExternalSymlink(t *testing.T) {
+	projectRoot := t.TempDir()
+	link := filepath.Join(projectRoot, "r05-link")
+	target := filepath.Join(link, "victim")
+
+	ctx := makeCtx("Bash", map[string]interface{}{
+		"command": fmt.Sprintf("ln -sfn /private/tmp/r05-outside %q && rm -rf %q", link, target),
+	})
+	ctx.ProjectRoot = projectRoot
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("expected ask when a preceding segment can change target resolution, got %s", result.Decision)
+	}
+}
+
+func TestR05_OneOfMultipleTargetsOutsideProject(t *testing.T) {
+	projectRoot := t.TempDir()
+	inside := filepath.Join(projectRoot, "build")
+	outside := t.TempDir()
+
+	ctx := makeCtx("Bash", map[string]interface{}{
+		"command": fmt.Sprintf("rm -rf %q %q", inside, outside),
+	})
+	ctx.ProjectRoot = projectRoot
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("expected ask when one deletion target is outside worktree, got %s", result.Decision)
+	}
+}
+
+func TestR05_EmptyProjectRoot(t *testing.T) {
+	ctx := makeCtx("Bash", map[string]interface{}{"command": "rm -rf ./build"})
+	ctx.ProjectRoot = ""
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("expected ask when project root is empty, got %s", result.Decision)
+	}
+}
+
+func TestR05_RelativeTargetInsideProject(t *testing.T) {
+	projectRoot := t.TempDir()
+	if err := os.Mkdir(filepath.Join(projectRoot, "build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := makeCtx("Bash", map[string]interface{}{"command": "rm -rf ./build"})
+	ctx.ProjectRoot = projectRoot
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionApprove {
+		t.Fatalf("expected approve for relative worktree-local deletion, got %s: %s", result.Decision, result.Reason)
+	}
+}
+
+func TestR05_RelativeTargetAfterDirectoryChange(t *testing.T) {
+	commands := []string{
+		"cd /tmp && rm -rf ./build",
+		"c'd' /tmp && rm -rf ./build",
+		`python -c "import os; os.chdir('/tmp'); os.system('rm -rf ./build')"`,
+		`python -c "import subprocess; subprocess.run('rm -rf ./build', shell=True, cwd='/tmp')"`,
+		`env -u PYTHONPATH python -c "import subprocess; subprocess.run('rm -rf ./build', shell=True, cwd='/tmp')"`,
+		`python3.12 -c "import subprocess; subprocess.run('rm -rf ./build', shell=True, cwd='/tmp')"`,
+		`timeout 10 python -c "import subprocess; subprocess.run('rm -rf ./build', shell=True, cwd='/tmp')"`,
+	}
+	for _, command := range commands {
+		t.Run(command, func(t *testing.T) {
+			ctx := makeCtx("Bash", map[string]interface{}{"command": command})
+			ctx.ProjectRoot = t.TempDir()
+			result := EvaluateRules(ctx)
+			if result.Decision != hookproto.DecisionAsk {
+				t.Fatalf("expected ask when a relative deletion target follows a directory change, got %s", result.Decision)
+			}
+		})
+	}
+}
+
+func TestR05_RelativeTargetWithEnvChdir(t *testing.T) {
+	commands := []string{
+		"env -C /tmp rm -rf ./build",
+		"env -C/tmp rm -rf ./build",
+		"env --chdir=/tmp rm -rf ./build",
+	}
+	for _, command := range commands {
+		t.Run(command, func(t *testing.T) {
+			ctx := makeCtx("Bash", map[string]interface{}{"command": command})
+			ctx.ProjectRoot = t.TempDir()
+			result := EvaluateRules(ctx)
+			if result.Decision != hookproto.DecisionAsk {
+				t.Fatalf("expected ask when env changes the base of a relative deletion target, got %s", result.Decision)
+			}
+		})
+	}
+}
+
+func TestR05_FindFollowingDescendantSymlinks(t *testing.T) {
+	projectRoot := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(projectRoot, "external")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	commands := []string{
+		"find -L . -delete",
+		"find -L\\\n . -delete",
+		"f'ind' -L . -delete",
+		"find . -follow -delete",
+	}
+	for _, command := range commands {
+		t.Run(command, func(t *testing.T) {
+			ctx := makeCtx("Bash", map[string]interface{}{"command": command})
+			ctx.ProjectRoot = projectRoot
+			result := EvaluateRules(ctx)
+			if result.Decision != hookproto.DecisionAsk {
+				t.Fatalf("expected ask when find can follow descendant symlinks, got %s", result.Decision)
+			}
+		})
+	}
+}
+
+func TestR05_SymlinkedProjectRoot(t *testing.T) {
+	realRoot := t.TempDir()
+	if err := os.Mkdir(filepath.Join(realRoot, "build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	linkParent := t.TempDir()
+	linkRoot := filepath.Join(linkParent, "worktree")
+	if err := os.Symlink(realRoot, linkRoot); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	ctx := makeCtx("Bash", map[string]interface{}{"command": "rm -rf ./build"})
+	ctx.ProjectRoot = linkRoot
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionApprove {
+		t.Fatalf("expected approve through symlinked project root, got %s: %s", result.Decision, result.Reason)
+	}
+}
+
+func TestR05_UnresolvableTarget(t *testing.T) {
+	projectRoot := t.TempDir()
+	first := filepath.Join(projectRoot, "first")
+	second := filepath.Join(projectRoot, "second")
+	if err := os.Symlink(second, first); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(first, second); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	ctx := makeCtx("Bash", map[string]interface{}{
+		"command": fmt.Sprintf("rm -rf %q", filepath.Join(first, "build")),
+	})
+	ctx.ProjectRoot = projectRoot
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("expected ask for unresolvable deletion target, got %s", result.Decision)
+	}
+}
+
+func TestDangerousRemovalParityWithRuntimeFloor(t *testing.T) {
+	root := "/worktree/runtimefloor-parity"
+	commands := []string{
+		"rm -r /opt/runtimefloor-outside",
+		"rm -R /opt/runtimefloor-outside",
+		"rm -rf /opt/runtimefloor-outside",
+		"rm -fr /opt/runtimefloor-outside",
+		"rm -r -f /opt/runtimefloor-outside",
+		"rm --recursive /opt/runtimefloor-outside",
+		"rm --recursive --force /opt/runtimefloor-outside",
+		"find /opt/runtimefloor-outside -delete",
+		"find -E /opt/runtimefloor-outside -delete",
+		"find -EH /opt/runtimefloor-outside -delete",
+		"find -f /opt/runtimefloor-outside . -delete",
+		"find -Ef/opt/runtimefloor-outside . -delete",
+		`find /opt/runtimefloor-outside -exec rm -rf {} \;`,
+		"rm -f /System/runtimefloor-outside",
+		"rm -f ~/Library/runtimefloor-outside",
+		"bash -c 'rm -rf /opt/runtimefloor-outside'",
+		"echo $(rm -rf /opt/runtimefloor-outside)",
+	}
+
+	for _, command := range commands {
+		t.Run(command, func(t *testing.T) {
+			policyDangerous := hasDangerousRmRf(command)
+			decision := runtimefloor.CheckCommand(command, runtimefloor.Context{WorktreeRoot: root})
+			floorDangerous := decision.Stopped && decision.Category == runtimefloor.CategoryWorktreeEscape
+			if !policyDangerous {
+				t.Fatalf("dangerous removal corpus entry %q was not detected by policy", command)
+			}
+			if floorDangerous != policyDangerous {
+				t.Fatalf("dangerous removal drift for %q: floor=%v policy=%v (floor category=%s)",
+					command, floorDangerous, policyDangerous, decision.Category)
+			}
+		})
 	}
 }
 
@@ -853,6 +1320,43 @@ func TestR12_PushToMainInvalidPolicyDefaultsAsk(t *testing.T) {
 	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionAsk {
 		t.Errorf("expected ask, got %s", result.Decision)
+	}
+}
+
+func TestR12_PushToMainConsumesPreapprovalOnlyForAskPolicy(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		policy        string
+		wantDecision  hookproto.HookDecision
+		wantCallbacks int
+	}{
+		{name: "ask is suppressed", policy: "ask", wantDecision: hookproto.DecisionApprove, wantCallbacks: 1},
+		{name: "deny is not suppressed", policy: "deny", wantDecision: hookproto.DecisionDeny, wantCallbacks: 0},
+		{name: "allow needs no approval", policy: "allow", wantDecision: hookproto.DecisionApprove, wantCallbacks: 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := makeCtx("Bash", map[string]interface{}{"command": "git push origin main"})
+			ctx.ProtectedBranchPushPolicy = tt.policy
+			callbacks := 0
+			ctx.ConsumePlanPreapproval = func(operation, command string) bool {
+				callbacks++
+				if operation != "external-send" {
+					t.Fatalf("operation = %q, want external-send", operation)
+				}
+				if command != "git push origin main" {
+					t.Fatalf("command = %q, want exact command", command)
+				}
+				return true
+			}
+
+			result := EvaluateRules(ctx)
+			if result.Decision != tt.wantDecision {
+				t.Fatalf("decision = %q, want %q: %#v", result.Decision, tt.wantDecision, result)
+			}
+			if callbacks != tt.wantCallbacks {
+				t.Fatalf("preapproval callback count = %d, want %d", callbacks, tt.wantCallbacks)
+			}
+		})
 	}
 }
 
