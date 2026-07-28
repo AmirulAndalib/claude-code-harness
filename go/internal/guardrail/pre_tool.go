@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Chachamaru127/claude-code-harness/go/internal/auditlog"
 	"github.com/Chachamaru127/claude-code-harness/go/internal/policy"
 	"github.com/Chachamaru127/claude-code-harness/go/internal/runtimefloor"
 	"github.com/Chachamaru127/claude-code-harness/go/internal/state"
@@ -107,16 +108,7 @@ func resolveTddRuntimeConfig(input hookproto.HookInput, projectRoot string) tddR
 // The SQLite lookup is best-effort: any DB error is silently ignored so that
 // the hook fast-path remains available even when the DB is unreachable.
 func BuildContext(input hookproto.HookInput) hookproto.RuleContext {
-	projectRoot := input.CWD
-	if projectRoot == "" {
-		projectRoot = os.Getenv("HARNESS_PROJECT_ROOT")
-	}
-	if projectRoot == "" {
-		projectRoot = os.Getenv("PROJECT_ROOT")
-	}
-	if projectRoot == "" {
-		projectRoot, _ = os.Getwd()
-	}
+	projectRoot := resolveProjectRoot(input)
 
 	// 環境変数ベースの値（明示的なオーバーライド）
 	workMode := isTruthy(os.Getenv("HARNESS_WORK_MODE")) ||
@@ -157,6 +149,20 @@ func BuildContext(input hookproto.HookInput) hookproto.RuleContext {
 	}
 }
 
+func resolveProjectRoot(input hookproto.HookInput) string {
+	projectRoot := input.CWD
+	if projectRoot == "" {
+		projectRoot = os.Getenv("HARNESS_PROJECT_ROOT")
+	}
+	if projectRoot == "" {
+		projectRoot = os.Getenv("PROJECT_ROOT")
+	}
+	if projectRoot == "" {
+		projectRoot, _ = os.Getwd()
+	}
+	return projectRoot
+}
+
 // loadWorkStateFromDB は指定した DB パスから work_state を取得する。
 // DB が存在しない・読み取れない場合は (nil, nil) を返す（エラーを伝播させない）。
 // これにより hooks の fast-path がファイルシステムの問題で止まることを防ぐ。
@@ -183,6 +189,19 @@ func loadWorkStateFromDB(dbPath, sessionID string) (*state.WorkState, error) {
 // EvaluatePreTool is the PreToolUse hook entry point.
 // It runs the runtime action hard floor first, then evaluates guard rules.
 func EvaluatePreTool(input hookproto.HookInput) hookproto.HookResult {
+	result := evaluatePreTool(input)
+	auditlog.Record(resolveAuditRoot(input), input, result)
+	return result
+}
+
+func resolveAuditRoot(input hookproto.HookInput) string {
+	if input.AuditRoot != "" {
+		return input.AuditRoot
+	}
+	return resolveProjectRoot(input)
+}
+
+func evaluatePreTool(input hookproto.HookInput) hookproto.HookResult {
 	if input.ToolName == "Bash" {
 		if command, ok := input.ToolInput["command"].(string); ok {
 			worktreeRoot := input.CWD
@@ -202,6 +221,7 @@ func EvaluatePreTool(input hookproto.HookInput) hookproto.HookResult {
 						decision.Category,
 						decision.Reason,
 					),
+					RuleID: fmt.Sprintf("RUNTIME_FLOOR:%s", decision.Category),
 				}
 			}
 		}

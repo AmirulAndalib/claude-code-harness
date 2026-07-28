@@ -431,6 +431,7 @@ func EvaluateRules(ctx hookproto.RuleContext) hookproto.HookResult {
 			continue
 		}
 		if result := rule.Evaluate(ctx); result != nil {
+			result.RuleID = rule.ID
 			return *result
 		}
 	}

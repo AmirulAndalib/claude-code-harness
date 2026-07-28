@@ -25,7 +25,9 @@ type HookInput struct {
 	PermissionSuggestions []PermissionUpdateEntry `json:"permission_suggestions,omitempty"`
 
 	// Harness extension fields
+	Host       string `json:"host,omitempty"`
 	PluginRoot string `json:"plugin_root,omitempty"`
+	AuditRoot  string `json:"-"`
 }
 
 // ---------------------------------------------------------------------------
@@ -47,6 +49,7 @@ type HookResult struct {
 	Decision      HookDecision `json:"decision"`
 	Reason        string       `json:"reason,omitempty"`
 	SystemMessage string       `json:"systemMessage,omitempty"`
+	RuleID        string       `json:"-"`
 }
 
 // ---------------------------------------------------------------------------
