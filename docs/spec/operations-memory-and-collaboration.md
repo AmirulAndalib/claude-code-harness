@@ -224,6 +224,16 @@ Historical L3 note: an earlier bridge subsystem prototyped a `bridge-event.v1` e
     (release-preflight fail-closed host smoke, validate-plugin, CI, independent
     test-wiring auditor, binary drift gate); the distributed default stays the
     human stop, and a missing or unparseable config fails safe to stop.
+  - Destructive-removal syntax is scanned by the shared `go/pkg/shellscan`
+    package so the runtime floor and R05 cannot evolve separate coverage.
+    Dangerous forms are the union of recursive `rm` short flags (including
+    `-r` without `-f`), GNU `--recursive`, `find ... -delete`, `find ... -exec
+    rm`, and removal of protected macOS paths. Document-only heredoc bodies and
+    line comments are excluded, but bodies passed to bash, sh, zsh, dash, ksh,
+    Python, Perl, Ruby, or Node remain executable input and must stay scannable.
+    Removal targets stop at `&&`, `||`, `;`, `|`, or newline; `--` ends option
+    parsing, and `find` removal uses its search root as the target. Worktree and
+    OS scratch allowlists remain runtime-floor scope decisions after scanning.
 - Auto-approve scope. Inside a CONFINED worktree the Lead may auto-judge
   code/file/git "ask" gates; the runtime hard floor is the only escalation path.
   Auto-approve must NOT be enabled until both the runtime floor and worktree

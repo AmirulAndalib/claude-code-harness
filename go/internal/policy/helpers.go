@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Chachamaru127/claude-code-harness/go/pkg/hookproto"
+	"github.com/Chachamaru127/claude-code-harness/go/pkg/shellscan"
 )
 
 // ---------------------------------------------------------------------------
@@ -320,59 +321,9 @@ func normalizeCommand(cmd string) string {
 // Dangerous deletion detection
 // ---------------------------------------------------------------------------
 
-var (
-	rmRecursivePattern            = regexp.MustCompile(`\brm\s+--recursive\b`)
-	findDeletePattern             = regexp.MustCompile(`\bfind\s+.*(?:\s-delete(?:\s|$)|\s-exec\s+rm\s+.*(?:\\;|;|\+|$))`)
-	macOSDangerousRmTargetPattern = regexp.MustCompile(
-		`\brm\s+.*(?:/private/(?:etc|var|tmp|home)(?:/|\s|$)|/System(?:/|\s|$)|/Library/(?:LaunchDaemons|LaunchAgents|Preferences|Keychains)(?:/|\s|$)|~/Library(?:/|\s|$)|/Users/[^/\s]+/Library(?:/|\s|$))`,
-	)
-)
-
-// rmRfManual detects rm with both -r and -f flags (in any order/combination).
-// Go regexp doesn't support lookahead (?=...) so we check manually.
-var rmWithFlags = regexp.MustCompile(`\brm\s+(.+)`)
-
 func hasDangerousRmRf(command string) bool {
-	// Normalize whitespace before matching (CC 2.1.98: defense-in-depth)
-	command = normalizeCommand(command)
-	if hasDangerousFindDelete(command) || hasDangerousMacOSRemovalPath(command) {
-		return true
-	}
-	if rmRecursivePattern.MatchString(command) {
-		return true
-	}
-	// Check for -rf, -fr, -r -f, etc. in rm arguments
-	m := rmWithFlags.FindStringSubmatch(command)
-	if m == nil {
-		return false
-	}
-	args := m[1]
-	// Scan tokens for flag groups containing both r and f
-	hasR := false
-	hasF := false
-	for _, token := range strings.Fields(args) {
-		if !strings.HasPrefix(token, "-") || strings.HasPrefix(token, "--") {
-			continue // skip non-short-flags and long flags
-		}
-		flags := token[1:] // strip leading -
-		for _, c := range flags {
-			if c == 'r' {
-				hasR = true
-			}
-			if c == 'f' {
-				hasF = true
-			}
-		}
-	}
-	return hasR && hasF
-}
-
-func hasDangerousFindDelete(command string) bool {
-	return findDeletePattern.MatchString(command)
-}
-
-func hasDangerousMacOSRemovalPath(command string) bool {
-	return macOSDangerousRmTargetPattern.MatchString(command)
+	dangerous, _ := shellscan.DangerousRemoval(command)
+	return dangerous
 }
 
 // ---------------------------------------------------------------------------

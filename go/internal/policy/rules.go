@@ -2,9 +2,10 @@
 //
 // It contains the pure rule-evaluation core: each rule is a
 // (toolPattern, evaluate) pair evaluated in order; the first match wins
-// (short-circuit). This package depends only on the Go standard library and
-// pkg/hookproto so that the rule logic can be reused without pulling in the
-// configuration and state layers (those live in internal/guardrail).
+// (short-circuit). This package depends only on the Go standard library,
+// pkg/hookproto, and the dependency-free pkg/shellscan leaf package so that the
+// rule logic can be reused without pulling in the configuration and state
+// layers (those live in internal/guardrail).
 package policy
 
 import (

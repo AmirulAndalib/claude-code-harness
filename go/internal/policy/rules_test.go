@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Chachamaru127/claude-code-harness/go/internal/runtimefloor"
 	"github.com/Chachamaru127/claude-code-harness/go/pkg/hookproto"
 )
 
@@ -482,6 +483,14 @@ func TestR05_RmRfWorkMode(t *testing.T) {
 	}
 }
 
+func TestR05_RmRecursiveShortFlagOnly(t *testing.T) {
+	ctx := makeCtx("Bash", map[string]interface{}{"command": "rm -r /var/data"})
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Errorf("expected ask, got %s", result.Decision)
+	}
+}
+
 func TestR05_RmFOnly(t *testing.T) {
 	// rm -f (without -r) should NOT trigger R05
 	ctx := makeCtx("Bash", map[string]interface{}{"command": "rm -f temp.txt"})
@@ -536,6 +545,40 @@ func TestR05_MacOSUserLibrary(t *testing.T) {
 	result := EvaluateRules(ctx)
 	if result.Decision != hookproto.DecisionAsk {
 		t.Errorf("expected ask, got %s", result.Decision)
+	}
+}
+
+func TestDangerousRemovalParityWithRuntimeFloor(t *testing.T) {
+	root := "/worktree/runtimefloor-parity"
+	commands := []string{
+		"rm -r /opt/runtimefloor-outside",
+		"rm -R /opt/runtimefloor-outside",
+		"rm -rf /opt/runtimefloor-outside",
+		"rm -fr /opt/runtimefloor-outside",
+		"rm -r -f /opt/runtimefloor-outside",
+		"rm --recursive /opt/runtimefloor-outside",
+		"rm --recursive --force /opt/runtimefloor-outside",
+		"find /opt/runtimefloor-outside -delete",
+		`find /opt/runtimefloor-outside -exec rm -rf {} \;`,
+		"rm -f /System/runtimefloor-outside",
+		"rm -f ~/Library/runtimefloor-outside",
+		"bash -c 'rm -rf /opt/runtimefloor-outside'",
+		"echo $(rm -rf /opt/runtimefloor-outside)",
+	}
+
+	for _, command := range commands {
+		t.Run(command, func(t *testing.T) {
+			policyDangerous := hasDangerousRmRf(command)
+			decision := runtimefloor.CheckCommand(command, runtimefloor.Context{WorktreeRoot: root})
+			floorDangerous := decision.Stopped && decision.Category == runtimefloor.CategoryWorktreeEscape
+			if !policyDangerous {
+				t.Fatalf("dangerous removal corpus entry %q was not detected by policy", command)
+			}
+			if floorDangerous != policyDangerous {
+				t.Fatalf("dangerous removal drift for %q: floor=%v policy=%v (floor category=%s)",
+					command, floorDangerous, policyDangerous, decision.Category)
+			}
+		})
 	}
 }
 

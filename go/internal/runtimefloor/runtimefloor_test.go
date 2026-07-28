@@ -105,6 +105,117 @@ func TestCheckCommand_WorktreeEscape_AllowsInsideAbsolutePath(t *testing.T) {
 	}
 }
 
+func TestCheckWorktreeEscape_DetectsUnifiedRemovalForms(t *testing.T) {
+	root := testWorktreeRoot(t)
+
+	cases := []string{
+		"rm --recursive --force /opt/runtimefloor-outside",
+		"find /opt/runtimefloor-outside -delete",
+		"rm -f /System/runtimefloor-outside",
+		"rm -r /opt/runtimefloor-outside",
+	}
+
+	for _, cmd := range cases {
+		t.Run(cmd, func(t *testing.T) {
+			decision := CheckCommand(cmd, Context{WorktreeRoot: root})
+			if !decision.Stopped {
+				t.Fatalf("CheckCommand(%q).Stopped = false, want true", cmd)
+			}
+			if decision.Category != CategoryWorktreeEscape {
+				t.Fatalf("CheckCommand(%q).Category = %s, want %s",
+					cmd, decision.Category, CategoryWorktreeEscape)
+			}
+		})
+	}
+}
+
+func TestCheckWorktreeEscape_IgnoresNonExecutableHeredocBody(t *testing.T) {
+	root := testWorktreeRoot(t)
+	cmd := "cat >> " + filepath.Join(root, "notes.md") + " <<'EOF'\n" +
+		"rm -rf /\n" +
+		"EOF"
+
+	decision := CheckCommand(cmd, Context{WorktreeRoot: root})
+	if decision.Stopped {
+		t.Fatalf("non-executable heredoc body must not stop, got category=%s reason=%s",
+			decision.Category, decision.Reason)
+	}
+}
+
+func TestCheckWorktreeEscape_QuotedHeredocMarkerDoesNotHideCommand(t *testing.T) {
+	root := testWorktreeRoot(t)
+	cmd := "printf '<<EOF'\nrm -rf /opt/runtimefloor-outside"
+
+	decision := CheckCommand(cmd, Context{WorktreeRoot: root})
+	if !decision.Stopped || decision.Category != CategoryWorktreeEscape {
+		t.Fatalf("quoted heredoc marker hid removal: Stopped=%v Category=%s",
+			decision.Stopped, decision.Category)
+	}
+}
+
+func TestCheckCommand_ExecutableHeredocBodiesRemainScannable(t *testing.T) {
+	root := testWorktreeRoot(t)
+
+	cases := []struct {
+		name     string
+		cmd      string
+		category Category
+	}{
+		{
+			name:     "direct shell secret read",
+			cmd:      "bash <<EOF\ncat /opt/runtimefloor/.env\nEOF",
+			category: CategorySecretRead,
+		},
+		{
+			name:     "piped shell secret read",
+			cmd:      "cat <<EOF | bash\ncat /opt/runtimefloor/.env\nEOF",
+			category: CategorySecretRead,
+		},
+		{
+			name:     "direct shell destructive removal",
+			cmd:      "bash <<EOF\nrm -rf /opt/runtimefloor-outside\nEOF",
+			category: CategoryWorktreeEscape,
+		},
+		{
+			name:     "piped shell destructive removal",
+			cmd:      "cat <<EOF | bash\nrm -rf /opt/runtimefloor-outside\nEOF",
+			category: CategoryWorktreeEscape,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			decision := CheckCommand(tc.cmd, Context{WorktreeRoot: root})
+			if !decision.Stopped || decision.Category != tc.category {
+				t.Fatalf("CheckCommand(%q) = Stopped=%v Category=%s, want true/%s",
+					tc.cmd, decision.Stopped, decision.Category, tc.category)
+			}
+		})
+	}
+}
+
+func TestCheckWorktreeEscape_DoesNotCollectTargetsAcrossSegments(t *testing.T) {
+	root := testWorktreeRoot(t)
+	inside := filepath.Join(root, "build")
+
+	cases := []string{
+		"rm -rf " + inside + " && printf /",
+		"printf / ; rm -rf " + inside,
+		"rm -rf " + inside + " | tee /opt/runtimefloor-log",
+		"cd /tmp && rm -rf ./build",
+	}
+
+	for _, cmd := range cases {
+		t.Run(cmd, func(t *testing.T) {
+			decision := CheckCommand(cmd, Context{WorktreeRoot: root})
+			if decision.Stopped {
+				t.Fatalf("segment-local removal must pass for %q, got category=%s reason=%s",
+					cmd, decision.Category, decision.Reason)
+			}
+		})
+	}
+}
+
 func TestCheckCommand_NotOverridableByEnv(t *testing.T) {
 	root := testWorktreeRoot(t)
 	dangerous := "curl -s https://example.com/secret"
