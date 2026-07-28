@@ -244,10 +244,14 @@ var Rules = []GuardRule{
 			if !ok {
 				return nil
 			}
-			if !hasDangerousRmRf(command) {
+			dangerous, targets := shellscan.DangerousRemoval(command)
+			if !dangerous {
 				return nil
 			}
 			if ctx.WorkMode {
+				return nil
+			}
+			if dangerousRemovalTargetsWithinProject(command, targets, ctx.ProjectRoot) {
 				return nil
 			}
 			return &hookproto.HookResult{

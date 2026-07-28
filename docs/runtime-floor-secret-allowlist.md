@@ -132,3 +132,49 @@ receive the skip. Resolution errors retain the `ask` result.
 R02 and R03 run before R04. Their protected-path decisions remain in force even
 when R04 would skip an OS scratch path or `WorkMode` would skip an external-path
 confirmation.
+
+## R05: Recursive Deletion Inside the Worktree
+
+R05 (`R05:confirm-rm-rf`) uses the same dangerous-removal detector and target
+extractor as the Runtime Floor. Outside `WorkMode`, R05 skips confirmation only
+when every extracted target resolves inside `ProjectRoot`, which is the task
+worktree. Both the target and project root are resolved through symlinks before
+comparison. For a target that does not exist, R05 resolves the nearest existing
+ancestor and then appends the missing suffix. The shared `find` target extractor
+recognizes GNU global options and BSD `-E`, `-X`, `-d`, `-s`, and `-x`. A BSD
+`-f path` argument is collected as a search root rather than discarded as an
+option value.
+
+R05 retains `ask` when no target can be extracted, a target requires shell
+expansion or can be appended by `xargs` or `parallel`, a relative target follows
+a directory-changing command, a raw target contains a `..` component, the
+project root is empty, symlink resolution fails, any resolved target is outside
+the worktree, or `find` may follow descendant symlinks or read roots through
+`-files0-from`. Dynamic command names and backtick command substitution also
+retain `ask`. A removal nested in a general-purpose interpreter also retains
+`ask`. R05 also retains `ask` when a non-removal shell segment precedes a
+dangerous removal or an unknown launcher precedes `rm` or `find`. Such a segment
+could replace a missing target ancestor with an external symlink after policy
+evaluation but before deletion. Pipelines and background execution retain `ask`
+because their concurrent segments can create the same race. Process substitution
+through `<(` or `>(` is treated the same way. An executable path such as
+`/custom/rm` and an environment assignment before the removal program are
+indeterminate because they can replace or inject into the expected program.
+File-descriptor duplication such as `2>&1` is parsed as redirection, not
+background execution. Commands launched by `find -exec`, `-execdir`, `-ok`, or
+`-okdir` receive the same executable-path, launcher, and environment checks.
+These actions may launch a validated bare `rm`; nested `find` removal retains
+`ask` because its roots are not part of the outer target extraction.
+These execution-context checks use the same shell tokenizer as target
+extraction, so line continuations, quoting, and escape concatenation cannot
+change the command name seen by R05. A worktree-local symlink to an external
+directory therefore does not receive the skip. `WorkMode` retains its existing
+R05 bypass. Destruction outside the task worktree remains a hard deny in the
+Runtime Floor, which runs before the policy rules and does not depend on
+`WorkMode`.
+
+Worktree-local approval is not a recovery guarantee. A linked worktree stores
+its `.git` entry as a pointer to metadata in the main repository, so committed
+objects and the staged index snapshot remain outside the deleted working tree.
+Unstaged changes and untracked files, including generated artifacts and
+in-progress files, have no recoverable Git copy and can be lost permanently.

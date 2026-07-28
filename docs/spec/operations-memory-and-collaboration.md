@@ -232,8 +232,36 @@ Historical L3 note: an earlier bridge subsystem prototyped a `bridge-event.v1` e
     line comments are excluded, but bodies passed to bash, sh, zsh, dash, ksh,
     Python, Perl, Ruby, or Node remain executable input and must stay scannable.
     Removal targets stop at `&&`, `||`, `;`, `|`, or newline; `--` ends option
-    parsing, and `find` removal uses its search root as the target. Worktree and
-    OS scratch allowlists remain runtime-floor scope decisions after scanning.
+    parsing, and `find` removal uses its search root as the target. After the
+    Runtime Floor rejects worktree escapes, R05 may skip its `ask` only when
+    every extracted target and `ProjectRoot` resolve through symlinks and every
+    real target is inside the real project root. GNU and BSD `find` global
+    options are parsed; BSD `-f path` contributes `path` as a search root.
+    Missing targets are classified from the nearest resolvable ancestor. Empty
+    extraction, shell-expanded or
+    argument-producer-appended targets, relative targets combined with
+    directory-changing commands, dynamic command names, raw `..` path
+    components, empty roots, resolution errors, any external target, and `find`
+    modes that follow descendant symlinks or use `-files0-from` retain `ask`.
+    Backtick target substitution also retains `ask`. Shell command names are
+    evaluated with the shared tokenizer so quoting, escaping, and line
+    continuations cannot bypass these checks. Removal nested in a
+    general-purpose interpreter retains `ask`. A non-removal shell segment
+    before a dangerous removal, or an unknown launcher before `rm` or `find`,
+    also retains `ask` because it can change target resolution after policy
+    evaluation. Pipelines and background execution retain `ask` because their
+    segments execute concurrently. Process substitution through `<(` or `>(`
+    is also indeterminate. Executable paths and environment assignments before
+    the removal program retain `ask`; file-descriptor duplication such as
+    `2>&1` remains ordinary redirection. `WorkMode` retains its existing R05
+    bypass. `find -exec`, `-execdir`, `-ok`, and `-okdir` apply the same checks
+    to each launched command. A validated bare `rm` may run there; nested `find`
+    removal retains `ask` because the outer extraction does not contain its
+    roots.
+  - Worktree-local recursive deletion can permanently lose unstaged changes and
+    untracked files. A linked worktree's `.git` file points to metadata in the
+    main repository, so committed objects and the staged index snapshot survive
+    deletion; working-tree-only data does not.
 - Auto-approve scope. Inside a CONFINED worktree the Lead may auto-judge
   code/file/git "ask" gates; the runtime hard floor is the only escalation path.
   Auto-approve must NOT be enabled until both the runtime floor and worktree

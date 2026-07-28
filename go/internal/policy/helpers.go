@@ -301,6 +301,60 @@ func isUnderProjectRoot(filePath, projectRoot string) bool {
 	return strings.HasPrefix(cleaned, root) || cleaned == root
 }
 
+func dangerousRemovalTargetsWithinProject(command string, targets []string, projectRoot string) bool {
+	if len(targets) == 0 || projectRoot == "" || !filepath.IsAbs(projectRoot) {
+		return false
+	}
+
+	resolvedRoot, err := filepath.EvalSymlinks(projectRoot)
+	if err != nil {
+		return false
+	}
+	rootInfo, err := os.Stat(resolvedRoot)
+	if err != nil || !rootInfo.IsDir() {
+		return false
+	}
+
+	if shellscan.RemovalContextIndeterminate(command, targets) {
+		return false
+	}
+	for _, target := range targets {
+		if target == "" || strings.ContainsAny(target, "$`*?[]{}~") || hasParentTraversalComponent(target) {
+			return false
+		}
+
+		targetPath := target
+		if !filepath.IsAbs(targetPath) {
+			targetPath = filepath.Join(projectRoot, targetPath)
+		}
+		resolvedTarget, err := evalSymlinksAllowMissing(targetPath)
+		if err != nil || !pathWithinRoot(resolvedTarget, resolvedRoot) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func hasParentTraversalComponent(filePath string) bool {
+	for _, component := range strings.FieldsFunc(filePath, func(char rune) bool {
+		return char == '/' || char == '\\'
+	}) {
+		if component == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func pathWithinRoot(filePath, root string) bool {
+	relative, err := filepath.Rel(root, filePath)
+	if err != nil || filepath.IsAbs(relative) {
+		return false
+	}
+	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
 // ---------------------------------------------------------------------------
 // Whitespace normalization (CC 2.1.98: wildcard pattern defense-in-depth)
 // ---------------------------------------------------------------------------

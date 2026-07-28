@@ -211,6 +211,250 @@ func DangerousRemoval(command string) (bool, []string) {
 	return dangerousRemoval(scannable, 0)
 }
 
+// RemovalContextIndeterminate reports whether shell execution can add removal
+// targets, change the base of a relative target, or follow descendant symlinks
+// beyond the paths returned by DangerousRemoval.
+func RemovalContextIndeterminate(command string, targets []string) bool {
+	relativeTarget := false
+	for _, target := range targets {
+		if !filepath.IsAbs(target) {
+			relativeTarget = true
+			break
+		}
+	}
+	scannable := StripNonExecutableText(command)
+	if strings.ContainsRune(scannable, '`') || containsConcurrentShellOperator(scannable) {
+		return true
+	}
+	return removalContextIndeterminate(scannable, relativeTarget, 0)
+}
+
+func containsConcurrentShellOperator(command string) bool {
+	inSingle := false
+	inDouble := false
+	escaped := false
+	var previousSyntax byte
+	for i := 0; i < len(command); i++ {
+		char := command[i]
+		if escaped {
+			escaped = false
+			previousSyntax = 0
+			continue
+		}
+		if char == '\\' && !inSingle {
+			escaped = true
+			previousSyntax = 0
+			continue
+		}
+		if char == '\'' && !inDouble {
+			inSingle = !inSingle
+			previousSyntax = 0
+			continue
+		}
+		if char == '"' && !inSingle {
+			inDouble = !inDouble
+			previousSyntax = 0
+			continue
+		}
+		if inSingle || inDouble {
+			previousSyntax = 0
+			continue
+		}
+		if (char == '<' || char == '>') && i+1 < len(command) && command[i+1] == '(' {
+			return true
+		}
+		if char == '|' {
+			if i+1 < len(command) && command[i+1] == '|' {
+				i++
+				previousSyntax = 0
+				continue
+			}
+			return true
+		}
+		if char == '&' {
+			if previousSyntax == '<' || previousSyntax == '>' {
+				previousSyntax = char
+				continue
+			}
+			if i+1 < len(command) && command[i+1] == '&' {
+				i++
+				previousSyntax = 0
+				continue
+			}
+			if i+1 < len(command) && command[i+1] == '>' {
+				previousSyntax = char
+				continue
+			}
+			return true
+		}
+		previousSyntax = char
+	}
+	return false
+}
+
+func removalContextIndeterminate(command string, relativeTarget bool, depth int) bool {
+	priorNonRemovalSegment := false
+	for _, segment := range splitCommandSegments(command) {
+		tokens := tokenize(segment)
+		findDangerous, _ := dangerousFind(tokens)
+		rmDangerous, _ := dangerousRM(tokens)
+		segmentDangerous, _ := dangerousRemoval(segment, 0)
+		if segmentDangerous {
+			if priorNonRemovalSegment || !dangerousCommandDirectlyInvoked(tokens) {
+				return true
+			}
+		} else if segmentCanChangeTargetResolution(tokens) {
+			priorNonRemovalSegment = true
+		}
+		if (findDangerous || rmDangerous) && tokensContainShellExpansion(tokens) {
+			return true
+		}
+		if relativeTarget && segmentCommandIsDynamic(tokens) {
+			return true
+		}
+
+		for i, token := range tokens {
+			if relativeTarget && strings.Contains(strings.ToLower(token), "chdir") {
+				return true
+			}
+			switch commandName(token) {
+			case "xargs", "parallel":
+				return true
+			case "cd", "chdir", "pushd", "popd":
+				if relativeTarget {
+					return true
+				}
+			case "env":
+				if relativeTarget && envChangesDirectory(tokens[i+1:]) {
+					return true
+				}
+			case "find":
+				if findContextIndeterminate(tokens[i+1:]) {
+					return true
+				}
+			}
+		}
+
+		if depth >= 4 {
+			continue
+		}
+		for _, token := range tokens {
+			if !strings.ContainsAny(token, " \t\r\n;&|()`") {
+				continue
+			}
+			if removalContextIndeterminate(token, relativeTarget, depth+1) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func dangerousCommandDirectlyInvoked(tokens []string) bool {
+	return dangerousCommandDirectlyInvokedWithFind(tokens, true)
+}
+
+func dangerousCommandDirectlyInvokedWithFind(tokens []string, allowFind bool) bool {
+	for i, token := range tokens {
+		if isAssignment(token) {
+			return false
+		}
+		if isRedirectionToken(token) {
+			continue
+		}
+		if strings.ContainsAny(token, `/\`) {
+			return false
+		}
+		name := commandName(token)
+		if _, wrapper := interpreterWrappers[name]; wrapper {
+			continue
+		}
+		if name == "find" {
+			return allowFind && findActionCommandsDirectlyInvoked(tokens[i+1:])
+		}
+		return name == "rm"
+	}
+	return false
+}
+
+func findActionCommandsDirectlyInvoked(tokens []string) bool {
+	for i := 0; i < len(tokens); i++ {
+		switch tokens[i] {
+		case "-exec", "-execdir", "-ok", "-okdir":
+		default:
+			continue
+		}
+
+		end := i + 1
+		for end < len(tokens) && tokens[end] != ";" && tokens[end] != "+" {
+			end++
+		}
+		if end == len(tokens) || !dangerousCommandDirectlyInvokedWithFind(tokens[i+1:end], false) {
+			return false
+		}
+		i = end
+	}
+	return true
+}
+
+func segmentCanChangeTargetResolution(tokens []string) bool {
+	for _, token := range tokens {
+		if isAssignment(token) {
+			return true
+		}
+		if isRedirectionToken(token) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func tokensContainShellExpansion(tokens []string) bool {
+	for _, token := range tokens {
+		if strings.ContainsAny(token, "$`*?[]{}") {
+			return true
+		}
+	}
+	return false
+}
+
+func segmentCommandIsDynamic(tokens []string) bool {
+	for i, token := range tokens {
+		if isAssignment(token) || isRedirectionToken(token) {
+			continue
+		}
+		if strings.ContainsAny(token, "$`*?[]{}") {
+			return true
+		}
+		if _, wrapper := interpreterWrappers[commandName(token)]; wrapper {
+			return tokensContainShellExpansion(tokens[i+1:])
+		}
+		return false
+	}
+	return false
+}
+
+func envChangesDirectory(tokens []string) bool {
+	for _, token := range tokens {
+		if token == "-C" || strings.HasPrefix(token, "-C") && len(token) > len("-C") ||
+			token == "--chdir" || strings.HasPrefix(token, "--chdir=") {
+			return true
+		}
+	}
+	return false
+}
+
+func findContextIndeterminate(tokens []string) bool {
+	for _, token := range tokens {
+		if token == "-L" || token == "-follow" ||
+			token == "-files0-from" || strings.HasPrefix(token, "-files0-from=") {
+			return true
+		}
+	}
+	return false
+}
+
 func dangerousRemoval(command string, depth int) (bool, []string) {
 	dangerous := false
 	var targets []string
@@ -352,6 +596,13 @@ func dangerousFind(tokens []string) (bool, []string) {
 				options = false
 				continue
 			}
+			if options && arg == "-f" {
+				if j+1 < len(tokens) {
+					j++
+					targets = append(targets, tokens[j])
+				}
+				continue
+			}
 			if options && isFindGlobalOption(arg) {
 				if arg == "-D" && j+1 < len(tokens) {
 					j++
@@ -372,8 +623,19 @@ func dangerousFind(tokens []string) (bool, []string) {
 }
 
 func isFindGlobalOption(token string) bool {
-	return token == "-H" || token == "-L" || token == "-P" ||
-		token == "-D" || strings.HasPrefix(token, "-D") || strings.HasPrefix(token, "-O")
+	if token == "-H" || token == "-L" || token == "-P" ||
+		token == "-D" || strings.HasPrefix(token, "-D") || strings.HasPrefix(token, "-O") {
+		return true
+	}
+	if len(token) < 2 || token[0] != '-' {
+		return false
+	}
+	for _, option := range token[1:] {
+		if !strings.ContainsRune("EXdsx", option) {
+			return false
+		}
+	}
+	return true
 }
 
 func isFindExpressionStart(token string) bool {
