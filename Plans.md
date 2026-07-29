@@ -225,3 +225,28 @@ Purpose: operator 裁定 (2026-07-27、AskUserQuestion 一括確認 ×2): 「wor
   承認: approved (2026-07-27 operator、AskUserQuestion 一括確認)
 - secret-read: なし (テストは mktemp fixture のみ)
 - destructive: なし
+
+---
+
+## Phase 127: BSD 非互換 mktemp テンプレートの一掃 (operator 承認 2026-07-30) [P2]
+
+Purpose: BSD (macOS) の `mktemp` は X が**末尾にある場合しか置換しない**。`mktemp /tmp/foo-XXXXXX.json` のように拡張子が続く形式は乱数化されず、テンプレートそのままの literal path を返してそのファイルを作る (実測 2026-07-30: `mktemp /tmp/zz6-XXXXXX.json` → `/tmp/zz6-XXXXXX.json`)。GNU (Linux/CI) は末尾以外の X も置換するため **CI では一切再現せず、macOS ローカル限定**の障害になる。実害は Phase 126 直後に顕在化した: `scripts/hook-handlers/posttool-progress-regen.sh` が同形式を使っており、2026-07-27 から残っていた `/tmp/progress-snap-XXXX.json` により mktemp が EEXIST で失敗し続け、hook が `regenerated:true` を返しながら HTML も state file も更新しない状態が 3 日間継続していた (`test-progress-regen.sh` / `test-progress-e2e.sh` の計 4 assertion が失敗。Phase 126.7 が「本 Phase を含まないベースでも失敗する既存分 2 件」と記録したものの正体)。この 1 件は commit c856ecec で修正済み。本 Phase は残る 9 箇所 (全域を厳密走査した確定値。すべて `tests/` 配下で `scripts/` `hooks/` `go/` には無い) を同形式へ統一し、再発を機械検査で止める。
+
+現時点で `/tmp` に残骸は 0 件のため 9 箇所とも緑だが、潜在障害が 2 つ残る。(1) `tests/test-accept-record.sh` / `tests/test-harness-accept.sh` は trap 後始末が無く、中断で残骸を残す = 以降永久に赤化する (progress-regen で実証済みの経路)。(2) literal path は一意性が無いため、並行実行時に同一 path を掴んで相互汚染する。
+
+lint baseline: `tests/test-shell-lint.sh` (shellcheck `--severity=error` の高リスク subset) が存在するが、対象 6 ファイルは subset 外であり、かつ **shellcheck はこの書式を検出しない**ことを実測確認済み (probe `mktemp /tmp/foo-XXXXXX.json` に対し findings ゼロ)。したがって shellcheck への委譲は不可で、専用の検出 gate が必要。
+
+team_validation_mode: manual-pass (サブエージェント未使用 — 本セッションは AgentTool を明示要求時のみ使う運用のため。Product / Architecture / Security / QA / Skeptic の 5 観点を単独で分けて評価済み。Security: assertion の削除・弱体化はゼロで、非一意 temp path を塞ぐのは安全側。Skeptic: 「現在全部緑なら不要では」に対しては上記 (1)(2) が反証となる)。Spec skip reason: shell の可搬性 bugfix であり、ユーザーに見える振る舞い・API・データモデル・権限・課金・外部連携のいずれも変えない。root `spec.md` に一時ファイル生成の規約は無い (実測: `mktemp` / 一時ファイル の記載ゼロ)。unknown_data: なし (9 箇所と検出ロジックを実測で確定済み)。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 127.1 | `[lane:gate]` `[tdd:required]` 検出 gate 先行 + 9 箇所の統一。(i) `tests/validate-plugin.sh` に「mktemp テンプレートの X が末尾でない箇所」を `scripts/` `tests/` `hooks/` `go/` 全域で検出する gate を追加 (`.claude/rules/workflow-test-wiring.md` 準拠 = 配線の正本は validate-plugin.sh、`.github/workflows/` は触らない)。(ii) 検出された 9 箇所を末尾 X 形式へ統一。既存の主流書式に合わせ `"${TMPDIR:-/tmp}/<name>.XXXXXX"` を使う (repo 内 59 箇所が TMPDIR 参照)。拡張子は 9 箇所とも消費側が path としてしか使わないため落としてよい (実測確認済み)。消費側が拡張子を要求する箇所が見つかった場合のみ `mktemp -d` + ディレクトリ内の固定名ファイルへ置換する。(iii) trap 後始末が無い `tests/test-accept-record.sh` / `tests/test-harness-accept.sh` に後始末を追加する | (a) RED: gate 追加直後に 9 件を検出して fail する実測記録 (件数と file:line を引用), (b) 9 箇所修正後に gate が green かつ検出 0 件, (c) 対照実験: 修正前テンプレートの literal path を `/tmp` に置いた状態で対象 6 ファイルの test が全て通ることを実測 (progress-regen で使った手法と同じ), (d) 既存 assertion の削除・弱体化ゼロ (差分は追加と 1 行置換のみであることを diff で提示), (e) `bash tests/validate-plugin.sh` 0 failed (floor 免除 env を export したまま実行), (f) `bash scripts/ci/check-consistency.sh` 全パス | - | cc:TODO |
+| 127.2 | `[lane:release]` `[tdd:skip:verification]` 検証 + closeout: CHANGELOG `[Unreleased]` の Fixed へ追記 (macOS 限定の非一意 temp path と、再発を止める検査の追加)、skill mirror in-sync 確認、PR closeout。`go/` の変更は無い見込みのため binary rebuild は不要 (変更が入った場合のみ 4-platform 再生成 + drift gate) | (a) CHANGELOG `[Unreleased]` に before/after が読めるエントリ, (b) `bash tests/validate-plugin.sh` 0 failed + `bash scripts/ci/check-consistency.sh` 全パス, (c) VERSION / `.claude-plugin/plugin.json` / `harness.toml` が未変更であることを `git diff --name-only` で確認, (d) PR closeout (事前承認済み: push + PR 作成 + CI green 確認 + merge) | 127.1 | cc:TODO |
+
+事前確認 (plan-time pre-approval):
+- 事項: external-send — `git push origin <branch>` + `gh pr create` + CI green 確認 + `gh pr merge --merge` (完全自動)
+  理由: 127.2 DoD (d) の PR closeout に必要
+  scope: Phase 127 / Task 127.2
+  承認: approved (2026-07-30 operator、「両方Yes」)
+- secret-read: なし
+- destructive: なし (対照実験は `/tmp` 配下に fixture を置いて消すのみ。作業ツリー外への破壊操作は含まない)
