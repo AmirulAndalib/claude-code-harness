@@ -6,6 +6,20 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Fixed
+
+#### オーナーの floor 免除設定が、それを検証するテストの結果を書き換えていた問題
+
+**今まで**: `HARNESS_RUNTIME_FLOOR_EGRESS=off` と `HARNESS_RUNTIME_FLOOR_SECRET_ALLOW` は正規のオーナー設定ですが、これを export したシェルからテストを起動すると子プロセスに継承され、runtime floor の deny を検証する assertion が素通りしていました。影響は 2 面あります。落ちる側は shell 2 本と Go 12 subtest で、リリースのたびに誤った赤を出していました。**より重いのは通る側**で、e2e は egress で異常終了するため後続の prod-deploy / worktree-escape の 2 検査が実行されないまま OK 扱いになり、また allowlist 非宣言 path の deny 検証は、免除設定が対象を覆っていれば floor が一度も拒否しなくても pass します。
+
+**今後**: floor を検証する 4 つの surface (shell 2 本、`runtimefloor` パッケージの `TestMain`、`cmd/harness` の floor テスト) が自分で免除設定を無効化してから測ります。宣言済み path の検証は従来どおり per-command で明示的に設定します。`tests/validate-plugin.sh` に 4/4 surface の pin を追加したため、新しい floor テストが無効化を忘れると検知されます。
+
+#### macOS で進捗 HTML の自動再生成が、中断後に永久に止まっていた問題
+
+**今まで**: PostToolUse hook の背景処理が一時ファイルを `mktemp /tmp/progress-snap-XXXX.json` で作っていました。BSD (macOS) の `mktemp` は **X が末尾にある場合しか置換しない**ため、この形式は毎回まったく同じパスを返します。通常は処理末尾の `rm -f` で消えますが、一度でも中断して残骸が残ると以降は `File exists` で失敗し続け、hook は `regenerated:true` を返しながら**実際には HTML も state file も更新しない**状態になります。GNU (Linux/CI) は末尾以外の X も置換するため CI では再現しませんでした。
+
+**今後**: X を末尾に置く形式 (`"${TMPDIR:-/tmp}/progress-snap-XXXXXX"`) に変更し、BSD / GNU の双方で一意なパスを得ます。残骸がある状態でも再生成が通ることを確認済みです。
+
 ## [5.5.0] - 2026-07-29
 
 ### テーマ: 止まらないモード — 確認の削減と、その過程で見つかった防御の穴の封鎖 (Phase 126)
