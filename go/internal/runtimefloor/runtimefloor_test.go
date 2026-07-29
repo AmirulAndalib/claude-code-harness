@@ -7,6 +7,18 @@ import (
 	"testing"
 )
 
+// TestMain neutralises the owner-scoped floor exemptions before any test in this
+// package runs. HARNESS_RUNTIME_FLOOR_EGRESS=off and a broad
+// HARNESS_RUNTIME_FLOOR_SECRET_ALLOW are legitimate operator settings, so a
+// developer session that exports them would otherwise turn the deny assertions
+// here into false passes. Tests that need an exemption still opt in explicitly
+// via t.Setenv, which restores to this cleared baseline afterwards.
+func TestMain(m *testing.M) {
+	_ = os.Unsetenv("HARNESS_RUNTIME_FLOOR_EGRESS")
+	_ = os.Unsetenv("HARNESS_RUNTIME_FLOOR_SECRET_ALLOW")
+	os.Exit(m.Run())
+}
+
 func testWorktreeRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
