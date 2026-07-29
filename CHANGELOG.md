@@ -6,6 +6,8 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [5.5.0] - 2026-07-29
+
 ### テーマ: 止まらないモード — 確認の削減と、その過程で見つかった防御の穴の封鎖 (Phase 126)
 
 ### Fixed
@@ -5592,7 +5594,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.4.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.5.0...HEAD
+[5.5.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.4.0...v5.5.0
 [5.4.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.3.1...v5.4.0
 [5.3.1]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.3.0...v5.3.1
 [5.3.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.2.0...v5.3.0
