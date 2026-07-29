@@ -1294,6 +1294,16 @@ else
 fi
 
 echo ""
+echo "18. mktemp BSD-safe template (Phase 127.1)"
+echo "----------------------------------------"
+
+if bash "$PLUGIN_ROOT/tests/test-mktemp-bsd-template-safety.sh" > /dev/null 2>&1; then
+    pass_test "mktemp templates are BSD-safe (X が末尾で、後ろに suffix が付かない)"
+else
+    fail_test "mktemp BSD-safety contract failed — 'bash tests/test-mktemp-bsd-template-safety.sh' で詳細確認"
+fi
+
+echo ""
 echo "=========================================="
 echo "テスト結果サマリー"
 echo "=========================================="
