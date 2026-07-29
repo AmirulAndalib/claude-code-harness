@@ -1047,6 +1047,20 @@ else
     fail_test "3-surface-e2e の契約テストに失敗 — 'bash tests/test-3-surface-e2e.sh' で詳細確認"
 fi
 
+# 3 surface の skill 契約テスト。未配線だったため frontmatter の
+# user-invocable 乖離を約 2 ヶ月検知できていなかった (Phase 127.3)
+if bash "$PLUGIN_ROOT/tests/test-harness-plan-brief.sh" > /dev/null 2>&1; then
+    pass_test "harness-plan-brief skill 契約 (frontmatter / schema / fixture / render) が維持されています (test-harness-plan-brief.sh)"
+else
+    fail_test "harness-plan-brief の skill 契約テストに失敗 — 'bash tests/test-harness-plan-brief.sh' で詳細確認"
+fi
+
+if bash "$PLUGIN_ROOT/tests/test-harness-accept.sh" > /dev/null 2>&1; then
+    pass_test "harness-accept skill 契約 (frontmatter / schema / recommendation 閾値) が維持されています (test-harness-accept.sh)"
+else
+    fail_test "harness-accept の skill 契約テストに失敗 — 'bash tests/test-harness-accept.sh' で詳細確認"
+fi
+
 if bash "$PLUGIN_ROOT/tests/test-audit-ui-presence.sh" > /dev/null 2>&1; then
     pass_test "Phase 65.5.2 監査 UI: 3 HTML templates 全てに audit-trail section + 4 項目 (検索範囲/参照ID/redact/log) (test-audit-ui-presence.sh)"
 else
