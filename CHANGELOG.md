@@ -6,6 +6,12 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [5.6.0] - 2026-08-01
+
+### テーマ: 実行時フロアの回避経路封鎖と、検査基盤の信頼性回復 (Phase 127-129)
+
+外部からの Pull Request をレビューする過程で、実行時フロア (runtime floor) を設定ファイルから無効化できる経路が 2 つ実在することが分かりました。その修正と、監査の過程で見つかった検査基盤側の不具合をまとめて出荷します。検査基盤の不具合はいずれも macOS でのみ再現し、Linux の CI では緑のまま通過していたものです。
+
 ### Security
 
 実行時フロア (runtime floor) を設定ファイルから無効化できる経路が 2 つ実在していました。いずれも外部からの Pull Request をレビューする過程で見つかり、実際に動かして確認しています。修正はすべて**制限を強める方向のみ**で、既存の拒否・確認ルールを緩めた箇所はありません。
@@ -5702,7 +5708,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.5.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.6.0...HEAD
+[5.6.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.5.0...v5.6.0
 [5.5.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.4.0...v5.5.0
 [5.4.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.3.1...v5.4.0
 [5.3.1]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.3.0...v5.3.1

@@ -18,6 +18,7 @@ CURSOR_PLUGIN_JSON=".cursor-plugin/plugin.json"
 GROK_PLUGIN_JSON=".grok-plugin/plugin.json"
 MARKETPLACE_JSON=".claude-plugin/marketplace.json"
 HARNESS_TOML="harness.toml"
+COMPAT_DOC="docs/CLAUDE_CODE_COMPATIBILITY.md"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 現在のバージョンを取得
@@ -176,6 +177,29 @@ sync_version() {
                 sed -i "s/^version = \"$toml_ver\"/version = \"$version\"/" "$HARNESS_TOML"
             fi
             echo "✅ harness.toml を更新: $toml_ver → $version"
+        fi
+    fi
+
+    # 互換性ドキュメントの "Plugin version" 行の同期。
+    # tests/test-public-claims-contract.sh が VERSION との一致を pin しているため、
+    # ここで同期しないと bump のたびに validate が落ちる。
+    if [ -f "$COMPAT_DOC" ]; then
+        local doc_ver
+        doc_ver="$(grep -oE '^- Plugin version: `[^`]+`' "$COMPAT_DOC" | grep -oE '`[^`]+`' | tr -d '`' || true)"
+        # 行が見つからない場合は黙って飛ばさない。書式が変わったまま同期したつもりに
+        # なると、bump したのに doc だけ旧版のまま公開される。
+        if [ -z "$doc_ver" ]; then
+            echo "❌ $COMPAT_DOC に '- Plugin version: \`x.y.z\`' 形式の行が見つかりません" >&2
+            echo "   書式が変わった場合は sync-version.sh の抽出パターンも更新してください" >&2
+            exit 1
+        fi
+        if [ "$version" != "$doc_ver" ]; then
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                sed -i '' "s|^- Plugin version: \`$doc_ver\`|- Plugin version: \`$version\`|" "$COMPAT_DOC"
+            else
+                sed -i "s|^- Plugin version: \`$doc_ver\`|- Plugin version: \`$version\`|" "$COMPAT_DOC"
+            fi
+            echo "✅ $COMPAT_DOC を更新: $doc_ver → $version"
         fi
     fi
 
