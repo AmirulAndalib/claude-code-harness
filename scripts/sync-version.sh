@@ -186,7 +186,14 @@ sync_version() {
     if [ -f "$COMPAT_DOC" ]; then
         local doc_ver
         doc_ver="$(grep -oE '^- Plugin version: `[^`]+`' "$COMPAT_DOC" | grep -oE '`[^`]+`' | tr -d '`' || true)"
-        if [ -n "$doc_ver" ] && [ "$version" != "$doc_ver" ]; then
+        # 行が見つからない場合は黙って飛ばさない。書式が変わったまま同期したつもりに
+        # なると、bump したのに doc だけ旧版のまま公開される。
+        if [ -z "$doc_ver" ]; then
+            echo "❌ $COMPAT_DOC に '- Plugin version: \`x.y.z\`' 形式の行が見つかりません" >&2
+            echo "   書式が変わった場合は sync-version.sh の抽出パターンも更新してください" >&2
+            exit 1
+        fi
+        if [ "$version" != "$doc_ver" ]; then
             if [[ "$OSTYPE" == "darwin"* ]]; then
                 sed -i '' "s|^- Plugin version: \`$doc_ver\`|- Plugin version: \`$version\`|" "$COMPAT_DOC"
             else
