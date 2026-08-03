@@ -491,7 +491,9 @@ except:
     local sig_type="$1"
     if [ -n "${SESSION_ID}" ] && [ -f "${SIGNALS_FILE}" ]; then
       # 同一行に signal と session_id の両方を含むレコードが存在するか
-      grep -F "\"${sig_type}\"" "${SIGNALS_FILE}" 2>/dev/null | grep -Fq "\"session_id\":\"${SESSION_ID}\"" 2>/dev/null
+      local _sig_type_lines
+      _sig_type_lines="$(grep -F "\"${sig_type}\"" "${SIGNALS_FILE}" 2>/dev/null || true)"
+      grep -Fq "\"session_id\":\"${SESSION_ID}\"" <<<"${_sig_type_lines}"
     else
       grep -Fq "\"${sig_type}\"" "${SIGNALS_FILE}" 2>/dev/null
     fi

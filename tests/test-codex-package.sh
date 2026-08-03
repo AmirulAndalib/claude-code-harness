@@ -791,7 +791,8 @@ if [ -d "$CODEX_HOME/skills/legacy-harness-plan" ]; then
   echo "  duplicate alias directory still exists"
   exit 1
 fi
-if ! find "$CODEX_HOME/backups/codex-setup-local" -type d -name "legacy-harness-plan.*" | grep -q .; then
+_alias_backup_dirs="$(find "$CODEX_HOME/backups/codex-setup-local" -type d -name "legacy-harness-plan.*" || true)"
+if ! grep -q . <<<"$_alias_backup_dirs"; then
   echo "  duplicate alias backup not found"
   exit 1
 fi
@@ -853,7 +854,8 @@ if [ -d "$CODEX_HOME/skills/work" ] || [ -d "$CODEX_HOME/skills/plan-with-agent"
   exit 1
 fi
 
-if ! find "$CODEX_HOME/backups/codex-setup-local" -type d \( -name "work.*" -o -name "plan-with-agent.*" \) | grep -q .; then
+_legacy_backup_dirs="$(find "$CODEX_HOME/backups/codex-setup-local" -type d \( -name "work.*" -o -name "plan-with-agent.*" \) || true)"
+if ! grep -q . <<<"$_legacy_backup_dirs"; then
   echo "  removed legacy harness skills were not archived"
   exit 1
 fi

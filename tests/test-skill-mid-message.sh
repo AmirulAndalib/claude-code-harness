@@ -84,7 +84,8 @@ for skill_file in "${SKILL_FILES[@]}"; do
     fi
 
     # 2. フロントマター開始行 (---) があること
-    if head -1 "$skill_file" | grep -q "^---$"; then
+    skill_first_line="$(head -1 "$skill_file")"
+    if grep -q "^---$" <<<"$skill_first_line"; then
         pass "フロントマター開始行あり"
     else
         fail "フロントマター開始行なし (先頭が --- でない)"

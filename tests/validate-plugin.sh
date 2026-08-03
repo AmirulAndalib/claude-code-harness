@@ -849,7 +849,8 @@ for s in scripts/cursor-companion.sh scripts/resolve-impl-backend.sh scripts/mod
         cursor_release_scripts_ok=0
         break
     fi
-    if git -C "$PLUGIN_ROOT" check-attr export-ignore -- "$s" 2>/dev/null | grep -q "export-ignore: set"; then
+    export_ignore_attr="$(git -C "$PLUGIN_ROOT" check-attr export-ignore -- "$s" 2>/dev/null)"
+    if grep -q "export-ignore: set" <<<"$export_ignore_attr"; then
         cursor_release_scripts_ok=0
         break
     fi

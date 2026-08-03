@@ -33,13 +33,17 @@ section_for() {
 assert_section_contains() {
   local host="$1"
   local needle="$2"
-  section_for "$host" | grep -Fq "$needle" || fail "missing '$needle' in ${host} section"
+  local section
+  section="$(section_for "$host")"
+  grep -Fq "$needle" <<<"$section" || fail "missing '$needle' in ${host} section"
 }
 
 assert_section_regex() {
   local host="$1"
   local pattern="$2"
-  section_for "$host" | grep -Eq "$pattern" || fail "missing pattern '$pattern' in ${host} section"
+  local section
+  section="$(section_for "$host")"
+  grep -Eq "$pattern" <<<"$section" || fail "missing pattern '$pattern' in ${host} section"
 }
 
 assert_file "$INDEX"

@@ -152,7 +152,7 @@ else
   # Try Python jsonschema (preferred), fall back to structural jq check
   validated=0
   if command -v python3 >/dev/null 2>&1; then
-    if python3 -c "
+    py_schema_check_output="$(python3 -c "
 import json, sys
 try:
     import jsonschema
@@ -166,7 +166,8 @@ try:
 except jsonschema.ValidationError as e:
     print(f'PYTHON_JSONSCHEMA_FAIL: {e.message}')
     sys.exit(1)
-" 2>/dev/null | grep -q "PYTHON_JSONSCHEMA_OK"; then
+" 2>/dev/null || true)"
+    if grep -q "PYTHON_JSONSCHEMA_OK" <<<"$py_schema_check_output"; then
       pass "Fixture validates against schema (Python jsonschema)"
       validated=1
     fi

@@ -127,12 +127,13 @@ EMPTY_BASE="HEAD"
 rc="$(run_pre_review --base "${EMPTY_BASE}")"
 assert_eq "(a) success path exits 0" "0" "$rc"
 assert_contains "(a) invokes cursor-companion task subcommand" "task" "$(head -n 1 "${ARGS_FILE}")"
-if head -n 20 "${ARGS_FILE}" | grep -qE '(^|[[:space:]])--write([[:space:]]|$)'; then
+args_file_head="$(head -n 20 "${ARGS_FILE}")"
+if grep -qE '(^|[[:space:]])--write([[:space:]]|$)' <<<"${args_file_head}"; then
   fail "(a) must not pass --write to cursor-companion (args: $(head -n 5 "${ARGS_FILE}"))"
 else
   pass "(a) cursor-companion called without --write"
 fi
-if head -n 20 "${ARGS_FILE}" | grep -qE '(^|[[:space:]])--workspace([[:space:]]|$)'; then
+if grep -qE '(^|[[:space:]])--workspace([[:space:]]|$)' <<<"${args_file_head}"; then
   fail "(a) must not pass --workspace to cursor-companion (args: $(head -n 5 "${ARGS_FILE}"))"
 else
   pass "(a) cursor-companion called without --workspace"
@@ -140,7 +141,7 @@ fi
 
 # ---- (b) no --resume flags (fresh session contract) ----
 
-if head -n 20 "${ARGS_FILE}" | grep -qE '(^|[[:space:]])--resume([[:space:]|=]|$)'; then
+if grep -qE '(^|[[:space:]])--resume([[:space:]|=]|$)' <<<"${args_file_head}"; then
   fail "(b) must not pass --resume to cursor-companion (args: $(head -n 5 "${ARGS_FILE}"))"
 else
   pass "(b) cursor-companion called without --resume"

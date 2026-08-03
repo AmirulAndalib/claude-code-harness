@@ -136,7 +136,9 @@ test_auto_broadcast_clean_output() {
 
   # subprocess stdout が /dev/null にリダイレクトされているか
   if grep -q 'session-broadcast\.sh' "$script"; then
-    if ! grep 'session-broadcast\.sh' "$script" | grep -q '>/dev/null'; then
+    local broadcast_lines
+    broadcast_lines="$(grep 'session-broadcast\.sh' "$script" || true)"
+    if ! grep -q '>/dev/null' <<<"$broadcast_lines"; then
       echo "    Error: session-broadcast.sh stdout not redirected to /dev/null"
       return 1
     fi

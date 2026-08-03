@@ -90,7 +90,8 @@ mkdir -p "$hook_project"
 sudo_payload="$(jq -nc --arg cwd "$hook_project" '{tool_name:"Bash", tool_input:{command:"sudo whoami"}, cwd:$cwd}')"
 default_sudo="$(guard_decision "$hook_project" "__unset__" "$sudo_payload")"
 assert_eq "deny" "$(jq -r '.hookSpecificOutput.permissionDecision' <<< "$default_sudo")" "sudo is still denied by default"
-if ! jq -r '.hookSpecificOutput.permissionDecisionReason' <<< "$default_sudo" | grep -q '^Blocked:'; then
+default_sudo_reason="$(jq -r '.hookSpecificOutput.permissionDecisionReason' <<< "$default_sudo" || true)"
+if ! grep -q '^Blocked:' <<<"$default_sudo_reason"; then
   echo "FAIL: default pretooluse message must be English" >&2
   echo "$default_sudo" >&2
   exit 1
@@ -98,7 +99,8 @@ fi
 
 ja_sudo="$(guard_decision "$hook_project" "ja" "$sudo_payload")"
 assert_eq "deny" "$(jq -r '.hookSpecificOutput.permissionDecision' <<< "$ja_sudo")" "sudo is denied with ja env"
-if ! jq -r '.hookSpecificOutput.permissionDecisionReason' <<< "$ja_sudo" | grep -q '^ブロック:'; then
+ja_sudo_reason="$(jq -r '.hookSpecificOutput.permissionDecisionReason' <<< "$ja_sudo" || true)"
+if ! grep -q '^ブロック:' <<<"$ja_sudo_reason"; then
   echo "FAIL: CLAUDE_CODE_HARNESS_LANG=ja must preserve Japanese message" >&2
   echo "$ja_sudo" >&2
   exit 1
@@ -109,7 +111,8 @@ i18n:
   language: ja
 YAML
 config_sudo="$(guard_decision "$hook_project" "en" "$sudo_payload")"
-if ! jq -r '.hookSpecificOutput.permissionDecisionReason' <<< "$config_sudo" | grep -q '^ブロック:'; then
+config_sudo_reason="$(jq -r '.hookSpecificOutput.permissionDecisionReason' <<< "$config_sudo" || true)"
+if ! grep -q '^ブロック:' <<<"$config_sudo_reason"; then
   echo "FAIL: config ja must have priority over env en in pretooluse guard" >&2
   echo "$config_sudo" >&2
   exit 1
@@ -135,7 +138,8 @@ guideline_payload="$(jq -nc --arg cwd "$runtime_project" '{tool_name:"Write", to
 guideline_en="$(guard_decision "$runtime_project" "__unset__" "$guideline_payload")"
 assert_eq "PreToolUse" "$(jq -r '.hookSpecificOutput.hookEventName' <<< "$guideline_en")" "pretooluse guideline hook event shape"
 assert_eq "allow" "$(jq -r '.hookSpecificOutput.permissionDecision' <<< "$guideline_en")" "pretooluse guideline keeps allow decision"
-if ! jq -r '.hookSpecificOutput.additionalContext' <<< "$guideline_en" | grep -q 'Implementation Quality Guideline'; then
+guideline_en_context="$(jq -r '.hookSpecificOutput.additionalContext' <<< "$guideline_en" || true)"
+if ! grep -q 'Implementation Quality Guideline' <<<"$guideline_en_context"; then
   echo "FAIL: default implementation guideline must be English" >&2
   echo "$guideline_en" >&2
   exit 1
@@ -143,7 +147,8 @@ fi
 
 guideline_ja="$(guard_decision "$runtime_project" "ja" "$guideline_payload")"
 assert_eq "allow" "$(jq -r '.hookSpecificOutput.permissionDecision' <<< "$guideline_ja")" "pretooluse guideline keeps allow decision in ja"
-if ! jq -r '.hookSpecificOutput.additionalContext' <<< "$guideline_ja" | grep -q '実装品質ガイドライン'; then
+guideline_ja_context="$(jq -r '.hookSpecificOutput.additionalContext' <<< "$guideline_ja" || true)"
+if ! grep -q '実装品質ガイドライン' <<<"$guideline_ja_context"; then
   echo "FAIL: CLAUDE_CODE_HARNESS_LANG=ja must preserve Japanese implementation guideline" >&2
   echo "$guideline_ja" >&2
   exit 1
@@ -169,17 +174,18 @@ make_userprompt_project "$userprompt_en_project"
 prompt_payload="$(jq -nc '{prompt:"hello"}')"
 userprompt_en="$(userprompt_policy "$userprompt_en_project" "__unset__" "$prompt_payload")"
 assert_eq "UserPromptSubmit" "$(jq -r '.hookSpecificOutput.hookEventName' <<< "$userprompt_en")" "userprompt hook event shape"
-if ! jq -r '.hookSpecificOutput.additionalContext' <<< "$userprompt_en" | grep -q 'Work Mode Still Active'; then
+userprompt_en_context="$(jq -r '.hookSpecificOutput.additionalContext' <<< "$userprompt_en" || true)"
+if ! grep -q 'Work Mode Still Active' <<<"$userprompt_en_context"; then
   echo "FAIL: default userprompt work warning must be English" >&2
   echo "$userprompt_en" >&2
   exit 1
 fi
-if jq -r '.hookSpecificOutput.additionalContext' <<< "$userprompt_en" | grep -q 'work モード継続中'; then
+if grep -q 'work モード継続中' <<<"$userprompt_en_context"; then
   echo "FAIL: default userprompt work warning should not be Japanese" >&2
   echo "$userprompt_en" >&2
   exit 1
 fi
-if ! jq -r '.hookSpecificOutput.additionalContext' <<< "$userprompt_en" | grep -q 'Response Language: English'; then
+if ! grep -q 'Response Language: English' <<<"$userprompt_en_context"; then
   echo "FAIL: default userprompt must inject the English response-language directive" >&2
   echo "$userprompt_en" >&2
   exit 1
@@ -188,12 +194,13 @@ fi
 userprompt_ja_project="$tmpdir/userprompt-ja"
 make_userprompt_project "$userprompt_ja_project"
 userprompt_ja="$(userprompt_policy "$userprompt_ja_project" "ja" "$prompt_payload")"
-if ! jq -r '.hookSpecificOutput.additionalContext' <<< "$userprompt_ja" | grep -q 'work モード継続中'; then
+userprompt_ja_context="$(jq -r '.hookSpecificOutput.additionalContext' <<< "$userprompt_ja" || true)"
+if ! grep -q 'work モード継続中' <<<"$userprompt_ja_context"; then
   echo "FAIL: CLAUDE_CODE_HARNESS_LANG=ja must preserve Japanese userprompt work warning" >&2
   echo "$userprompt_ja" >&2
   exit 1
 fi
-if ! jq -r '.hookSpecificOutput.additionalContext' <<< "$userprompt_ja" | grep -q '応答言語: 日本語'; then
+if ! grep -q '応答言語: 日本語' <<<"$userprompt_ja_context"; then
   echo "FAIL: CLAUDE_CODE_HARNESS_LANG=ja must inject the Japanese response-language directive" >&2
   echo "$userprompt_ja" >&2
   exit 1
@@ -206,7 +213,8 @@ i18n:
   language: ja
 YAML
 userprompt_config="$(userprompt_policy "$userprompt_config_project" "en" "$prompt_payload")"
-if ! jq -r '.hookSpecificOutput.additionalContext' <<< "$userprompt_config" | grep -q 'work モード継続中'; then
+userprompt_config_context="$(jq -r '.hookSpecificOutput.additionalContext' <<< "$userprompt_config" || true)"
+if ! grep -q 'work モード継続中' <<<"$userprompt_config_context"; then
   echo "FAIL: config ja must have priority over env en in userprompt policy" >&2
   echo "$userprompt_config" >&2
   exit 1
@@ -216,12 +224,13 @@ userprompt_semantic_ja_project="$tmpdir/userprompt-semantic-ja"
 make_userprompt_policy_only_project "$userprompt_semantic_ja_project"
 semantic_payload="$(jq -nc '{prompt:"実装して"}')"
 userprompt_semantic_ja="$(userprompt_policy "$userprompt_semantic_ja_project" "ja" "$semantic_payload")"
-if ! jq -r '.hookSpecificOutput.additionalContext' <<< "$userprompt_semantic_ja" | grep -q 'LSP/Skills Policy（推奨）'; then
+userprompt_semantic_ja_context="$(jq -r '.hookSpecificOutput.additionalContext' <<< "$userprompt_semantic_ja" || true)"
+if ! grep -q 'LSP/Skills Policy（推奨）' <<<"$userprompt_semantic_ja_context"; then
   echo "FAIL: CLAUDE_CODE_HARNESS_LANG=ja must localize userprompt LSP recommendation" >&2
   echo "$userprompt_semantic_ja" >&2
   exit 1
 fi
-if jq -r '.hookSpecificOutput.additionalContext' <<< "$userprompt_semantic_ja" | grep -q 'LSP Status: Not available'; then
+if grep -q 'LSP Status: Not available' <<<"$userprompt_semantic_ja_context"; then
   echo "FAIL: ja userprompt LSP recommendation should not remain English" >&2
   echo "$userprompt_semantic_ja" >&2
   exit 1

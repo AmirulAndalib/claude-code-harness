@@ -139,7 +139,8 @@ hook_project="$tmpdir/hook-project"
 mkdir -p "$hook_project/.claude/state"
 sudo_payload="$(jq -nc --arg cwd "$hook_project" '{tool_name:"Bash", tool_input:{command:"sudo whoami"}, cwd:$cwd}')"
 sudo_ja="$(cd "$hook_project" && CLAUDE_CODE_HARNESS_LANG=ja bash "$PROJECT_ROOT/scripts/pretooluse-guard.sh" <<< "$sudo_payload")"
-if ! jq -r '.hookSpecificOutput.permissionDecisionReason' <<< "$sudo_ja" | grep -q '^ブロック:'; then
+sudo_ja_reason="$(jq -r '.hookSpecificOutput.permissionDecisionReason' <<< "$sudo_ja" || true)"
+if ! grep -q '^ブロック:' <<<"$sudo_ja_reason"; then
   echo "Japanese pretooluse guard message disappeared" >&2
   echo "$sudo_ja" >&2
   exit 1
@@ -150,7 +151,8 @@ printf '{"lsp":{"available":false},"skills":{}}\n' > "$hook_project/.claude/stat
 printf '{"review_status":"pending"}\n' > "$hook_project/.claude/state/work-active.json"
 prompt_payload="$(jq -nc '{prompt:"hello"}')"
 prompt_ja="$(cd "$hook_project" && CLAUDE_CODE_HARNESS_LANG=ja bash "$PROJECT_ROOT/scripts/userprompt-inject-policy.sh" <<< "$prompt_payload")"
-if ! jq -r '.hookSpecificOutput.additionalContext' <<< "$prompt_ja" | grep -q 'work モード継続中'; then
+prompt_ja_context="$(jq -r '.hookSpecificOutput.additionalContext' <<< "$prompt_ja" || true)"
+if ! grep -q 'work モード継続中' <<<"$prompt_ja_context"; then
   echo "Japanese user prompt hook message disappeared" >&2
   echo "$prompt_ja" >&2
   exit 1
