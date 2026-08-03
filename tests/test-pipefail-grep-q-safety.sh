@@ -1,6 +1,6 @@
 #!/bin/bash
 # tests/test-pipefail-grep-q-safety.sh
-# Phase 129.1 - pipefail 下で結果が反転する `producer | grep -q` 構文の検出
+# Phase 129.1 / 130.1 - pipefail 下で結果が反転する `producer | grep -q` 構文の検出
 #
 # 何を検出するか:
 #   `printf '%s' "$x" | grep -q P` のように、producer の出力をパイプで
@@ -12,14 +12,30 @@
 #   実測 (PR #285, skills/harness-accept/SKILL.md frontmatter 2019 バイト, 200 回):
 #     2 行目の項目 200/200 誤判定 / 3 行目の項目 200/200 誤判定 / 8 行目の項目 0/200
 #
+#   実測2 (Phase 130, tests/test-i18n-locale-resolver.sh:196、内容長 1257 バイト、
+#     一致位置は先頭 4 バイト目。同一データで 20 回ずつ):
+#     `jq ... | grep -q` は 20/20 誤判定 / `grep -q ... <<<"$C"` は 20/20 正判定
+#
+# producer の対象範囲 (Phase 130 で拡大):
+#   Phase 129.1 は producer を printf / echo / cat の 3 つに限定していた。そのため
+#   jq / find / git / grep / head / awk / シェル関数呼び出しなど他の producer を持つ
+#   同型の構文が検出網から漏れていた。Phase 130 でパイプ左側の producer 種別を問わず、
+#   右側が grep -q 系であれば検出する判定へ広げた。
+#
 # 正しい書き方:
-#   `grep -q P <<<"$x"`        (変数が producer の場合。パイプが無いので EPIPE が起きない)
-#   `grep -q P file`           (ファイルが producer の場合。cat が不要)
+#   `grep -q P <<<"$x"`                    (変数が producer の場合。パイプが無いので EPIPE が起きない)
+#   `grep -q P file`                       (ファイルが producer の場合。cat が不要)
+#   `X="$(producer)"; grep -q P <<<"$X"`   (producer がコマンド/関数呼び出しの場合。
+#                                            まず変数へ捕捉してから herestring で判定する)
 #
 # 検出の限界 (静的走査であること):
-#   - 変数経由で組み立てたコマンド文字列は対象外
-#   - producer が関数呼び出しやコマンド置換の場合も対象外 (EPIPE 自体は起きうるが、
-#     機械的な変換先が一意に決まらないため検出対象から外す)
+#   - 変数経由で組み立てたコマンド文字列 (eval 等) は対象外
+#   - 複数行にまたがる二重引用符文字列 (例: `python3 -c "\n...\n" | grep -q X` のように
+#     `"` の開始と終了が別の物理行にある場合) は対象外。引用符状態は論理行
+#     (行末 `\` で畳んだ範囲) ごとにリセットされるため、複数行文字列の終端行がたまたま
+#     `"..." | grep -q ...` の形になると「引用符の中」と誤認して見逃す。Phase 130 で
+#     この形の実例を 3 件、目視レビューで発見・修正した (この検出器では検出できない
+#     既知の限界として残す)
 #
 # Usage: bash tests/test-pipefail-grep-q-safety.sh
 
@@ -54,22 +70,49 @@ scan_file() {
   # pipefail 無効なら対象外
   grep -qE '^[[:space:]]*set[[:space:]]+-[a-zA-Z]*o[[:space:]]+pipefail|^[[:space:]]*set[[:space:]]+-o[[:space:]]+pipefail' "$1" || return 0
 
-  # producer (printf / echo / cat) の出力を grep -q 系へパイプしている行。
+  # producer (種類を問わない) の出力を grep -q 系へパイプしている行。
   # パイプ記号が引用符の外にあるものだけを対象にする。引用符の中の `| grep -q` は
   # 説明文やメッセージの一部であって実行されないため。
   # 除外するもの:
   #   - コメント行 (行頭が #)。説明文中に構文を書けるようにするため
   #   - `|| true` / `|| :` で終わる行。pipefail が結果を昇格させないため実害がない
+  #   - `||` (論理 OR) の右側にある `grep -q`。パイプではないため対象外
   perl -e '
     # 物理行を論理行へ畳む。行末の継続文字 `\` を跨ぐパイプラインを見落とさないため。
+    # あわせて here-document の本文を読み飛ばす。here-doc の中の `|` は実行される
+    # パイプではなく、説明文やテンプレートの一部なので走査対象にしてはいけない。
     my @logical;
     my ($buf, $start) = ("", 0);
+    my ($hd, @hd_queue);   # $hd = 読み飛ばし中の終端子 [delim, allow_indent]
     while (my $l = <>) {
       chomp $l;
+
+      if (defined $hd) {
+        my ($delim, $allow_indent) = @$hd;
+        my $t = $l;
+        $t =~ s/^\t+// if $allow_indent;   # `<<-` はタブ字下げされた終端子を許す
+        if ($t =~ /^\s*\Q$delim\E\s*$/) {
+          $hd = @hd_queue ? shift @hd_queue : undef;
+        }
+        next;
+      }
+
+      # この物理行が開始する here-doc の終端子を集める。
+      # `<<<` (herestring) は here-doc ではないので、次の文字がクォートか
+      # 識別子先頭でなければ一致しない正規表現にしてある。
+      my @started;
+      my $probe = $l;
+      while ($probe =~ /<<(-?)\s*(?:([\x27"])([A-Za-z_][A-Za-z0-9_]*)\2|([A-Za-z_][A-Za-z0-9_]*))/g) {
+        push @started, [ (defined $3 ? $3 : $4), ($1 eq q{-} ? 1 : 0) ];
+      }
+
       $start = $. unless length $buf;
-      if ($l =~ s/\\$//) { $buf .= $l; next; }
+      if ($l =~ s/\\$//) { $buf .= $l; push @hd_queue, @started; next; }
       push @logical, [$start, $buf . $l];
       $buf = "";
+
+      unshift @started, @hd_queue; @hd_queue = ();
+      if (@started) { $hd = shift @started; @hd_queue = @started; }
     }
     push @logical, [$start, $buf] if length $buf;
 
@@ -100,7 +143,9 @@ scan_file() {
       for my $p (@pipes) {
         my $before = substr($line, 0, $p);
         my $after  = substr($line, $p + 1);
-        next unless $before =~ /(?:^|[^\w])(?:printf|echo|cat)\s/;
+        # producer 種別は問わない。パイプの左側に何らかのコマンドがあれば対象とする
+        # (Phase 130: printf/echo/cat 限定を撤廃)。
+        next unless $before =~ /\S/;
         next unless $after  =~ /^\s*grep\s+(?:-[a-zA-Z]+\s+)*-[a-zA-Z]*q/;
         print "$lineno:$line\n";
         last;
@@ -199,6 +244,61 @@ echo "he said \"use x | grep -q y\" today"
 grep -q "needle" <<<"$x"
 FIXEOF
 
+# (j) pipefail 有り + jq producer (printf/echo/cat 以外) → 検出する (Phase 130)
+cat > "$FIXTURE_DIR/jq-producer.sh" <<'FIXEOF'
+#!/bin/bash
+set -euo pipefail
+jq -r '.field' <<<"$x" | grep -q "needle"
+FIXEOF
+
+# (k) pipefail 有り + find producer (printf/echo/cat 以外) → 検出する (Phase 130)
+cat > "$FIXTURE_DIR/find-producer.sh" <<'FIXEOF'
+#!/bin/bash
+set -euo pipefail
+find . -name "*.txt" | grep -q .
+FIXEOF
+
+# (l) pipefail 有り + printf/echo/cat 以外の producer + `|| true` → 検出しない
+# (広げた producer 判定でも既存の `|| true` 除外が効くことを固定する)
+cat > "$FIXTURE_DIR/other-producer-or-true.sh" <<'FIXEOF'
+#!/bin/bash
+set -euo pipefail
+some_cmd | grep -q "needle" || true
+FIXEOF
+
+# (m) pipefail 無し + jq producer → 検出しない
+cat > "$FIXTURE_DIR/jq-no-pipefail.sh" <<'FIXEOF'
+#!/bin/bash
+set -eu
+jq -r '.field' <<<"$x" | grep -q "needle"
+FIXEOF
+
+# (l) here-document の本文に書かれた構文 → 検出しない
+#     here-doc の中の `|` は実行されるパイプではなく、説明文やテンプレートの一部。
+cat > "$FIXTURE_DIR/heredoc-body.sh" <<'FIXEOF'
+#!/bin/bash
+set -euo pipefail
+cat <<'DOC'
+説明: producer | grep -q needle と書くと結果が反転します
+DOC
+FIXEOF
+
+# (m) here-document の直後にある実際のパイプライン → 検出する
+#     本文の読み飛ばしが行き過ぎて後続の実コードまで隠さないことの非退行。
+cat > "$FIXTURE_DIR/heredoc-then-hit.sh" <<'FIXEOF'
+#!/bin/bash
+set -euo pipefail
+cat <<'DOC'
+producer | grep -q needle
+DOC
+jq -r '.field' <<<"$x" | grep -q "needle"
+FIXEOF
+
+# (n) `<<-` (タブ字下げ終端子) の here-document 本文 → 検出しない
+#     終端子がタブで字下げされていても本文の終わりを認識できること。
+printf '%s\n' '#!/bin/bash' 'set -euo pipefail' 'cat <<-DOC' \
+  '	説明: producer | grep -q needle' '	DOC' > "$FIXTURE_DIR/heredoc-dash.sh"
+
 expect_scan() {
   local file="$1" expected="$2" label="$3"
   local got
@@ -221,6 +321,13 @@ expect_scan "$FIXTURE_DIR/comment.sh"     miss "コメント行に書かれた�
 expect_scan "$FIXTURE_DIR/quoted.sh"      miss "引用符の中に書かれた構文"
 expect_scan "$FIXTURE_DIR/continuation.sh"   hit  "行末の継続文字を跨ぐパイプライン"
 expect_scan "$FIXTURE_DIR/escaped-quote.sh"  miss "二重引用符内のエスケープされた引用符"
+expect_scan "$FIXTURE_DIR/jq-producer.sh"    hit  "pipefail + jq | grep -q (printf/echo/cat 以外の producer)"
+expect_scan "$FIXTURE_DIR/find-producer.sh"  hit  "pipefail + find | grep -q (printf/echo/cat 以外の producer)"
+expect_scan "$FIXTURE_DIR/other-producer-or-true.sh" miss "任意 producer + || true で終わる行"
+expect_scan "$FIXTURE_DIR/jq-no-pipefail.sh" miss "pipefail 無し + jq | grep -q"
+expect_scan "$FIXTURE_DIR/heredoc-body.sh"   miss "here-document の本文に書かれた構文"
+expect_scan "$FIXTURE_DIR/heredoc-then-hit.sh" hit "here-document の直後にある実際のパイプライン"
+expect_scan "$FIXTURE_DIR/heredoc-dash.sh"   miss "タブ字下げ終端子 (<<-) の here-document 本文"
 
 # ---- 3. サマリ ----
 

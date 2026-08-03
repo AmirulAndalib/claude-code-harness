@@ -45,10 +45,10 @@ assert_contains "$ONBOARDING" "| Hermes Agent | \`candidate\` |"
 # Overclaim scan: only `blocked:`-prefixed blocked-wording cells may mention
 # these phrases. Broad tokens (Blocked / 主張しない / supported` claim) must
 # not excuse a positive claim elsewhere on the line.
-if grep -InE 'Hermes Agent.*`supported`|supported Hermes adapter|Hermes.*正式対応|正式対応.*Hermes' \
+overclaim_lines="$(grep -InE 'Hermes Agent.*`supported`|supported Hermes adapter|Hermes.*正式対応|正式対応.*Hermes' \
   "$README" "$README_JA" "$ONBOARDING" "$MATRIX" "$DOC" \
-  | grep -Eiv 'blocked:' \
-  | grep -Eq .; then
+  | grep -Eiv 'blocked:' || true)"
+if grep -Eq . <<<"$overclaim_lines"; then
   fail "Hermes public support overclaim found"
 fi
 

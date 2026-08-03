@@ -98,7 +98,7 @@ fi
 # context JSON が plan-brief-context.v1 schema に valid (Python jsonschema 優先)
 validated=0
 if command -v python3 >/dev/null 2>&1; then
-  if python3 -c "
+  py_schema_check_output="$(python3 -c "
 import json, sys
 try: import jsonschema
 except ImportError: sys.exit(2)
@@ -110,7 +110,8 @@ try:
 except jsonschema.ValidationError as e:
     print(f'FAIL: {e.message}')
     sys.exit(1)
-" 2>/dev/null | grep -q OK; then
+" 2>/dev/null || true)"
+  if grep -q OK <<<"$py_schema_check_output"; then
     pass "Step 3a: context.json validates against plan-brief-context.v1 schema (Python jsonschema)"
     validated=1
   fi

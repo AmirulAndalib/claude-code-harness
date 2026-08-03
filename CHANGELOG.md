@@ -22,6 +22,28 @@ Change history for claude-code-harness.
 | 到達不可を検出したときの挙動 | 何も起きない | 違反 hash を列挙して fail |
 | shallow clone | (該当なし) | 検証不能のため `not_observed` として skip |
 
+#### `producer | grep -q` の検出器が producer を 3 種に限定しており、jq/find など他の producer 経由の同型欠陥が検出網から漏れていた問題 (Phase 130)
+
+**今まで**: Phase 129 で導入した検出器 `tests/test-pipefail-grep-q-safety.sh` は、`pipefail` 下で結果が反転する `producer | grep -q` 構文の producer を `printf` / `echo` / `cat` の 3 つに限定していました。そのため `jq` / `find` / `git` / `grep` / `head` / シェル関数呼び出しなど、他の producer を持つ同型の書き方が検出網から漏れたまま残っていました。
+
+`tests/test-i18n-locale-resolver.sh:196` の `jq -r '...' <<< "$内容" | grep -q '応答言語: 日本語'` で実際に再現を確認しました。同一データで 20 回ずつ試行したところ、修正前は 20/20 で「無い」と誤判定されました (探している文字列は実際には先頭 4 バイト目にあり、常に存在します)。
+
+**今後**: 検出器の producer 判定を「種類を問わない」へ広げました (パイプ右側が `grep -q` 系であれば、左側が何であっても検出対象)。広げた検出器を修正前のツリーへ適用すると 29 行を検出し (うち 1 行は `&&` で連結した 3 段判定を含むため、実際の書き換え箇所は 34 箇所)、該当する 14 ファイルをすべて herestring または変数捕捉へ書き換えました。producer がコマンド呼び出しやシェル関数の場合は、まず変数へ捕捉してから `<<<` で判定する形に統一しています (`X="$(producer)"; grep -q P <<<"$X"`)。
+
+あわせて here-document の本文を走査対象から外しました。here-doc の中の `|` は実行されるパイプではなく、説明文やテンプレートの一部です。これを検出すると、正しいコードに対して検査が落ちる誤検出になります。`<<-` のタブ字下げ終端子にも対応し、本文の読み飛ばしが後続の実コードまで隠さないことを非退行 fixture で固定しています。
+
+一方、複数行にまたがる二重引用符文字列 (`python3 -c "..."` のように `"` の開始行と終了行が異なる場合) は、引用符状態を論理行単位でリセットする実装上の制約により、引き続き検出対象外です。目視レビューで実例を 3 件発見し herestring 化しましたが、検出器自体はこの形を機械検出できません。
+
+| 項目 | 変更前 | 変更後 |
+|---|---|---|
+| producer の対象 | `printf` / `echo` / `cat` の 3 種のみ | 種類を問わない |
+| 検出漏れ (見逃し) | jq / find / git / grep / head / シェル関数呼び出しなど | 複数行にまたがる二重引用符文字列のみ |
+| 誤検出 | (該当なし) | here-document 本文を除外 (`<<-` 含む) |
+| 修正前ツリーでの検出行数 | 0 行 (対象外のため) | 29 行 (実際の書き換え箇所は 34 箇所) |
+| fixture | 10 件 | 17 件 |
+
+実測: `tests/test-i18n-locale-resolver.sh` を修正前後でそれぞれ 20 回連続実行したところ、修正前は 20 回中 19〜20 回失敗し (実行環境の状態によっては初回だけ通ります。work モードの状態が無いと出力が短く、バッファ境界を越えないためです)、修正後は 20 回すべて成功しました。まっさらな clone では出力が短いため CI では再現せず、緑のまま潜伏していました。
+
 ### Added
 
 - **Plans.md hash 台帳の到達可能性ゲート**: `scripts/ci/check-plans-hash-reachability.sh` を新設し `tests/validate-plugin.sh` へ配線した。Status 欄の commit hash が `HEAD` から到達不可なら fail する。shallow clone では検証不能なため not_observed として skip し、既知の grandfather 対象があれば `scripts/ci/plans-hash-baseline.txt` で個別に除外できる (今回のリポジトリでは Phase 128 の訂正後、除外対象は 0 件)

@@ -1224,9 +1224,13 @@ run_breezing_batch_case() {
     && pass "breezing batch case: run state records executor and capped batch" \
     || fail "breezing batch case: run state did not record expected executor/batch"
 
-  if grep '^| 1 ' "${repo}/Plans.md" | grep -q 'cc:完了' && \
-     grep '^| 2 ' "${repo}/Plans.md" | grep -q 'cc:完了' && \
-     grep '^| 3 ' "${repo}/Plans.md" | grep -q 'cc:TODO'; then
+  local _plans_row1 _plans_row2 _plans_row3
+  _plans_row1="$(grep '^| 1 ' "${repo}/Plans.md" || true)"
+  _plans_row2="$(grep '^| 2 ' "${repo}/Plans.md" || true)"
+  _plans_row3="$(grep '^| 3 ' "${repo}/Plans.md" || true)"
+  if grep -q 'cc:完了' <<<"${_plans_row1}" && \
+     grep -q 'cc:完了' <<<"${_plans_row2}" && \
+     grep -q 'cc:TODO' <<<"${_plans_row3}"; then
     pass "breezing batch case: ready batch completed without dependency leak"
   else
     fail "breezing batch case: Plans.md statuses were not expected"
@@ -1274,7 +1278,9 @@ run_breezing_blocked_case() {
     && pass "breezing blocked case: blocked batch stops loop" \
     || fail "breezing blocked case: loop did not stop on blocked batch"
 
-  if grep '^| 3 ' "${repo}/Plans.md" | grep -q 'cc:TODO'; then
+  local _plans_row3
+  _plans_row3="$(grep '^| 3 ' "${repo}/Plans.md" || true)"
+  if grep -q 'cc:TODO' <<<"${_plans_row3}"; then
     pass "breezing blocked case: dependent follow-up was not advanced"
   else
     fail "breezing blocked case: dependent follow-up advanced unexpectedly"
