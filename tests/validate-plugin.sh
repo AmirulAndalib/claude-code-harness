@@ -1328,6 +1328,22 @@ else
 fi
 
 echo ""
+echo "20. Plans.md hash 台帳の到達可能性 (Phase 128 台帳訂正の副産物)"
+echo "----------------------------------------"
+
+if bash "$PLUGIN_ROOT/scripts/ci/check-plans-hash-reachability.sh" > /dev/null 2>&1; then
+    pass_test "Plans.md の cc:done/cc:完了 hash は HEAD から到達可能です"
+else
+    fail_test "Plans.md hash reachability contract failed — 'bash scripts/ci/check-plans-hash-reachability.sh' で詳細確認"
+fi
+
+if bash "$PLUGIN_ROOT/tests/test-plans-hash-reachability.sh" > /dev/null 2>&1; then
+    pass_test "Plans.md hash reachability gate の契約テストが通ります (test-plans-hash-reachability.sh)"
+else
+    fail_test "Plans.md hash reachability gate 契約テスト失敗 — 'bash tests/test-plans-hash-reachability.sh' で詳細確認"
+fi
+
+echo ""
 echo "=========================================="
 echo "テスト結果サマリー"
 echo "=========================================="

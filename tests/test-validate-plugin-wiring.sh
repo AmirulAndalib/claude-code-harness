@@ -32,6 +32,7 @@ REQUIRED_INVOCATIONS=(
   "tests/test-breezing-fixture-deps.sh"
   "tests/test-plans-marker-count.sh"
   "tests/test-pipefail-grep-q-safety.sh"
+  "tests/test-plans-hash-reachability.sh"
 )
 
 missing=0
