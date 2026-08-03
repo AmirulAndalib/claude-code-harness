@@ -79,14 +79,40 @@ scan_file() {
   #   - `||` (論理 OR) の右側にある `grep -q`。パイプではないため対象外
   perl -e '
     # 物理行を論理行へ畳む。行末の継続文字 `\` を跨ぐパイプラインを見落とさないため。
+    # あわせて here-document の本文を読み飛ばす。here-doc の中の `|` は実行される
+    # パイプではなく、説明文やテンプレートの一部なので走査対象にしてはいけない。
     my @logical;
     my ($buf, $start) = ("", 0);
+    my ($hd, @hd_queue);   # $hd = 読み飛ばし中の終端子 [delim, allow_indent]
     while (my $l = <>) {
       chomp $l;
+
+      if (defined $hd) {
+        my ($delim, $allow_indent) = @$hd;
+        my $t = $l;
+        $t =~ s/^\t+// if $allow_indent;   # `<<-` はタブ字下げされた終端子を許す
+        if ($t =~ /^\s*\Q$delim\E\s*$/) {
+          $hd = @hd_queue ? shift @hd_queue : undef;
+        }
+        next;
+      }
+
+      # この物理行が開始する here-doc の終端子を集める。
+      # `<<<` (herestring) は here-doc ではないので、次の文字がクォートか
+      # 識別子先頭でなければ一致しない正規表現にしてある。
+      my @started;
+      my $probe = $l;
+      while ($probe =~ /<<(-?)\s*(?:([\x27"])([A-Za-z_][A-Za-z0-9_]*)\2|([A-Za-z_][A-Za-z0-9_]*))/g) {
+        push @started, [ (defined $3 ? $3 : $4), ($1 eq q{-} ? 1 : 0) ];
+      }
+
       $start = $. unless length $buf;
-      if ($l =~ s/\\$//) { $buf .= $l; next; }
+      if ($l =~ s/\\$//) { $buf .= $l; push @hd_queue, @started; next; }
       push @logical, [$start, $buf . $l];
       $buf = "";
+
+      unshift @started, @hd_queue; @hd_queue = ();
+      if (@started) { $hd = shift @started; @hd_queue = @started; }
     }
     push @logical, [$start, $buf] if length $buf;
 
@@ -247,6 +273,32 @@ set -eu
 jq -r '.field' <<<"$x" | grep -q "needle"
 FIXEOF
 
+# (l) here-document の本文に書かれた構文 → 検出しない
+#     here-doc の中の `|` は実行されるパイプではなく、説明文やテンプレートの一部。
+cat > "$FIXTURE_DIR/heredoc-body.sh" <<'FIXEOF'
+#!/bin/bash
+set -euo pipefail
+cat <<'DOC'
+説明: producer | grep -q needle と書くと結果が反転します
+DOC
+FIXEOF
+
+# (m) here-document の直後にある実際のパイプライン → 検出する
+#     本文の読み飛ばしが行き過ぎて後続の実コードまで隠さないことの非退行。
+cat > "$FIXTURE_DIR/heredoc-then-hit.sh" <<'FIXEOF'
+#!/bin/bash
+set -euo pipefail
+cat <<'DOC'
+producer | grep -q needle
+DOC
+jq -r '.field' <<<"$x" | grep -q "needle"
+FIXEOF
+
+# (n) `<<-` (タブ字下げ終端子) の here-document 本文 → 検出しない
+#     終端子がタブで字下げされていても本文の終わりを認識できること。
+printf '%s\n' '#!/bin/bash' 'set -euo pipefail' 'cat <<-DOC' \
+  '	説明: producer | grep -q needle' '	DOC' > "$FIXTURE_DIR/heredoc-dash.sh"
+
 expect_scan() {
   local file="$1" expected="$2" label="$3"
   local got
@@ -273,6 +325,9 @@ expect_scan "$FIXTURE_DIR/jq-producer.sh"    hit  "pipefail + jq | grep -q (prin
 expect_scan "$FIXTURE_DIR/find-producer.sh"  hit  "pipefail + find | grep -q (printf/echo/cat 以外の producer)"
 expect_scan "$FIXTURE_DIR/other-producer-or-true.sh" miss "任意 producer + || true で終わる行"
 expect_scan "$FIXTURE_DIR/jq-no-pipefail.sh" miss "pipefail 無し + jq | grep -q"
+expect_scan "$FIXTURE_DIR/heredoc-body.sh"   miss "here-document の本文に書かれた構文"
+expect_scan "$FIXTURE_DIR/heredoc-then-hit.sh" hit "here-document の直後にある実際のパイプライン"
+expect_scan "$FIXTURE_DIR/heredoc-dash.sh"   miss "タブ字下げ終端子 (<<-) の here-document 本文"
 
 # ---- 3. サマリ ----
 
