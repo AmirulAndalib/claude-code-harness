@@ -18,6 +18,18 @@ Change history for claude-code-harness.
 
 - **Plans.md hash 台帳の到達可能性ゲート**: `scripts/ci/check-plans-hash-reachability.sh` を新設し `tests/validate-plugin.sh` へ配線した。Status 欄の commit hash が `HEAD` から到達不可なら fail する。shallow clone では検証不能なため not_observed として skip し、既知の grandfather 対象があれば `scripts/ci/plans-hash-baseline.txt` で個別に除外できる (今回のリポジトリでは Phase 128 の訂正後、除外対象は 0 件)
 
+### Changed
+
+依存関係を更新しました。Go 側の 2 件は、同梱バイナリがソースと依存から byte 単位で再現できることを検証する drift gate があるため、bump と同じ変更で 4 プラットフォームのバイナリを再生成しています。
+
+| 依存 | 変更 | 備考 |
+|---|---|---|
+| `golang.org/x/sys` | 0.46.0 → 0.47.0 | 4 プラットフォームのバイナリを再生成 |
+| `modernc.org/sqlite` | 1.54.0 → 1.55.0 | 4 プラットフォームのバイナリを再生成 |
+| `github/codeql-action` (init / analyze / upload-sarif) | 4.37.1 → 4.37.3 | - |
+| `ossf/scorecard-action` | 2.4.3 → 2.4.4 | - |
+| `actions/setup-python` | 6.3.0 → 7.0.0 | v7 の破壊的変更は `pip-install` 入力の削除。当リポジトリの呼び出しは `python-version` のみを渡すため影響なし |
+
 ## [5.6.0] - 2026-08-01
 
 ### テーマ: 実行時フロアの回避経路封鎖と、検査基盤の信頼性回復 (Phase 127-129)
