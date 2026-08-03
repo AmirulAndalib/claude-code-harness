@@ -14,6 +14,14 @@ Change history for claude-code-harness.
 
 **今後**: 台帳を `main` 上の実体 `1f085a35` に訂正しました。あわせて `scripts/ci/check-plans-hash-reachability.sh` を新設し、`Plans.md` の `cc:done` / `cc:完了` に記録された commit hash が現在の `HEAD` から到達可能であることを検証します。`origin/main` ではなく `HEAD` を基準にすることで、進行中の feature branch 上の記録も、squash merge で祖先から消える今回のようなケースも、正しく検出できます。
 
+| 観点 | 変更前 | 変更後 |
+|---|---|---|
+| Phase 128 の記録 | `7702ca45` / `476ea403` (作業ブランチ側、`main` から到達不可) | `1f085a35` (`main` に入った実体) |
+| 記録が実体を指すか | 指していない | 全 11 hash が `HEAD` から到達可能 |
+| 機械検証 | なし (`check-branch-alignment-ledger.sh` は別ファイルが対象) | `check-plans-hash-reachability.sh` が `tests/validate-plugin.sh` 経由で毎回実行 |
+| 到達不可を検出したときの挙動 | 何も起きない | 違反 hash を列挙して fail |
+| shallow clone | (該当なし) | 検証不能のため `not_observed` として skip |
+
 #### `producer | grep -q` の検出器が producer を 3 種に限定しており、jq/find など他の producer 経由の同型欠陥が検出網から漏れていた問題 (Phase 130)
 
 **今まで**: Phase 129 で導入した検出器 `tests/test-pipefail-grep-q-safety.sh` は、`pipefail` 下で結果が反転する `producer | grep -q` 構文の producer を `printf` / `echo` / `cat` の 3 つに限定していました。そのため `jq` / `find` / `git` / `grep` / `head` / シェル関数呼び出しなど、他の producer を持つ同型の書き方が検出網から漏れたまま残っていました。
@@ -31,7 +39,7 @@ Change history for claude-code-harness.
 | 修正前ツリーでの検出行数 | 0 行 (対象外のため) | 29 行 (実際の書き換え箇所は 34 箇所) |
 | fixture | 10 件 | 14 件 |
 
-実測: `tests/test-i18n-locale-resolver.sh` を修正前後でそれぞれ 20 回連続実行したところ、修正前は 19/20 失敗、修正後は 20/20 成功しました。
+実測: `tests/test-i18n-locale-resolver.sh` を修正前後でそれぞれ 20 回連続実行したところ、修正前は 20 回中 19〜20 回失敗し (実行環境の状態によっては初回だけ通ります。work モードの状態が無いと出力が短く、バッファ境界を越えないためです)、修正後は 20 回すべて成功しました。まっさらな clone では出力が短いため CI では再現せず、緑のまま潜伏していました。
 
 ### Added
 

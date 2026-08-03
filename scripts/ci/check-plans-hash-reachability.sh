@@ -51,7 +51,11 @@ fi
 PLANS_DIR="$(cd "$(dirname "$PLANS_FILE")" && pwd)"
 GIT_ROOT="$(git -C "$PLANS_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -z "$GIT_ROOT" ]; then
-  GIT_ROOT="$ROOT_DIR"
+  # ここで自リポジトリへ fallback してはいけない。git 管理外の Plans.md を
+  # 渡された時に無関係なリポジトリの HEAD と照合してしまい、hash がたまたま
+  # 一致して「合格」になる誤判定が起きる。検証不能なら落とす。
+  echo "check-plans-hash-reachability: $PLANS_FILE は git repository 内にありません (到達可能性を検証できません)" >&2
+  exit 1
 fi
 
 # shallow clone は commit object が存在しないため検証不能。not_observed として
