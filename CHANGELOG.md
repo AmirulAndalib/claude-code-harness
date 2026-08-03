@@ -14,6 +14,14 @@ Change history for claude-code-harness.
 
 **今後**: 台帳を `main` 上の実体 `1f085a35` に訂正しました。あわせて `scripts/ci/check-plans-hash-reachability.sh` を新設し、`Plans.md` の `cc:done` / `cc:完了` に記録された commit hash が現在の `HEAD` から到達可能であることを検証します。`origin/main` ではなく `HEAD` を基準にすることで、進行中の feature branch 上の記録も、squash merge で祖先から消える今回のようなケースも、正しく検出できます。
 
+| 観点 | 変更前 | 変更後 |
+|---|---|---|
+| Phase 128 の記録 | `7702ca45` / `476ea403` (作業ブランチ側、`main` から到達不可) | `1f085a35` (`main` に入った実体) |
+| 記録が実体を指すか | 指していない | 全 11 hash が `HEAD` から到達可能 |
+| 機械検証 | なし (`check-branch-alignment-ledger.sh` は別ファイルが対象) | `check-plans-hash-reachability.sh` が `tests/validate-plugin.sh` 経由で毎回実行 |
+| 到達不可を検出したときの挙動 | 何も起きない | 違反 hash を列挙して fail |
+| shallow clone | (該当なし) | 検証不能のため `not_observed` として skip |
+
 ### Added
 
 - **Plans.md hash 台帳の到達可能性ゲート**: `scripts/ci/check-plans-hash-reachability.sh` を新設し `tests/validate-plugin.sh` へ配線した。Status 欄の commit hash が `HEAD` から到達不可なら fail する。shallow clone では検証不能なため not_observed として skip し、既知の grandfather 対象があれば `scripts/ci/plans-hash-baseline.txt` で個別に除外できる (今回のリポジトリでは Phase 128 の訂正後、除外対象は 0 件)

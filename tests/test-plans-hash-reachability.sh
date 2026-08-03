@@ -166,6 +166,21 @@ else
   pass "(e2) baseline に列挙されていない到達不可 hash は引き続き fail する"
 fi
 
+# ---- (f) git 管理外の Plans.md は検証せず fail する ----
+# 自リポジトリへ fallback すると、無関係な repository の HEAD と照合して
+# hash がたまたま一致し「合格」になる誤判定が起きる。検証不能なら落とす。
+PLANS_F_DIR="$WORK_DIR/outside-git"
+mkdir -p "$PLANS_F_DIR"
+cp "$PLANS_D" "$PLANS_F_DIR/Plans.md"
+
+if OUT_F="$(bash "$GATE" "$PLANS_F_DIR/Plans.md" 2>&1)"; then
+  fail "(f) git 管理外の Plans.md が pass してしまった (無関係な repository の HEAD と照合された疑い): $OUT_F"
+elif grep -Fq "git repository 内にありません" <<<"$OUT_F"; then
+  pass "(f) git 管理外の Plans.md は自リポジトリへ fallback せず fail する"
+else
+  fail "(f) fail はしたが理由が git repository 外の検出ではない: $OUT_F"
+fi
+
 # ---- サマリ ----
 echo
 echo "============================================"
