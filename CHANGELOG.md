@@ -6,6 +6,18 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Fixed
+
+#### Phase 128 の commit hash 台帳が squash merge で到達不可になっていた問題
+
+**今まで**: `Plans.md` の Phase 128 (128.1-128.5) は、PR #282 の作業ブランチ上で作られた commit hash (`7702ca45` / `476ea403`) を記録していました。PR #282 は squash merge されたため、`main` に実際に入ったのは別の 1 commit (`1f085a35`) で、作業ブランチ側の commit は `main` の履歴から到達不可能になっていました。台帳としての記録が実体を指さない状態でしたが、これを機械検知するゲートは存在しませんでした。
+
+**今後**: 台帳を `main` 上の実体 `1f085a35` に訂正しました。あわせて `scripts/ci/check-plans-hash-reachability.sh` を新設し、`Plans.md` の `cc:done` / `cc:完了` に記録された commit hash が現在の `HEAD` から到達可能であることを検証します。`origin/main` ではなく `HEAD` を基準にすることで、進行中の feature branch 上の記録も、squash merge で祖先から消える今回のようなケースも、正しく検出できます。
+
+### Added
+
+- **Plans.md hash 台帳の到達可能性ゲート**: `scripts/ci/check-plans-hash-reachability.sh` を新設し `tests/validate-plugin.sh` へ配線した。Status 欄の commit hash が `HEAD` から到達不可なら fail する。shallow clone では検証不能なため not_observed として skip し、既知の grandfather 対象があれば `scripts/ci/plans-hash-baseline.txt` で個別に除外できる (今回のリポジトリでは Phase 128 の訂正後、除外対象は 0 件)
+
 ## [5.6.0] - 2026-08-01
 
 ### テーマ: 実行時フロアの回避経路封鎖と、検査基盤の信頼性回復 (Phase 127-129)
