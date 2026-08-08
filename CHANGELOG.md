@@ -71,7 +71,7 @@ Change history for claude-code-harness.
 
 | 項目 | 変更前 | 変更後 |
 |---|---|---|
-| `@vercel/agent-eval` | `^0.14.1` (0.14.5 が解決) | `^1.4.0` (1.4.0 が解決) |
+| `@vercel/agent-eval` | `^0.14.1` (0.14.5 が解決) | `~1.4.0` (1.4.0 が解決) |
 | `undici` override | `^7.24.0` (7.28.0 が解決) | `^7.29.0` (7.29.0 が解決) |
 | `nanoid` override | なし (3.3.11 が解決) | `^3.3.17` (3.3.18 が解決) |
 | `brace-expansion` override | なし (5.0.8 が解決) | `^5.0.9` (5.0.9 が解決) |

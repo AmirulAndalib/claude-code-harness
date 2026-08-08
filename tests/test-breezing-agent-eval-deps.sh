@@ -56,7 +56,10 @@ function assertMinVersion(name, actual, minimum) {
   }
 }
 
-if (pkg.dependencies?.["@vercel/agent-eval"] !== "^1.4.0") {
+// `~1.4.0` (>=1.4.0 <1.5.0) keeps this locked to a single minor line, matching
+// what the previous `^0.14.1` meant under npm's 0.x caret rule. A caret here
+// would silently accept every 1.x release without a fresh audit.
+if (pkg.dependencies?.["@vercel/agent-eval"] !== "~1.4.0") {
   fail("@vercel/agent-eval must stay on the current 1.4.x line");
 }
 
