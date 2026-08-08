@@ -76,7 +76,7 @@ Change history for claude-code-harness.
 | `nanoid` override | なし (3.3.11 が解決) | `^3.3.17` (3.3.18 が解決) |
 | `brace-expansion` override | なし (5.0.8 が解決) | `^5.0.9` (5.0.9 が解決) |
 | `npm audit --audit-level=moderate` | 失敗 (high 3 件) | 成功 (残りは閾値未満の low 5 件) |
-| ゲートの検査本数 | 固定値 9 件 / 最低バージョン 4 件 | 固定値 11 件 / 最低バージョン 6 件 |
+| ゲートの検査本数 | 固定値の完全一致 4 件 / 最低バージョン 4 件 | 固定値の完全一致 6 件 / 最低バージョン 6 件 |
 
 `undici` / `nanoid` / `brace-expansion` の 3 件は `@vercel/agent-eval` のバージョンとは無関係の推移的依存です。更新前の `main` の lockfile に対して同じ監査を実行しても同一の 3 件が出るため、この更新が持ち込んだものではありません。
 
