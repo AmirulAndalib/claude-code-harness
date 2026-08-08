@@ -216,3 +216,50 @@ team_validation_mode: not_required_lightweight (機構は PR #285 で実測確�
 対象外と裁定 (黙って落とさないための明示):
 - **`go/` 配下**: Go には同じ構文が存在しない
 - **`|| true` で終わる箇所**: pipefail が結果を昇格させないため実害なし。ただし 129.1 の検出では除外理由をコメントで残す
+
+## Phase 131: ベンチ依存の監査済みラインを 1.4.0 へ引き上げる (PR #272、dependabot 起票 2026-07-27) [P2]
+
+Purpose: `benchmarks/breezing-bench/agent-eval` の `@vercel/agent-eval` を 0.14.5 から 1.4.0 へ上げる。PR #272 の CI `validate` が落ちているが、失敗しているのは **1 行だけ**で、`tests/test-breezing-agent-eval-deps.sh` の `pkg.dependencies["@vercel/agent-eval"] !== "^0.14.1"` (メッセージ: "must stay on the current 0.14.x line") である。同じ失敗ログの中で `npm audit --audit-level=moderate` と `npm install` は成功して通過しており、1.4.0 の依存ツリーに moderate 以上の advisory は現時点で無い。つまり gate は設計どおり作動しているだけで、1.x が壊れている証拠ではない。
+
+pin の由来は Dependabot alert の掃除 (undici / minimatch / dockerode→uuid の override とセットで導入)。意図は「監査済みラインから外れるな」であって「1.x は非互換」ではない。したがって取るべき手当ては pin の固定でも例外でもなく、**監査済みラインそのものを 1.4.0 へ移動する**こと。
+
+使用 API 面は極小で、`import type { ExperimentConfig } from "@vercel/agent-eval"` と CLI `agent-eval <experiment> [--dry]` のみ。major bump の実リスクは config キーの改名に限定されるため、release note の読解ではなく `tsc --noEmit` で機械判定する。
+
+dependabot ブランチ上では作業しない。あちらの lockfile は `typescript ^6.0.3` の時点で作成されており、main は既に `^7.0.2` へ進んでいる (mergeStateStatus: BEHIND)。main から新規ブランチを切って lockfile を再生成し、main へ入った時点で #272 を自動 close させる。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 131.1 | `[lane:gate]` `[tdd:skip:dependency-bump]` main から新規ブランチを切り、`benchmarks/breezing-bench/agent-eval/package.json` の `@vercel/agent-eval` を `~1.4.0` にして `npm install` で `package-lock.json` を再生成する。dependabot ブランチの rebase・cherry-pick は行わない | (a) `package.json` の dependencies が `~1.4.0`、lockfile の `node_modules/@vercel/agent-eval` の version が `1.4.0` (b) `devDependencies.typescript` が main の `^7.0.2` のままで、dependabot 側の `^6.0.3` へ巻き戻っていないことを `git diff` で確認 (c) `npm audit --audit-level=moderate` の実行結果を Status に記録する。moderate 以上が出た場合は下記「分岐」へ回し、黙って先へ進めない (d) 変更ファイルが `package.json` と `package-lock.json` の 2 つだけ | - | cc:done [branch `chore/agent-eval-1.4.0`。(a) 1.4.0 解決を確認 (b) typescript は diff に現れず `^7.0.2` 維持 (d) bench 配下は 2 ファイルのみ。(c) **分岐 (A) が発火**: audit が high 3 件で exit=1。ただし `origin/main` の lockfile を隔離して同一監査をかけると **同じ 8 件 (5 low / 3 high) で exit=1**、つまり bump 起因ではなく advisory DB が CI 実行日 (7/31) 以降に動いた結果で、main が既に赤だった。operator 承認済みの (A) に従い override を追加: undici `^7.24.0`→`^7.29.0` (7.28.0→7.29.0)、nanoid 新規 `^3.3.17` (3.3.11→3.3.18)、brace-expansion 新規 `^5.0.9` (5.0.8→5.0.9)。再監査で exit=0 (残 5 low は閾値未満)。3 件はいずれも agent-eval のバージョンと無関係の推移的依存] |
+| 131.2 | `[lane:gate]` `[tdd:required]` `tests/test-breezing-agent-eval-deps.sh` の pin を移動する。`"^0.14.1"` → `"~1.4.0"`、`assertMinVersion("@vercel/agent-eval", ..., "0.14.1")` の floor → `"1.4.0"`。あわせて `npx tsc --noEmit` で experiments / evals を 1.4.0 の型定義に当て、config キー改名の有無を機械判定する | (a) RED として、131.1 適用後・pin 変更前の `bash tests/test-breezing-agent-eval-deps.sh` が pin 行で fail する実測ログを示す (b) 変更は pin 文字列と floor の 2 箇所のみ。undici / minimatch / dockerode→uuid の 3 つの override assertion、`npx` 禁止ループ、eval fixture 存在チェックが削除も緩和もされていないことを `git diff` の全行分類で示す (c) `npx tsc --noEmit` が 0 error (d) 型エラーが出た場合は 1.4.0 の実型定義に合わせて experiments を修正し、改名前後のキー名を Status に列挙する | 131.1 | cc:done [(a) RED 実測: `@vercel/agent-eval must stay on the current 0.14.x line` + `package.json must pin undici override to a patched range` の 2 行で fail。(b) 131.1 の override 追加に伴い変更は 4 箇所へ拡大 (pin / undici floor / agent-eval minVersion / undici minVersion) + nanoid・brace-expansion の新規検査 4 本を追加。**assertion は削除ゼロで増加のみ**: 固定値の完全一致 4→6、`assertMinVersion` 4→6。削除 5 行はすべて固定値を引き上げた同一行の置換 (`git diff --numstat` = +15/-5)。(c) `tsc --noEmit` exit=0。偽 green でないことを `--listFiles` で担保: experiments 20/20 とディスク上の 20 本が一致し、`@vercel/agent-eval` の型定義 26 本を読み込み済み。(d) 型エラーなし = 設定キーの改名なし] |
+| 131.3 | `[lane:release]` `[tdd:skip:verification]` 検証 + closeout: CHANGELOG `[Unreleased]` へ追記し、PR 作成 → CI green → squash merge。merge 後に PR #272 の自動 close を確認する | (a) `bash tests/test-breezing-agent-eval-deps.sh` がローカルで green (この 1 本が落ちている CI check 本体そのもので、内部で `npm audit` / `npm install` / `eval:smoke:dry` まで実走する) (b) `VERSION` / `.claude-plugin/plugin.json` / `harness.toml` 非接触を `git diff` で確認 (c) CHANGELOG `[Unreleased]` に追記 (d) 必須 CI 全 pass 後に squash merge し、PR #272 が closed になったことを `gh pr view 272` で確認 | 131.2 | cc:done [PR #302。(a) gate exit=0 (`breezing agent-eval dependency audit: ok`)。(b) VERSION / plugin.json / harness.toml / .github/workflows 非接触。(c) CHANGELOG `[Unreleased]` の Changed 表に 1 行、Security に新規節を追加。(d) 併せて `validate-plugin.sh` 134 合格 0 失敗、`check-consistency.sh` 24/24 合格。Status に commit hash を書かないのは squash merge 後に main から到達不可となり `check-plans-hash-reachability.sh` が落ちるため (Phase 128 の再発防止。Phase 129.4 と同じく PR 番号で記録)] |
+
+Spec skip reason: ベンチマーク補助ツールの dependency bump と、それに対応する内部 gate の pin 更新のみ。product behavior・API・データモデル・権限・課金・外部連携のいずれも変えず、harness 本体の配布物にも入らない。`spec.md` の更新は不要。
+
+team_validation_mode: manual-pass (**サブエージェント未使用** — 本セッションは Agent tool の使用を禁止されているため、5 観点を単独で分けて評価した)
+- Product: ベンチ実行ツールのみに閉じ、利用者に見える振る舞いは変わらない
+- Architecture: 変更は 3 ファイル (`package.json` / `package-lock.json` / gate script)。使用 API 面が型 1 つと CLI 1 形式に限られるため、影響半径は experiments/*.ts 約 20 本に閉じる
+- Security: サプライチェーン変更にあたるため gate を外さず floor を上げる方式を採る。moderate 以上の advisory 判定は既存の `npm audit --audit-level=moderate` に委ね、結果が変わった場合は下記「分岐」で明示的に裁定する
+- QA: 落ちている CI check とローカル検証コマンドが同一 (`tests/test-breezing-agent-eval-deps.sh`) なので、ローカル green が CI green と一致する
+- Skeptic: 最大の риск は「1.0.0 の breaking change を release note で見落とす」。PR body には 1.3.0 以降しか載っていないため記憶や要約に頼らず `tsc --noEmit` を正本にする。次点は「lockfile 再生成で PR とは別のツリーになり audit 結果がずれる」で、これは 131.1 (c) と下記「分岐」で受ける
+
+分岐 (黙って fallback しないための明示):
+- **131.1 (c) で moderate 以上が出た場合の (A)**: 既存 3 件と同じパターンで `overrides` を追加し、対応する assertion も `tests/test-breezing-agent-eval-deps.sh` に**同時に**追加する (override だけ足して検査を足さないのは不可)
+- **同 (B)**: 1.x 取り込みを見送り、pin を `^0.14.1` に据え置いたうえで PR #272 を `@dependabot ignore this major version` で閉じる
+- **裁定 (2026-08-08 operator)**: **(A) を採用**。発火した場合は override 追加 + assertion 同時追加で進み、停止しない。追加した override とその assertion は 131.1 の Status に列挙する
+
+事前確認 (plan-time pre-approval):
+- 事項: external-send — `git push origin <branch>` + `gh pr create` + 必須 CI 全 pass 確認 + `gh pr merge --squash` + `gh pr view 272`
+  理由: 131.3 DoD (d) の closeout に必要
+  scope: Phase 131 / Task 131.3
+  承認: **承認済** (2026-08-08 operator「merge まで一括承認」。`.claude/state/plan-preapprovals.json` に `plan-preapproval.v2` として記録)
+- 事項: 外部取得 (送信ではない) — `npm install` / `npm audit` による npm registry へのアクセス
+  理由: 131.1 の lockfile 再生成と 131.3 の gate 実行に必要
+  scope: Phase 131 / Task 131.1, 131.3
+  承認: floor の 3 カテゴリ (secret-read / external-send / destructive) に該当しない取得操作のため、preapproval 記録の対象外。依頼そのものの実行に不可欠なため実施する
+- secret-read: なし
+- destructive: なし
+
+対象外と裁定 (黙って落とさないための明示):
+- **同じ package dir の他の dependabot ブランチ** (`undici-7.29.0` / `brace-expansion-5.0.9`): lockfile 再生成で自然に取り込まれる範囲。個別 PR として追わず、131.1 (c) の audit 結果で健全性を判定する
+- **`.github/workflows/` の編集**: この gate は workflow から `bash ./tests/test-breezing-agent-eval-deps.sh` を直接呼ぶ薄い層であり、pin を動かすのに workflow 変更は不要。`.claude/rules/workflow-test-wiring.md` のとおり触らない
+- **`benchmarks/breezing-bench/agent-eval/REPORT.md` の再計測**: 依存更新で過去の計測値が無効になるわけではない。再計測は別 Phase
