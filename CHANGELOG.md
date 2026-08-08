@@ -59,6 +59,26 @@ Change history for claude-code-harness.
 | `github/codeql-action` (init / analyze / upload-sarif) | 4.37.1 → 4.37.3 | - |
 | `ossf/scorecard-action` | 2.4.3 → 2.4.4 | - |
 | `actions/setup-python` | 6.3.0 → 7.0.0 | v7 の破壊的変更は `pip-install` 入力の削除。当リポジトリの呼び出しは `python-version` のみを渡すため影響なし |
+| `@vercel/agent-eval` (Breezing ベンチ) | 0.14.5 → 1.4.0 | major 更新。使用している API は型 `ExperimentConfig` と CLI `agent-eval <実験名> [--dry]` だけで、experiments 20 本を 1.4.0 の型定義に当てた型検査は 0 error。設定キーの改名なし |
+
+### Security
+
+#### Breezing ベンチの監査済み依存ラインを 1.4.0 へ引き上げ、新規 advisory 3 件を塞いだ
+
+**今まで**: `benchmarks/breezing-bench/agent-eval` の `@vercel/agent-eval` は `^0.14.1` に固定され、`tests/test-breezing-agent-eval-deps.sh` がその pin 文字列を検査していました。この固定は Dependabot alert を掃除したときの「監査済みラインから外れない」ための措置で、1.x が非互換だという判断ではありません。また同ゲートが実行する `npm audit --audit-level=moderate` は、その後に公開された advisory によって `main` 上でも失敗する状態になっていました。
+
+**今後**: 監査済みラインそのものを 1.4.0 へ移しました。あわせて `undici` の override 範囲を引き上げ、`nanoid` と `brace-expansion` の override を追加して、high 3 件を解消しています。ゲート側の検査は 1 つも削らず、固定値を引き上げたうえで新しい override 2 件ぶんの検査を追加しました。
+
+| 項目 | 変更前 | 変更後 |
+|---|---|---|
+| `@vercel/agent-eval` | `^0.14.1` (0.14.5 が解決) | `^1.4.0` (1.4.0 が解決) |
+| `undici` override | `^7.24.0` (7.28.0 が解決) | `^7.29.0` (7.29.0 が解決) |
+| `nanoid` override | なし (3.3.11 が解決) | `^3.3.17` (3.3.18 が解決) |
+| `brace-expansion` override | なし (5.0.8 が解決) | `^5.0.9` (5.0.9 が解決) |
+| `npm audit --audit-level=moderate` | 失敗 (high 3 件) | 成功 (残りは閾値未満の low 5 件) |
+| ゲートの検査本数 | 固定値 9 件 / 最低バージョン 4 件 | 固定値 11 件 / 最低バージョン 6 件 |
+
+`undici` / `nanoid` / `brace-expansion` の 3 件は `@vercel/agent-eval` のバージョンとは無関係の推移的依存です。更新前の `main` の lockfile に対して同じ監査を実行しても同一の 3 件が出るため、この更新が持ち込んだものではありません。
 
 ## [5.6.0] - 2026-08-01
 
