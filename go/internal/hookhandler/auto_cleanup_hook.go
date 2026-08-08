@@ -27,7 +27,7 @@ type AutoCleanupHandler struct {
 
 const (
 	defaultPlansMaxLines      = 200
-	defaultSessionLogMaxLines = 500
+	defaultSessionLogMaxLines = 600
 	defaultClaudeMdMaxLines   = 100
 )
 
