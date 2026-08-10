@@ -8,6 +8,27 @@ Change history for claude-code-harness.
 
 ### Fixed
 
+#### エージェント自身の記憶ディレクトリへの書き込みで R04 が毎回確認を出していた問題 (Phase 132.1)
+
+**今まで**: `R04:confirm-write-outside-project` は、プロジェクトルート外への `Write` / `Edit` / `MultiEdit` に確認ダイアログを出します。ところが Claude Code はエージェントに `~/.claude/projects/<slug>/memory/` への記憶の保存を指示しており、この書き込みがそのまま R04 に当たっていました。3,099 セッションのログを走査したところ、R04 の発火は 1,099 件で全確認機構の最多、うち **299 件がこの記憶ディレクトリ**、14 件が `~/.claude/plans/` でした。危険性がないにもかかわらず承認され続けた確認で、残る確認の信号価値を下げていました。
+
+**今後**: `shellscan.IsAgentStatePath` を新設し、`~/.claude/projects/<slug>/memory/**` と `~/.claude/plans/**` を R04 の確認対象から外します。`<slug>` は任意の 1 セグメントに一致します (記憶の slug は `ProjectRoot` から導出できないため)。`~/.claude` 配下でも `settings*` / `skills/` / `agents/` / `commands/` / `hooks/` / `plugins/` / `output-styles/` は対象外のままです。これらはデータではなく**挙動**を変えるためです。既存の `IsAllowlistedTempPath` には相乗りさせていません。同関数は `runtimefloor` の worktree 脱出判定と共有しており、拡張するとその床まで緩むためです。
+
+| 観点 | 変更前 | 変更後 |
+|---|---|---|
+| `~/.claude/projects/<slug>/memory/` への Write | `ask` (実測 299 件) | 確認なしで通る |
+| `~/.claude/plans/` への Write | `ask` (実測 14 件) | 確認なしで通る |
+| `~/.claude/settings*` / `skills/` / `agents/` 等 | 確認対象 | 確認対象のまま |
+| `~/.claude/plans-backup/`、`memory-extra/` | 確認対象 | 確認対象のまま (接頭辞衝突を明示的に拒否) |
+| symlink された home | — | 元の形と解決後の形の両方で判定 |
+| worktree 脱出判定 (`runtimefloor`) | — | 影響なし (別関数のため) |
+
+#### `WorkMode` の skip 経路が実装されていながら一度も配線されていなかった問題 (Phase 132.2、docs)
+
+**今まで**: `docs/runtime-floor-secret-allowlist.md` は「`/work` や `/breezing` の実行中は `WorkMode` が R04 の確認を skip する」と記述していました。実際には `ctx.WorkMode` を立てる経路が 2 つとも死んでおり、(a) `HARNESS_WORK_MODE` / `ULTRAWORK_MODE` を設定する箇所が skills / scripts / hooks に 1 つも存在せず、(b) `state.SetWorkState` の呼び出し元も自パッケージ外にありませんでした。skip 経路はコード上に存在するのに、通常の run では一度も到達できない状態でした。これが `/breezing` が確認で止まり続けていた直接の原因です。
+
+**今後**: docs を実態に合わせて訂正し、未配線であること・暫定回避として `~/.claude/settings.json` の `env` に `HARNESS_WORK_MODE=1` を置けること・その場合は work run 以外でも skip が効くこと (リポジトリ間の書き込み確認も消える) を明記しました。破壊的削除は影響を受けません。R05 と protected-path deny が引き続き worktree 外の `rm -rf` を止めます。実際の配線は Phase 132.3 として起票しています。
+
 #### Phase 128 の commit hash 台帳が squash merge で到達不可になっていた問題
 
 **今まで**: `Plans.md` の Phase 128 (128.1-128.5) は、PR #282 の作業ブランチ上で作られた commit hash (`7702ca45` / `476ea403`) を記録していました。PR #282 は squash merge されたため、`main` に実際に入ったのは別の 1 commit (`1f085a35`) で、作業ブランチ側の commit は `main` の履歴から到達不可能になっていました。台帳としての記録が実体を指さない状態でしたが、これを機械検知するゲートは存在しませんでした。

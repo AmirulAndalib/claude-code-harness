@@ -615,6 +615,48 @@ func TestR04_WorkModeBypass(t *testing.T) {
 	}
 }
 
+func TestR04_AgentOwnMemoryDirectoryIsNotAsked(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := makeCtx("Write", map[string]interface{}{
+		"file_path": filepath.Join(home, ".claude", "projects", "some-slug", "memory", "note.md"),
+	})
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionApprove {
+		t.Errorf("expected approve for agent's own memory directory, got %s", result.Decision)
+	}
+}
+
+// TestR04_ClaudeSettingsKeepsProtectedPathWarning pins the pre-existing
+// contract for ~/.claude/settings.json, which R04 never reaches: the
+// protectedPathWarn entry in helpers.go ("setup metadata") matches first and
+// returns Approve *carrying a warning*. Verified by stashing the
+// IsAgentStatePath call and re-running: the baseline is Approve, not Ask.
+//
+// The property worth pinning is therefore not "still asks" but "still warns" —
+// if IsAgentStatePath ever grew to cover ~/.claude broadly, the settings path
+// would short-circuit at R04 and lose this warning, and this test would catch
+// it. Directory-level exclusion is asserted directly in
+// shellscan.TestIsAgentStatePathRejectsBehaviorDirectories.
+func TestR04_ClaudeSettingsKeepsProtectedPathWarning(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := makeCtx("Write", map[string]interface{}{
+		"file_path": filepath.Join(home, ".claude", "settings.json"),
+	})
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionApprove {
+		t.Errorf("expected approve for ~/.claude/settings.json, got %s", result.Decision)
+	}
+	if !strings.Contains(result.SystemMessage, "setup metadata") {
+		t.Errorf("expected the protected-path warning to survive, got SystemMessage=%q", result.SystemMessage)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // R05: rm -rf confirmation
 // ---------------------------------------------------------------------------

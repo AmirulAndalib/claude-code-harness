@@ -74,6 +74,33 @@ PM ↔ Impl 運用で使用する標準マーカー:
 
 ---
 
+## Phase 132 — 無人実行を止めない guardrail 調整（2026-08-10）
+
+**Purpose**: `/breezing` などの無人実行が確認ダイアログで停止する事象を、実測に基づいて解消する。
+全 3,099 セッションのログをルール出力文言で走査した結果、停止機構の発火数は R04（`Write outside the project root`）が 1,099 件で最多。
+その内訳は `~/.claude/projects/<slug>/memory/` が 299 件、`~/.claude/plans/` が 14 件で、**いずれもエージェント自身の状態ディレクトリ**への書き込みだった。
+`/private/tmp` 系 271 件は Phase 126.3 で解消済み。残る `~/.claude` 配下がこの Phase の対象。
+
+**判断軸**: 人が承認し続けた `ask` は制御ではない。299 回連続で承認された確認は、残りの確認の信号価値を下げるノイズである。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 132.1 | `[lane:gate]` `[tdd:required]` `[security]` R04 agent-state skip: CC 管理下のエージェント状態ディレクトリ（`<home>/.claude/projects/*/memory/**` と `<home>/.claude/plans/**`）への Write/Edit/MultiEdit を approve に変更する。`go/pkg/shellscan/` に `IsAgentStatePath` を新設し、`rules.go` の R04 呼び出し点（`IsAllowlistedTempPath` チェック直後、`ctx.WorkMode` skip の手前）でのみ参照する。**`allowlistedTempRoots` には追加しない**（`runtimefloor.go:537` の worktree-escape 判定と共有しており、拡張するとその床まで緩む）。slug は任意にマッチさせる（memory の slug は `ctx.ProjectRoot` から導出できず、実際に別 slug へ書く運用が存在する） | (a) RED: `~/.claude/projects/<any-slug>/memory/x.md` への Write が現行 ask になる実測記録 → 修正後 approve, (b) negative test: `~/.claude/settings.json` / `~/.claude/skills/x/SKILL.md` / `~/.claude/agents/` / `~/.claude/commands/` / `~/.claude/hooks/` / `~/.claude/plugins/` が approve に**ならない**, (c) 接頭辞衝突 test: `~/.claude/plans-backup/x.md` と `~/.claude/projects/<slug>/memory-extra/x.md` が対象外, (d) symlink 解決後の形でも判定される（temproots と同様に original / resolved 両形で比較）, (e) `~/Documents` 等プロジェクト外への Write は従来どおり ask の非退行, (f) `cd go && go test ./...` PASS + gofmt/vet clean, (g) Spec delta: auto-approve scope 節へ agent-state 例外を追記 | - | cc:done [80f0510f; RED 実測: ~/.claude/projects/<slug>/memory/note.md が ask → 実装後 approve。negative 3 種 (settings/skills 等の behavior dir、plans-backup と memory-extra の接頭辞衝突、symlinked home) すべて PASS。go test ./... 47 pkg PASS / 0 FAIL、gofmt+vet clean。レビューで既存テスト 1 件の期待値誤りを発見・訂正 (下記)] |
+| 132.2 | `[lane:fast]` `[tdd:skip:docs-only]` 132.1 の例外を docs に反映する。Phase 126.3 が書いた「WorkMode バイパスとの併存関係」の記述へ agent-state 例外を追加し、除外対象（settings/skills/agents/commands/hooks/plugins）を明記する。`scripts/ci/check-consistency.sh` が guardrail 記述を pin していないか確認し、pin していれば同 commit で更新する | (a) 該当 docs に agent-state 例外と除外対象が記載, (b) `bash scripts/ci/check-consistency.sh` PASS, (c) `bash tests/validate-plugin.sh` PASS | 132.1 | cc:done [80f0510f; docs/runtime-floor-secret-allowlist.md の R04 節に agent-state 例外を追記。あわせて「/work や /breezing では WorkMode が skip する」という既存記述が事実に反することを実測で確認し訂正した] |
+| 132.3 | `[lane:gate]` `[tdd:required]` `WorkMode` を実際に配線する。**現状 `ctx.WorkMode` を立てる経路が 2 つとも死んでいる**: (a) `HARNESS_WORK_MODE` / `ULTRAWORK_MODE` env を設定する箇所が skills / scripts / hooks に皆無、(b) `state.SetWorkState` の呼び出し元が自パッケージ外にゼロ (2026-08-10 実測)。`/work` と `/breezing` の run 中だけ work mode を立て、run 終了時 (成功・失敗・中断の全経路) に解除する。**設計判断が必要**: skill は env を設定できないため SQLite 経路を使うことになるが、skill 側が session ID をどう取得するかが未解決 (`bin/harness session declare` 等の既存 surface が解決済みなら流用する) | (a) RED: `/breezing` 相当の run 中に R04 対象の書き込みが ask になる実測記録 → 配線後 approve, (b) run 終了の 3 経路すべてで解除されることの test, (c) 別セッションの work state を誤って読まないこと (session ID 一致) の test, (d) `cd go && go test ./...` PASS, (e) 配線後、ユーザースコープの `HARNESS_WORK_MODE=1` を外しても breezing が止まらないことを実走で確認 | 132.1 | cc:TODO |
+
+**Spec delta**: `spec.md` の guardrail auto-approve scope に「CC 管理のエージェント状態ディレクトリ（memory / plans）は R04 の確認対象外。設定・能力ディレクトリ（settings / skills / agents / commands / hooks / plugins）は対象のまま」を追記する。R04 の判定範囲が変わるため product contract 側の更新が要る。
+
+**この Phase に含めない（理由つき）**:
+
+- **worker で `WorkMode` が立つかの検証**: `WorkMode` は `SessionID` で SQLite を引く実装のため、独立 session ID を持つ worker では立たない疑いがある。ただし hook 由来 `ask` が `bypassPermissions` の worker を実際に止めるかが未確定で、公式ドキュメントにも記述がない。**breezing 実走 1 本の実測で確定してから起票する**（推測で例外を足すと不要な緩和を残す）
+- **`runtimefloor.secretReadVerbs` への `awk` / `jq` 追加**: 実在する穴（`jq . creds.json` は現状素通り）だが、これは**停止を増やす**変更であり、無人実行の摩擦を減らすという本 Phase の目的と逆向き。誤検知の実測（1 週間の試用中）が出てから別 Phase で判断する
+- **CCH の permissions 配布経路（Plan A / Plan B）**: operator が「ローカルで運用してから判断」として保留中
+
+**終了条件**: 132.1 / 132.2 が `cc:done`。稼働中セッションへの反映にはリリースとプラグイン更新が必要なため、本 Phase の完了は「コードが main に入ること」までとする。
+
+---
+
 
 ## Archived Phases
 

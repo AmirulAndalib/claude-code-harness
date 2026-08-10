@@ -115,19 +115,45 @@ entries are invalid, so the effective project-config contribution is empty.
 
 ## R04: Writes Outside the Project
 
-R04 (`R04:confirm-write-outside-project`) distinguishes interactive sessions
-from autonomous work:
+R04 (`R04:confirm-write-outside-project`) skips confirmation for three
+categories of external path:
 
-- During `/work` or `/breezing`, `WorkMode` skips R04 confirmation for every
-  path outside the project.
-- During an interactive session without `WorkMode`, R04 skips only OS-managed
-  scratch roots: `/tmp`, `/var/tmp`, `/private/tmp`, `/private/var/tmp`,
-  `$TMPDIR`, `~/.cache`, and `~/Library/Caches`. Other external paths still ask.
+- **OS-managed scratch roots**: `/tmp`, `/var/tmp`, `/private/tmp`,
+  `/private/var/tmp`, `$TMPDIR`, `~/.cache`, and `~/Library/Caches`
+  (`shellscan.IsAllowlistedTempPath`).
+- **Claude-Code-managed agent state** (`shellscan.IsAgentStatePath`):
+  `~/.claude/projects/<slug>/memory/**` and `~/.claude/plans/**`. These hold
+  data the agent is expected to write during normal operation, and `<slug>`
+  matches any single segment because the memory slug is not derivable from
+  `ProjectRoot`. Everything else under `~/.claude` stays confirmable — in
+  particular `settings*`, `skills/`, `agents/`, `commands/`, `hooks/`,
+  `plugins/`, and `output-styles/`, which change *behavior* rather than
+  storing data.
+- **Everything outside the project, when `WorkMode` is on.**
 
-R04 resolves symlinks before classifying a scratch path. If the final file does
-not exist, it resolves the nearest existing ancestor and appends the missing
-suffix. A scratch-path symlink that resolves outside the scratch roots does not
-receive the skip. Resolution errors retain the `ask` result.
+Other external paths still ask.
+
+R04 resolves symlinks before classifying a scratch or agent-state path. If the
+final file does not exist, it resolves the nearest existing ancestor and appends
+the missing suffix. A scratch-path symlink that resolves outside the scratch
+roots does not receive the skip. Resolution errors retain the `ask` result.
+
+### `WorkMode` is not wired yet
+
+`WorkMode` is set from the `HARNESS_WORK_MODE` / `ULTRAWORK_MODE` environment
+variables, or from the `work_states` row matching the session ID. As of
+2026-08-10 **neither source is ever populated**: no skill, script, or hook sets
+those variables, and `state.SetWorkState` has no call site outside its own
+package. The skip path exists but has never been reachable in a normal `/work`
+or `/breezing` run, which is why those runs kept stopping on R04
+confirmations — 1,099 firings measured across 3,099 session logs, of which 299
+were the agent writing to its own memory directory.
+
+Until it is wired, an operator can set `HARNESS_WORK_MODE=1` in the `env` block
+of `~/.claude/settings.json`. That turns the skip on for *every* session, not
+just work runs, so it also removes the cross-repository write confirmation in
+interactive sessions. Destructive deletion is unaffected: R05 and the
+protected-path deny tier still block `rm -rf` outside the worktree.
 
 R02 and R03 run before R04. Their protected-path decisions remain in force even
 when R04 would skip an OS scratch path or `WorkMode` would skip an external-path

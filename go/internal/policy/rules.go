@@ -224,6 +224,9 @@ var Rules = []GuardRule{
 			if err == nil && shellscan.IsAllowlistedTempPath(resolvedPath) {
 				return nil
 			}
+			if err == nil && shellscan.IsAgentStatePath(resolvedPath) {
+				return nil
+			}
 			// Work mode skips confirmation
 			if ctx.WorkMode {
 				return nil
