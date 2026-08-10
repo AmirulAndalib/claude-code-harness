@@ -39,6 +39,13 @@ Claude Code 版と同一の契約（operator 裁定 2026-07-24。正本: `skills
 
 低リスクの高速 run で 3 を省きたい時は `--no-review-gate`（per-task review は維持、統合レビューのみスキップ）。
 
+### Work Mode Lifecycle (`bin/harness work-mode`)
+
+Claude Code 版と同一の契約（正本: `skills/breezing/SKILL.md` の同名節）。
+Lead は run 開始時（Plan gate に入る前）に `bin/harness work-mode on` を実行し、
+run 終了時は**成功・失敗・中断の全経路**で `bin/harness work-mode off` を実行する。
+session ID が解決できない場合、`work-mode` は非ゼロ終了し理由を stderr に出す。
+
 ## Quick Reference
 
 ```bash

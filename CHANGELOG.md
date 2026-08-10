@@ -67,9 +67,42 @@ Change history for claude-code-harness.
 
 ### Added
 
+#### `harness work-mode` — 自律実行中だけ確認を止める配線の土台 (Phase 132.3、**未完**)
+
+**今まで**: `ctx.WorkMode` が立つと R04 (プロジェクト外への書き込み) と R05 (削除) の確認を skip する経路は実装済みでした。しかしこれを立てる手段が 2 つとも死んでおり、`HARNESS_WORK_MODE` / `ULTRAWORK_MODE` を設定する箇所は skills / scripts / hooks に 1 つも無く、`state.SetWorkState` の呼び出し元も自パッケージ外にありませんでした。逃げ道は作られたまま一度も繋がれておらず、`/breezing` が確認ダイアログで止まり続けていました。
+
+**今回入れたもの**: `harness work-mode <on / off / status>` を新設し、`work_states` への書き込みと読み出しを実装しました。session ID が解決できない場合は無言で成功せず、理由を出して非ゼロ終了します。`work_states.session_id` の FOREIGN KEY を満たすため、既存の `sessions` 行が無いときだけ最小行を作ります (無条件 upsert は `mode` / `context_json` を潰すため。この退行はテストで pin 済み)。
+
+**まだ動きません**: 独立レビューと実測で、**session ID の解決先が誤っている**ことが判明しました。`hookhandler.ReadLocalSessionID` が読む `.claude/state/session.json` はセッション監視の状態ファイルで、内部生成の timestamp ベース ID を持ちます。Claude Code が hook に渡す実 `session_id` とは別物です。実測では `work-mode on` の後でも、実 ID を含む payload に対して R04 は `ask` のままでした。識別子の解決を直すまで、この配線は no-op です。
+
+**現時点で `/breezing` の停止を止めているのは** `~/.claude/settings.json` の `env` に置く `HARNESS_WORK_MODE=1` (operator 手動) です。識別子の修正は Plans.md 132.7 として起票しています。
+
+| 観点 | 変更前 | 変更後 |
+|---|---|---|
+| `work_states` への読み書き手段 | 無し | `harness work-mode` |
+| session ID 未解決時 | — | 非ゼロ終了 + 理由出力 |
+| 既存 `sessions` 行の保護 | — | 上書きしない (退行テストあり) |
+| **hook から見た実効性** | **無し** | **無し (識別子不一致。132.7 で対応)** |
+
+#### 未配線の設定ノブを検出するゲート (Phase 132.4)
+
+**今まで**: 「コードが読む設定キーを、repo 内の誰も設定していない」という欠陥を検出する仕組みがありませんでした。コードを読むと分岐が実装済みに見えるため、producer を追跡しない限り気づけません。この型の欠陥は本 repo で繰り返し発生しています (`.claude-plugin/settings.json` の permissions が読まれない件、今回の `HARNESS_WORK_MODE` 件)。
+
+**今後**: `scripts/ci/check-config-knob-wiring.sh` を新設しました。`go/internal/guardrail` と `go/internal/policy` が `os.Getenv` で読む `HARNESS_*` / `ULTRAWORK_*` の各キーについて、repo 内に producer があるか、`templates/registry/operator-supplied-knobs.v1.yaml` に operator 供給として登録されているかを検証します。`tests/validate-plugin.sh` から実行されます。
+
+初回実行で 13 キー中 **10 件**の違反を検出しました。判明していた 2 件に加え、同型の未配線が 8 件見つかっています (`HARNESS_BREEZING_ROLE` / `HARNESS_CODEX_MODE` / `HARNESS_ACTIVE_PHASE` / `HARNESS_ACTIVE_TASK` / `HARNESS_TDD_*` 4 件)。ゲートを green で着地させるため registry へ grandfather 登録しましたが、registry 本文に「追認ではなく一時退避」と明記し、triage を Plans.md 132.6 として起票しています。
+
+
 - **Plans.md hash 台帳の到達可能性ゲート**: `scripts/ci/check-plans-hash-reachability.sh` を新設し `tests/validate-plugin.sh` へ配線した。Status 欄の commit hash が `HEAD` から到達不可なら fail する。shallow clone では検証不能なため not_observed として skip し、既知の grandfather 対象があれば `scripts/ci/plans-hash-baseline.txt` で個別に除外できる (今回のリポジトリでは Phase 128 の訂正後、除外対象は 0 件)
 
 ### Changed
+
+#### 防御層を追加・変更するときの影響確認を規約化 (Phase 132.5)
+
+**今まで**: 防御層 (`permissions` / guardrail hook / `sandbox`) を足すときの手順が規定されておらず、「何を止めるか」だけを設計して「止めた結果、誰が通れなくなるか」を確認しない事故が起きました。2026-08-10 に同型の失敗を 1 日に 2 回起こしています。
+
+**今後**: `.claude/rules/defense-layer-blast-radius.md` を新設し、`CLAUDE.md` の Permission Boundaries から参照しました。層ごとの強制力と影響範囲の対比 (`permissions` と hook は agent のみ / `sandbox` は OS がプロセスツリー全体に強制)、強制力が強い層ほど適用範囲を狭くする原則、追加前の 5 点チェック、`excludedCommands` が起動コマンド名にしか一致せずサブプロセスへ継承されない事実、user scope 昇格前に 1 プロジェクトで実経路を通す段階適用を定めています。`scripts/ci/check-consistency.sh` が存在と必須フレーズを検証します。
+
 
 #### session-log.md の分割警告が、動かせるエントリが 1 件も無い状態でも出続けていた問題
 

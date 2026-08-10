@@ -1124,6 +1124,40 @@ fi
 rm -f /tmp/harness-i18n-ratchet.$$
 
 # ================================
+# 25. Defense Layer Blast Radius 規約の存在確認
+# ================================
+echo ""
+echo "🛡️ [25/25] Defense Layer Blast Radius 規約の存在確認..."
+
+BLAST_RADIUS_RULE="$PLUGIN_ROOT/.claude/rules/defense-layer-blast-radius.md"
+
+if [ ! -f "$BLAST_RADIUS_RULE" ]; then
+  echo "  ❌ 不足: .claude/rules/defense-layer-blast-radius.md"
+  echo "      防御層 (permissions / hook / sandbox) 追加時の影響確認規約 (Phase 132.5)。"
+  echo "      参照: CLAUDE.md Permission Boundaries"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "  ✅ .claude/rules/defense-layer-blast-radius.md"
+  # 規約の骨子が本文に残っていることを確認（形骸化防止）
+  for phrase in \
+    "強制力が強い層ほど" \
+    "excludedCommands" \
+    "サブプロセスに継承されない" \
+    "1 プロジェクトで検証"
+  do
+    if ! grep -q "$phrase" "$BLAST_RADIUS_RULE"; then
+      echo "  ❌ defense-layer-blast-radius.md に必須フレーズが不足: $phrase"
+      ERRORS=$((ERRORS + 1))
+    fi
+  done
+  # CLAUDE.md から参照が張られていること
+  if ! grep -q "defense-layer-blast-radius.md" "$PLUGIN_ROOT/CLAUDE.md"; then
+    echo "  ❌ CLAUDE.md から defense-layer-blast-radius.md への参照が無い"
+    ERRORS=$((ERRORS + 1))
+  fi
+fi
+
+# ================================
 # 結果サマリー
 # ================================
 echo ""

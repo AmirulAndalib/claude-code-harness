@@ -1,0 +1,86 @@
+# operator-supplied-knobs.v1.yaml — Operator-supplied config knob registry (Phase 132.4)
+#
+# SSOT for the config-knob-wiring gate escape hatch.
+# Scanner: scripts/ci/check-config-knob-wiring.sh
+#
+# 目的: go/internal/guardrail・go/internal/policy が os.Getenv("HARNESS_*"|"ULTRAWORK_*")
+# で読む設定ノブのうち、repo 内に producer (自動設定する仕組み) が無く、
+# operator が手動で設定することを前提に運用しているものをここに明示登録する。
+# ゲートはこのリストに載っているキーだけを producer 不在でも pass させる。
+#
+# 登録の条件: このファイルには 2 種類のエントリがある。
+#   (1) operator が手動で設定する運用として明示合意済みのもの (reason に
+#       "operator sets this" を含む)
+#   (2) ゲート新設時点 (Phase 132.4) で producer が repo 内に見つからず、
+#       triage 待ちとして grandfather 登録したもの (reason に "grandfathered"
+#       を含む)。(2) は「operator が手で設定して良い」という追認ではなく、
+#       ゲートを red で着地させないための一時退避。producer を実装するか、
+#       operator 設定として正式に合意した時点でエントリを更新・削除すること。
+# いずれも機械的には登録=pass としか判定できない。将来的に producer を実装したら
+# このリストからエントリを削除すること。
+#
+# 実際の事故 (2026-08-10): HARNESS_WORK_MODE / ULTRAWORK_MODE は
+# go/internal/guardrail/pre_tool.go の R04/R05 confirmation-skip 経路が読むが、
+# producer が repo 内に一つも無く、/breezing 実行が数ヶ月間 Yes/No ダイアログで
+# 止まり続けていた。Plans.md 132.3 で SQLite ベースの producer (harness work-mode) を配線済み。
+# env 版は operator の手動 override として残るため、引き続きこの registry に載せる。
+#
+# ゲート初回実行 (Phase 132.4) で、同型の未配線ノブが他に 8 件見つかった
+# (HARNESS_ACTIVE_PHASE/TASK, HARNESS_TDD_ENFORCE_ENABLED/LEVEL,
+# HARNESS_TDD_HOOK_ENABLED, HARNESS_TDD_BYPASS_AUDIT_REQUIRED,
+# HARNESS_CODEX_MODE, HARNESS_BREEZING_ROLE)。これらは producer を実装するか
+# operator 設定として正式合意するまでの grandfather 登録であり、別途 triage
+# チケットが必要。
+
+version: 1
+
+entries:
+  - key: "HARNESS_WORK_MODE"
+    consumer: "go/internal/guardrail/pre_tool.go:114"
+    reason: "operator-supplied manual override. Plans.md 132.3 landed the primary producer as a SQLite path (harness work-mode on/off, written by breezing/harness-work), so the env var is now a deliberate escape hatch rather than the only route. Keep registered: no repo code sets it"
+    registered: "2026-08-10"
+
+  - key: "ULTRAWORK_MODE"
+    consumer: "go/internal/guardrail/pre_tool.go:115"
+    reason: "operator-supplied manual override. Plans.md 132.3 landed the primary producer as a SQLite path (harness work-mode on/off, written by breezing/harness-work), so the env var is now a deliberate escape hatch rather than the only route. Keep registered: no repo code sets it"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_ACTIVE_PHASE"
+    consumer: "go/internal/guardrail/plan_preapproval.go:162"
+    reason: "grandfathered at gate introduction (132.4): consumed but no producer found anywhere in repo — operator must triage (wire a producer or confirm operator-supplied)"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_ACTIVE_TASK"
+    consumer: "go/internal/guardrail/plan_preapproval.go:163"
+    reason: "grandfathered at gate introduction (132.4): consumed but no producer found anywhere in repo — operator must triage (wire a producer or confirm operator-supplied)"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_TDD_ENFORCE_ENABLED"
+    consumer: "go/internal/guardrail/pre_tool.go:80"
+    reason: "grandfathered at gate introduction (132.4): consumed but no producer found anywhere in repo — operator must triage (wire a producer or confirm operator-supplied). Same defect class as HARNESS_WORK_MODE"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_TDD_ENFORCE_LEVEL"
+    consumer: "go/internal/guardrail/pre_tool.go:81"
+    reason: "grandfathered at gate introduction (132.4): consumed but no producer found anywhere in repo — operator must triage (wire a producer or confirm operator-supplied). Same defect class as HARNESS_WORK_MODE"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_TDD_HOOK_ENABLED"
+    consumer: "go/internal/guardrail/pre_tool.go:84"
+    reason: "grandfathered at gate introduction (132.4): consumed but no producer found anywhere in repo — operator must triage (wire a producer or confirm operator-supplied). Same defect class as HARNESS_WORK_MODE"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_TDD_BYPASS_AUDIT_REQUIRED"
+    consumer: "go/internal/guardrail/pre_tool.go:87"
+    reason: "grandfathered at gate introduction (132.4): consumed but no producer found anywhere in repo — operator must triage (wire a producer or confirm operator-supplied). Same defect class as HARNESS_WORK_MODE"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_CODEX_MODE"
+    consumer: "go/internal/guardrail/pre_tool.go:116"
+    reason: "grandfathered at gate introduction (132.4): consumed but no producer found anywhere in repo — operator must triage (wire a producer or confirm operator-supplied). Same defect class as HARNESS_WORK_MODE"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_BREEZING_ROLE"
+    consumer: "go/internal/guardrail/pre_tool.go:117"
+    reason: "grandfathered at gate introduction (132.4): consumed but no producer found anywhere in repo — operator must triage (wire a producer or confirm operator-supplied). Same defect class as HARNESS_WORK_MODE"
+    registered: "2026-08-10"

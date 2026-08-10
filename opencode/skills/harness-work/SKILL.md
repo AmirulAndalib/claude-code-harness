@@ -355,6 +355,23 @@ host の fallback に限る。
 Parallel / Breezing ではタスクごとの worktree に書く。同じ worktree の
 `active-task.json` を複数タスクで共有しない。
 
+### Work Mode Lifecycle (`bin/harness work-mode`)
+
+R04（project root 外への書き込み）/ R05（危険な rm）の確認 skip は
+`ctx.WorkMode` に依存するが、これを立てる経路は 2 つとも実効しない状態だった:
+`HARNESS_WORK_MODE` / `ULTRAWORK_MODE` env は skill / hook から設定する手段がなく、
+`state.SetWorkState`（SQLite `work_states` 行）も呼び出し元が皆無だった。
+`bin/harness work-mode <on|off|status>` がこの SQLite 経路を書く唯一の入口になる。
+
+- Lead は **run 開始時**（Phase A 開始前、solo 実行では最初の実装アクション前）に
+  `bin/harness work-mode on` を実行する
+- Lead は **run 終了時**、成功・失敗・中断の全経路で `bin/harness work-mode off` を実行する。
+  `active-task.json` と同じ「終了時はどの経路でも後始末する」規律を適用する
+- run 単位（Phase A〜C を通じて 1 回）であり、`active-task.json` のようなタスクごとの
+  書き込みではない。子 worktree で個別に on/off しない
+- session ID は `.claude/state/session.json` から解決される。解決できない場合
+  `work-mode` は非ゼロ終了し理由を stderr に出す（無言で成功しない）
+
 ### Advisor Protocol（全モード共通）
 
 Advisor は「実装者」でも「レビュー担当」でもない。迷った時だけ、実行役が次の一歩を決めるための相談役として入る。

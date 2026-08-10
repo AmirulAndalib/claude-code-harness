@@ -125,6 +125,8 @@ Details: [docs/CLAUDE-commands.md](docs/CLAUDE-commands.md)
 
 変更が必要な場合はユーザーに手動操作を依頼すること。
 
+**防御層を追加・変更する前に必読**: [.claude/rules/defense-layer-blast-radius.md](.claude/rules/defense-layer-blast-radius.md) — 層ごとの強制力と影響範囲（`permissions` と hook は agent のみ / `sandbox` は OS が全プロセスに強制）、強制力が強い層ほど適用範囲を狭くする原則、追加前の 5 点チェック、`excludedCommands` がサブプロセスへ継承されない事実、user scope 昇格前の 1 プロジェクト検証。2026-08-10 に同型の事故を 2 回起こしたため codify。
+
 - Cursor 実装バックエンド利用時のルール: [skills/cursor-do/references/cursor-cli-only.md](skills/cursor-do/references/cursor-cli-only.md)
 
 外部 API への sandbox allowlist 設定 (Firecrawl / web スクレイプ等): [docs/sandbox-allowlist-recipe.md](docs/sandbox-allowlist-recipe.md) — `~/.claude/settings.json` への patch 手順を SSOT 化。`templates/sandbox-settings.json.template` と数値・項目を同期。
