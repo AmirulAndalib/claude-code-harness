@@ -235,6 +235,7 @@ func TestRegisterBreezingRole_HappyPath(t *testing.T) {
 
 	regInput := hookproto.HookInput{
 		SessionID: "sess-reg-1",
+		AgentID:   "agent-reg-happy",
 		CWD:       root,
 		ToolName:  "Write",
 		ToolInput: map[string]interface{}{
@@ -247,10 +248,118 @@ func TestRegisterBreezingRole_HappyPath(t *testing.T) {
 		t.Fatalf("registration write must be approved, got %+v", result)
 	}
 
-	// 登録後、この session の src 書き込みは R08 で拒否される
-	after := EvaluatePreTool(srcWriteInput(root, "sess-reg-1"))
-	if after.Decision != hookproto.DecisionDeny || after.RuleID != "R08:breezing-reviewer-no-write" {
-		t.Fatalf("post-registration write must hit R08, got %+v", after)
+	// 登録後、この subagent の src 書き込みは R08 で拒否される
+	after := srcWriteInput(root, "sess-reg-1")
+	after.AgentID = "agent-reg-happy"
+	res := EvaluatePreTool(after)
+	if res.Decision != hookproto.DecisionDeny || res.RuleID != "R08:breezing-reviewer-no-write" {
+		t.Fatalf("post-registration write must hit R08, got %+v", res)
+	}
+}
+
+// agent_id を持たない呼び出し (= main thread) は自己登録できない。
+// session_id で登録できてしまうと、その session を共有する Lead 自身の
+// Write が全滅する (2026-08-11 の敵対的再検証で実証したシナリオ)。
+func TestRegisterBreezingRole_RefusesWithoutAgentID(t *testing.T) {
+	clearGuardrailKnobEnv(t)
+	root := t.TempDir()
+
+	regInput := hookproto.HookInput{
+		SessionID: "sess-no-agent",
+		CWD:       root,
+		ToolName:  "Write",
+		ToolInput: map[string]interface{}{
+			"file_path": filepath.Join(root, ".claude", "state", "breezing-role-r.json"),
+			"content":   `{"role":"reviewer"}`,
+		},
+	}
+	if result := EvaluatePreTool(regInput); result.RuleID == "BREEZING:role-register" {
+		t.Fatalf("registration without agent_id must not be consumed: %+v", result)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".claude", "state", "breezing-session-roles.json")); !os.IsNotExist(err) {
+		t.Fatalf("roles file must not be created without agent_id")
+	}
+
+	// Lead (同一 session_id, agent fields なし) の Write は影響を受けない
+	lead := EvaluatePreTool(srcWriteInput(root, "sess-no-agent"))
+	if lead.Decision == hookproto.DecisionDeny {
+		t.Fatalf("Lead's write must stay allowed: %+v", lead)
+	}
+}
+
+// R08 の state 例外は symlink 経由でも破れない。
+// (2026-08-11 の敵対的再検証: state 内に repo 内 src を指す symlink を作り、
+//
+//	その経由で任意ファイルへ書けた)
+func TestR08_StateExemptionNotBypassedBySymlink(t *testing.T) {
+	clearGuardrailKnobEnv(t)
+	root := t.TempDir()
+	writeStateFile(t, root, "breezing-session-roles.json",
+		`{"sess-rev-sym":{"role":"reviewer"}}`)
+	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, ".claude", "state", "escape")
+	if err := os.Symlink(filepath.Join(root, "src"), link); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	input := hookproto.HookInput{
+		SessionID: "sess-rev-sym",
+		CWD:       root,
+		ToolName:  "Write",
+		ToolInput: map[string]interface{}{
+			"file_path": filepath.Join(link, "x.ts"),
+			"content":   "evil",
+		},
+	}
+	if result := EvaluatePreTool(input); result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("symlink escape from state dir must be denied, got %+v", result)
+	}
+
+	// 正当な state 書き込みは引き続き許可される
+	ok := hookproto.HookInput{
+		SessionID: "sess-rev-sym",
+		CWD:       root,
+		ToolName:  "Write",
+		ToolInput: map[string]interface{}{
+			"file_path": filepath.Join(root, ".claude", "state", "report.json"),
+			"content":   "{}",
+		},
+	}
+	if result := EvaluatePreTool(ok); result.Decision == hookproto.DecisionDeny {
+		t.Fatalf("legit state write must stay allowed, got %+v", result)
+	}
+}
+
+// reviewer は symlink 作成コマンド自体も実行できない (作成側の防御)。
+func TestR08_ReviewerCannotCreateSymlink(t *testing.T) {
+	clearGuardrailKnobEnv(t)
+	root := t.TempDir()
+	writeStateFile(t, root, "breezing-session-roles.json",
+		`{"sess-rev-ln":{"role":"reviewer"}}`)
+
+	input := hookproto.HookInput{
+		SessionID: "sess-rev-ln",
+		CWD:       root,
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{
+			"command": "ln -sf " + root + "/src " + root + "/.claude/state/escape",
+		},
+	}
+	if result := EvaluatePreTool(input); result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("reviewer must not create symlinks, got %+v", result)
+	}
+
+	// 読み取り系 Bash は引き続き許可される (非退行)
+	ro := hookproto.HookInput{
+		SessionID: "sess-rev-ln",
+		CWD:       root,
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "git diff --stat"},
+	}
+	if result := EvaluatePreTool(ro); result.Decision == hookproto.DecisionDeny {
+		t.Fatalf("read-only bash must stay allowed, got %+v", result)
 	}
 }
 
@@ -312,12 +421,13 @@ func TestRegisterBreezingRole_CannotAssignToOtherSession(t *testing.T) {
 
 	regInput := hookproto.HookInput{
 		SessionID: "sess-attacker",
+		AgentID:   "agent-attacker",
 		CWD:       root,
 		ToolName:  "Write",
 		ToolInput: map[string]interface{}{
 			"file_path": filepath.Join(root, ".claude", "state", "breezing-role-x.json"),
-			// content 内の session_id は無視されなければならない
-			"content": `{"role":"reviewer","session_id":"sess-victim"}`,
+			// content 内の session_id / agent_id は無視されなければならない
+			"content": `{"role":"reviewer","session_id":"sess-victim","agent_id":"agent-victim"}`,
 		},
 	}
 	_ = EvaluatePreTool(regInput)
@@ -330,11 +440,16 @@ func TestRegisterBreezingRole_CannotAssignToOtherSession(t *testing.T) {
 	if err := json.Unmarshal(data, &roles); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := roles["sess-victim"]; ok {
-		t.Fatalf("role must never be assigned to an id taken from content: %s", data)
+	for _, forged := range []string{"sess-victim", "agent-victim"} {
+		if _, ok := roles[forged]; ok {
+			t.Fatalf("role must never be assigned to an id taken from content: %s", data)
+		}
 	}
-	if _, ok := roles["sess-attacker"]; !ok {
-		t.Fatalf("role must be keyed by the payload session id: %s", data)
+	if _, ok := roles["agent-attacker"]; !ok {
+		t.Fatalf("role must be keyed by the payload agent id: %s", data)
+	}
+	if _, ok := roles["sess-attacker"]; ok {
+		t.Fatalf("registration must not key by session_id (Lead pollution): %s", data)
 	}
 }
 

@@ -175,7 +175,11 @@ var baselineDenySurface = []string{
 	"R03:no-bash-write-protected-paths:a54551decc10465f4a6fba38166382ed7900f9e4834eef1b6298c7a8daea2e5f",
 	"R06:no-force-push:7320e66b09a8fd7c4cf6b24a800b7b78b8b82181720ca722bb6ab4002fc574a2",
 	"R07:codex-mode-no-write:9d6770d2cb308bf2a3eb48c420b44658f2befaa642d652eeb348f54b3529213d",
-	"R08:breezing-reviewer-no-write:24fc5cdcd6523b736e87ce797afa85493d8364109133fd68a119222531c2860d",
+	// 2026-08-11 regenerated: R08 の禁止コマンド集合へ `ln` / `tee` を追加した
+	// ため signature が変わった。パターンは 4 → 6 の純増で、削除・緩和はゼロ
+	// (symlink を state dir 内に作って write-block を回避する経路を塞ぐ)。
+	// 他 9 行は不変であることを確認済み。
+	"R08:breezing-reviewer-no-write:012409783ac3a86b7a996228c19762913ffa494d55e6c599a35239498adeb3ac",
 	"R10:no-git-bypass-flags:4a9a63d2d3a4f496d16fb4f2e135b060d741b95006278c249c526ae683c732c5",
 	"R11:no-reset-hard-protected-branch:7b0ffd50649b06d0fc4630cdbbf134e4278f3dbe707df381521b87c0a7a61bfd",
 	"R12:confirm-direct-push-protected-branch:1f47124d7cec9dd1ec43abc991b8ab054c756cd56d0d5bbc407ea4137b50de6b",

@@ -27,6 +27,11 @@ Change history for claude-code-harness.
 1. **R08 の state 例外が path traversal でバイパス可能だった**: 初版の `.claude/state/` 例外は素の substring 判定で、`<root>/.claude/state/../../src/x.ts` のような file_path が例外に落ちて reviewer が任意ファイルへ書けました (実測でバイパス成立を確認)。Clean 済みパスの封じ込め判定 (`filepath.Rel` ベース) へ置換し、traversal 3 形の回帰テストを追加しました。
 2. **`agent_id` / `agent_type` が実配線 (hookcodec.Normalize) で落ちていた**: 新設フィールドを codec の rawPayload が拾っておらず、reviewer subagent の CC-native 判定が wire 上で死んでいました (unit テストは hand-built input で green のまま — 「unit は通るが wire が繋がっていない」型)。Normalize に両フィールドを追加し、raw JSON → codec → guardrail を通す wire round-trip テストを追加しました。
 
+さらに**修正版に対する敵対的再検証 (refuter 3 体)** を回し、上記 1・2 の修正がそれぞれ別経路で破れることを実証されたため再修正しました。
+
+3. **R08 の state 例外が symlink 経由で破れた**: traversal (`..`) は塞げていましたが、reviewer が `ln -s` で `.claude/state/escape → <project>/src` を作り、その経由で任意ファイルへ書ける経路が残っていました (実測で 2 ステップとも approve)。判定を lexical 封じ込め **と** `filepath.EvalSymlinks` による物理封じ込めの二段にし、あわせて R08 の禁止コマンドへ `ln` / `tee` を追加しました (パターンは 4 → 6 の純増。削除・緩和はゼロ)。self-audit の deny-surface baseline は R08 の 1 行のみ再生成し、他 9 行が不変であることを確認しています。
+4. **role 自己登録が `session_id` へ fallback して Lead を巻き添えにしていた**: `agent_id` を持たないペイロードで登録すると session_id キーで書かれ、同じ session を共有する Lead 自身の Write まで reviewer と判定されて全滅する経路が残っていました (実測で再現)。登録キーを **`agent_id` のみ**に限定しました。CC は subagent の tool call に必ず `agent_id` を付けるため正当な登録は通り、main thread は自分を reviewer にできません。worktree で spawn された teammate は独立セッションなので、従来どおり spawn 時の env を使います。
+
 #### エージェント自身の記憶ディレクトリへの書き込みで R04 が毎回確認を出していた問題 (Phase 132.1)
 
 **今まで**: `R04:confirm-write-outside-project` は、プロジェクトルート外への `Write` / `Edit` / `MultiEdit` に確認ダイアログを出します。ところが Claude Code はエージェントに `~/.claude/projects/<slug>/memory/` への記憶の保存を指示しており、この書き込みがそのまま R04 に当たっていました。3,099 セッションのログを走査したところ、R04 の発火は 1,099 件で全確認機構の最多、うち **299 件がこの記憶ディレクトリ**、14 件が `~/.claude/plans/` でした。危険性がないにもかかわらず承認され続けた確認で、残る確認の信号価値を下げていました。

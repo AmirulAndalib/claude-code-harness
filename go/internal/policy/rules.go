@@ -38,6 +38,13 @@ var r08ReviewerProhibitedPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\brm\s+`),
 	regexp.MustCompile(`\bmv\s+`),
 	regexp.MustCompile(`\bcp\s+.*-r\b`),
+	// ln も data-mutating。とくに `ln -s` は R08 の .claude/state 例外と
+	// 組み合わせると write-block 全体を破る (2026-08-11 の敵対的再検証で
+	// 実証: state 内に repo 内 src を指す symlink を作り、その経由で
+	// 任意ファイルへ書けた)。書き込み側は EvalSymlinks で塞いだうえで、
+	// 作成側もここで止める (二重防御)。
+	regexp.MustCompile(`\bln\s+`),
+	regexp.MustCompile(`\btee\b`),
 }
 
 // Pre-compiled patterns for R09 (secret file detection)
@@ -465,10 +472,12 @@ var Rules = []GuardRule{
 }
 
 // isWithinReviewerStateDir reports whether filePath resolves inside
-// <projectRoot>/.claude/state/ after Clean (".." collapse). Used by R08's
-// reviewer exemption; substring matching is forbidden here because
-// "/.claude/state/../../src/x.ts" contains the exempt substring while
-// resolving outside the state dir.
+// <projectRoot>/.claude/state/ — both lexically (after Clean, so
+// "/.claude/state/../../src/x.ts" is rejected) and physically (after
+// EvalSymlinks, so a symlink planted inside the state dir cannot redirect a
+// write outside it). Both checks are required: the lexical one alone was
+// bypassed in the 2026-08-11 adversarial re-verification by creating
+// ".claude/state/escape -> <project>/src" and writing through it.
 func isWithinReviewerStateDir(projectRoot, filePath string) bool {
 	if projectRoot == "" || filePath == "" {
 		return false
@@ -477,9 +486,38 @@ func isWithinReviewerStateDir(projectRoot, filePath string) bool {
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(projectRoot, p)
 	}
-	p = filepath.Clean(p)
 	stateDir := filepath.Clean(filepath.Join(projectRoot, ".claude", "state"))
-	rel, err := filepath.Rel(stateDir, p)
+
+	// 1) lexical containment (".." collapse)
+	if !pathContainedIn(stateDir, filepath.Clean(p)) {
+		return false
+	}
+
+	// 2) physical containment (symlink resolution). 対象ファイルはまだ存在
+	// しないことが普通なので、存在する最も深い祖先まで遡って解決する。
+	// 解決できない場合は lexical 判定のみで通す (fail-open にしない範囲で、
+	// 存在しないパスを理由に正当な state 書き込みを止めないため)。
+	resolvedState, err := filepath.EvalSymlinks(stateDir)
+	if err != nil {
+		return true // state dir 自体が未作成: lexical 判定を採用
+	}
+	dir := filepath.Dir(filepath.Clean(p))
+	for {
+		resolvedDir, err := filepath.EvalSymlinks(dir)
+		if err == nil {
+			return pathContainedIn(resolvedState, resolvedDir)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return true // 祖先が一つも実在しない: lexical 判定を採用
+		}
+		dir = parent
+	}
+}
+
+// pathContainedIn reports whether target is base itself or nested under it.
+func pathContainedIn(base, target string) bool {
+	rel, err := filepath.Rel(base, target)
 	if err != nil {
 		return false
 	}

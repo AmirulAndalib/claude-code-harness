@@ -140,10 +140,19 @@ func tryRegisterBreezingRole(input hookproto.HookInput) *hookproto.HookResult {
 		return nil
 	}
 
-	key := input.AgentID
-	if key == "" {
-		key = input.SessionID
-	}
+	// 登録キーは agent_id のみ。session_id への fallback は行わない。
+	//
+	// Why (2026-08-11 の敵対的再検証で実証): session_id で登録すると、その
+	// session_id を共有する Lead 自身の呼び出しまで reviewer と解決され、
+	// Lead の全 Write が R08 で拒否される (run が壊れる)。CC は subagent の
+	// tool call に必ず agent_id を付けるため、正当な subagent 登録は agent_id
+	// を持つ。agent_id を持たない呼び出し = main thread であり、自分自身を
+	// reviewer にする必要はない。
+	//
+	// worktree で spawn された teammate は独立セッションなので、Lead 側が
+	// spawn 時に env HARNESS_BREEZING_ROLE を渡す経路を使う (SKILL.md 参照)。
+	// shell 版は SESSION_ID へも fallback していたが、同じ汚染欠陥を持つ。
+	key := strings.TrimSpace(input.AgentID)
 	if key == "" {
 		return nil
 	}
