@@ -254,6 +254,56 @@ func TestRegisterBreezingRole_HappyPath(t *testing.T) {
 	}
 }
 
+// subagent からの登録は agent_id で key され、session_id には付かない。
+// これが崩れると「subagent の reviewer 登録が同一 session の Lead まで
+// 汚染して Lead の Write が全滅する」(2026-08-11 レビューの指摘シナリオ)。
+func TestRegisterBreezingRole_SubagentKeysByAgentID(t *testing.T) {
+	clearGuardrailKnobEnv(t)
+	root := t.TempDir()
+
+	regInput := hookproto.HookInput{
+		SessionID: "sess-shared",
+		AgentID:   "agent-reg-1",
+		CWD:       root,
+		ToolName:  "Write",
+		ToolInput: map[string]interface{}{
+			"file_path": filepath.Join(root, ".claude", "state", "breezing-role-reviewer.json"),
+			"content":   `{"role":"reviewer"}`,
+		},
+	}
+	if result := EvaluatePreTool(regInput); result.RuleID != "BREEZING:role-register" {
+		t.Fatalf("registration not consumed: %+v", result)
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, ".claude", "state", "breezing-session-roles.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roles map[string]json.RawMessage
+	if err := json.Unmarshal(data, &roles); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := roles["agent-reg-1"]; !ok {
+		t.Fatalf("subagent registration must key by agent_id: %s", data)
+	}
+	if _, ok := roles["sess-shared"]; ok {
+		t.Fatalf("subagent registration must NOT pollute the shared session_id: %s", data)
+	}
+
+	// 同一 session の Lead (agent fields なし) の Write は影響を受けない
+	lead := EvaluatePreTool(srcWriteInput(root, "sess-shared"))
+	if lead.Decision == hookproto.DecisionDeny {
+		t.Fatalf("Lead's own write must not be denied after subagent registration: %+v", lead)
+	}
+
+	// 登録した subagent 自身の Write は R08 で拒否される
+	sub := srcWriteInput(root, "sess-shared")
+	sub.AgentID = "agent-reg-1"
+	if r := EvaluatePreTool(sub); r.Decision != hookproto.DecisionDeny {
+		t.Fatalf("registered subagent's write must be denied: %+v", r)
+	}
+}
+
 // 登録キーは payload 由来のみ: content に他セッションの ID を書いても
 // そのセッションに role は付かない。
 func TestRegisterBreezingRole_CannotAssignToOtherSession(t *testing.T) {
