@@ -291,6 +291,12 @@ var Rules = []GuardRule{
 			if !ctx.CodexMode {
 				return nil
 			}
+			// R07 は「orchestrator の Claude が直接書かず codex に委譲する」
+			// 規律。codex host 自身 (委譲先 worker) の書き込みは対象外 —
+			// 除外しないと委譲された実装作業そのものが止まる。
+			if ctx.Input.Host == "codex" {
+				return nil
+			}
 			return &hookproto.HookResult{
 				Decision: hookproto.DecisionDeny,
 				Reason:   "During Codex mode Claude cannot write files directly. Delegate implementation to the Codex Worker (codex exec).",
@@ -321,6 +327,18 @@ var Rules = []GuardRule{
 				}
 				if !matched {
 					return nil
+				}
+			} else {
+				// shell 版 parity: reviewer は .claude/state/ 配下 (レビュー
+				// レポート等の成果物置き場) には書いてよい。これが無いと
+				// reviewer が自身の verdict artifact を書けず run が壊れる。
+				// 判定は必ず Clean 済みパスの封じ込めで行う — 素の substring
+				// 判定は `/.claude/state/../../src/x.ts` の traversal で
+				// バイパスされる (2026-08-11 レビューで実測)。
+				if filePath, ok := ctx.Input.ToolInput["file_path"].(string); ok {
+					if isWithinReviewerStateDir(ctx.ProjectRoot, filePath) {
+						return nil
+					}
 				}
 			}
 			return &hookproto.HookResult{
@@ -444,6 +462,28 @@ var Rules = []GuardRule{
 			}
 		},
 	},
+}
+
+// isWithinReviewerStateDir reports whether filePath resolves inside
+// <projectRoot>/.claude/state/ after Clean (".." collapse). Used by R08's
+// reviewer exemption; substring matching is forbidden here because
+// "/.claude/state/../../src/x.ts" contains the exempt substring while
+// resolving outside the state dir.
+func isWithinReviewerStateDir(projectRoot, filePath string) bool {
+	if projectRoot == "" || filePath == "" {
+		return false
+	}
+	p := filePath
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(projectRoot, p)
+	}
+	p = filepath.Clean(p)
+	stateDir := filepath.Clean(filepath.Join(projectRoot, ".claude", "state"))
+	rel, err := filepath.Rel(stateDir, p)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
 // EvaluateRules evaluates all guard rules in order and returns the first match.

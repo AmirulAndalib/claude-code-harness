@@ -23,7 +23,18 @@ type TrackCommandHandler struct {
 
 // trackCommandInput は UserPromptSubmit フックの入力。
 type trackCommandInput struct {
-	Prompt string `json:"prompt"`
+	Prompt    string `json:"prompt"`
+	SessionID string `json:"session_id"`
+	CWD       string `json:"cwd"`
+}
+
+// lastSessionIDRecord は .claude/state/last-session-id.json のスキーマ。
+// UserPromptSubmit ごとに実 session_id を記録し、`harness work-mode` の
+// 解決チェーン第 3 段として使う (132.7)。同一 root の並行セッションでは
+// 後勝ちになるため、読む側は updated_at の鮮度 (2h) を要求する。
+type lastSessionIDRecord struct {
+	SessionID string `json:"session_id"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // trackCommandResponse は TrackCommand フックのレスポンス。
@@ -64,6 +75,10 @@ func (h *TrackCommandHandler) Handle(r io.Reader, w io.Writer) error {
 	if err := json.Unmarshal(data, &input); err != nil {
 		return writeTrackJSON(w, trackCommandResponse{Continue: true})
 	}
+
+	// スラッシュコマンドの有無に関わらず、毎プロンプトで実 session_id を
+	// 記録する (work-mode 解決チェーン用)。失敗は無視してフックを継続。
+	h.recordLastSessionID(input)
 
 	if input.Prompt == "" {
 		return writeTrackJSON(w, trackCommandResponse{Continue: true})
@@ -108,6 +123,52 @@ func (h *TrackCommandHandler) Handle(r io.Reader, w io.Writer) error {
 	}
 
 	return writeTrackJSON(w, trackCommandResponse{Continue: true})
+}
+
+// recordLastSessionID は実 session_id を last-session-id.json へ書く。
+// atomic rename で書き、失敗は警告のみ (フックは fail-open)。
+func (h *TrackCommandHandler) recordLastSessionID(input trackCommandInput) {
+	sid := strings.TrimSpace(input.SessionID)
+	if sid == "" {
+		return
+	}
+	projectRoot := h.ProjectRoot
+	if projectRoot == "" {
+		projectRoot = strings.TrimSpace(input.CWD)
+	}
+	if projectRoot == "" {
+		projectRoot, _ = os.Getwd()
+	}
+	stateDir := filepath.Join(projectRoot, ".claude", "state")
+	if isSymlink(filepath.Dir(stateDir)) || isSymlink(stateDir) {
+		return
+	}
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return
+	}
+	rec := lastSessionIDRecord{
+		SessionID: sid,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	data, err := json.Marshal(rec)
+	if err != nil {
+		return
+	}
+	tmp, err := os.CreateTemp(stateDir, ".last-session-id-*.tmp")
+	if err != nil {
+		return
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		_ = os.Remove(tmpName)
+		return
+	}
+	tmp.Close()
+	if err := os.Rename(tmpName, filepath.Join(stateDir, "last-session-id.json")); err != nil {
+		_ = os.Remove(tmpName)
+		_, _ = fmt.Fprintf(os.Stderr, "[track-command] Warning: failed to record session id: %v\n", err)
+	}
 }
 
 // createPendingMarker は pending マーカーファイルを作成する。

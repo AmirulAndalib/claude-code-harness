@@ -8,6 +8,25 @@ Change history for claude-code-harness.
 
 ### Fixed
 
+#### `work-mode` の session 識別子が実 ID と一致せず配線が無効だった問題 (Phase 132.7)
+
+**今まで**: `harness work-mode on` は `.claude/state/session.json` の内部生成 ID で `work_states` 行を書いていました。guardrail hook は Claude Code が渡す実 session_id で行を引くため、両者は一致せず、書いた行は一度も読まれませんでした (132.3 の blocked 理由)。さらに SessionStart の env handler が `CLAUDE_ENV_FILE` へ `KEY=VALUE` (export なし) で書いており、公式仕様の `export KEY=VALUE` 形式でないため、書いた値が Bash ツールの環境に届いていませんでした (実測: 稼働セッションの `printenv` に `HARNESS_VERSION` が現れない)。
+
+**今後**: SessionStart env handler が payload の実 session_id を `export HARNESS_SESSION_ID='<id>'` として書き出します (全行 export 化 + quote + resume 再発火の重複防止)。`work-mode` の解決順は `--session-id` フラグ → `HARNESS_SESSION_ID` env → `.claude/state/last-session-id.json` (UserPromptSubmit ごとに実 ID を記録、鮮度 2 時間) で、旧 session.json は受理を拒否します。SessionEnd で work state を解除し、24h TTL が背止めになります。実 session_id (独立ソース由来) での実測で on 前 ask → on 後 skip → 他 session 非波及 → off / SessionEnd で復帰の 6 系統を確認済み。CC が env file を Bash 環境へ反映する最終リンクのみ、リリース後の新セッションで要確認です。
+
+#### R07 (codex mode) / R08 (breezing reviewer) が一度も発火できなかった問題 (Phase 132.6)
+
+**今まで**: shell 版ガードは `.claude/state/breezing-session-roles.json` (role) と `.claude/state/breezing-active.json` の `impl_mode` (codex mode) をファイルで解決していましたが、Go 移行時にこの 2 経路が欠落し、env 参照だけが残りました。env を設定する仕組みは存在しないため、R07 (codex mode 中の直接 Write 禁止) と R08 (レビュー担当の書き込み禁止) は実装とテストを持ちながら本番で一度も発火していませんでした (2026-08-11 実測)。
+
+**今後**: ファイルベース解決を `guardrail/breezing_state.go` として移植しました。R08 は roles ファイル (agent_id → session_id の 2 キー lookup) に加え、breezing 実行中の reviewer subagent を CC が付与する `agent_type` で直接判定します。role 自己登録 (`breezing-role-*.json` への Write を捕捉) も移植し、登録キーは hook payload 由来のみ (書かれた内容から他セッションへ role を付与できない)。R07 は `impl_mode=codex` と `work-mode on --codex` の両方で立ち、委譲先の codex host 自身は対象外です。R08 には shell 版と同じ `.claude/state/` 書き込み例外があり、reviewer が自身の verdict artifact を書けます。
+
+#### 4 視点並列レビューが摘出した 2 件の欠陥 (132.6 実装の初版に対する修正)
+
+上記 132.6/132.7 の実装は、コミット前の 4 視点並列レビュー (regression / security / effectiveness / consistency、稼働バイナリへの実プローブつき) で critical 2 件が見つかり、修正済みです。
+
+1. **R08 の state 例外が path traversal でバイパス可能だった**: 初版の `.claude/state/` 例外は素の substring 判定で、`<root>/.claude/state/../../src/x.ts` のような file_path が例外に落ちて reviewer が任意ファイルへ書けました (実測でバイパス成立を確認)。Clean 済みパスの封じ込め判定 (`filepath.Rel` ベース) へ置換し、traversal 3 形の回帰テストを追加しました。
+2. **`agent_id` / `agent_type` が実配線 (hookcodec.Normalize) で落ちていた**: 新設フィールドを codec の rawPayload が拾っておらず、reviewer subagent の CC-native 判定が wire 上で死んでいました (unit テストは hand-built input で green のまま — 「unit は通るが wire が繋がっていない」型)。Normalize に両フィールドを追加し、raw JSON → codec → guardrail を通す wire round-trip テストを追加しました。
+
 #### エージェント自身の記憶ディレクトリへの書き込みで R04 が毎回確認を出していた問題 (Phase 132.1)
 
 **今まで**: `R04:confirm-write-outside-project` は、プロジェクトルート外への `Write` / `Edit` / `MultiEdit` に確認ダイアログを出します。ところが Claude Code はエージェントに `~/.claude/projects/<slug>/memory/` への記憶の保存を指示しており、この書き込みがそのまま R04 に当たっていました。3,099 セッションのログを走査したところ、R04 の発火は 1,099 件で全確認機構の最多、うち **299 件がこの記憶ディレクトリ**、14 件が `~/.claude/plans/` でした。危険性がないにもかかわらず承認され続けた確認で、残る確認の信号価値を下げていました。
@@ -67,7 +86,17 @@ Change history for claude-code-harness.
 
 ### Added
 
-#### `harness work-mode` — 自律実行中だけ確認を止める配線の土台 (Phase 132.3、**未完**)
+#### rule↔context 配線カバレッジテスト — 「立てる手段の無いフィールド」を機械検知 (Phase 132.6/132.7 再発防止)
+
+**今まで**: policy ルールには文脈を手組みするテストが 144 件ありましたが、実入力から文脈を組み立てる `BuildContext` 側の網羅検査がなく、producer を失ったフィールド (WorkMode / CodexMode / BreezingRole) が「テスト済みなのに本番で不発」のまま数ヶ月残りました。既存の `rulecoverage` ゲートは rule↔テストの軸しか見ないため、この型の欠陥を「カバー済み」と判定します。
+
+**今後**: `go/internal/guardrail/build_context_wiring_test.go` が `RuleContext` の全フィールドについて「実在する producer (env / SQLite / state ファイル / harness.toml) 経由で値が届くこと」を検証します。reflection でフィールド一覧と照合するため、**producer の証明なしにフィールドを増やすとテストが赤くなります**。あわせて `operator-supplied-knobs.v1.yaml` は grandfather 登録を全廃し、全エントリに `primary_producer` (env 以外の一次供給経路) の明記を必須化しました。テスト側には全 knob env をゼロにする共有ヘルパを入れ、開発機の `HARNESS_WORK_MODE=1` がテストプロセスへ漏れて期待値を反転させる事故 (2026-08-11 実測) を塞ぎました。
+
+#### Phase 133 起票 — 4 ツール (Claude / Codex / Grok / Cursor) の 2026-08 仕様調査
+
+5 並列の調査で確証を取った適用候補を Phase 133 として起票しました。即時反映したのは `hosts.toml` の grok 記述のみです (grok-cli v1.1.7 の source 実査で「hook は user-level のみ、project-level hook は grok 自身が拒否」を確認し、admission-test evidence として記録)。cursor の binary 名変更 (`agent` が正、`cursor-agent` は legacy) / grok execution backend / モデルカタログ更新 (operator 裁定事項) / repair loop 状態外部化 / blind judge は task 化に留めています。
+
+#### `harness work-mode` — 自律実行中だけ確認を止める配線の土台 (Phase 132.3。識別子問題は Phase 132.7 の Fixed で解消済み)
 
 **今まで**: `ctx.WorkMode` が立つと R04 (プロジェクト外への書き込み) と R05 (削除) の確認を skip する経路は実装済みでした。しかしこれを立てる手段が 2 つとも死んでおり、`HARNESS_WORK_MODE` / `ULTRAWORK_MODE` を設定する箇所は skills / scripts / hooks に 1 つも無く、`state.SetWorkState` の呼び出し元も自パッケージ外にありませんでした。逃げ道は作られたまま一度も繋がれておらず、`/breezing` が確認ダイアログで止まり続けていました。
 

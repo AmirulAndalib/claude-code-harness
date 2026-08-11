@@ -103,7 +103,9 @@ func resolveTddRuntimeConfig(input hookproto.HookInput, projectRoot string) tddR
 // Priority:
 //  1. Environment variables (explicit overrides)
 //  2. SQLite state DB (session-level state: codex_mode, work_mode)
-//  3. Defaults (false / empty)
+//  3. State files under .claude/state/ (shell-guard parity, restored 132.6):
+//     breezing-session-roles.json (role) / breezing-active.json (codex mode)
+//  4. Defaults (false / empty)
 //
 // The SQLite lookup is best-effort: any DB error is silently ignored so that
 // the hook fast-path remains available even when the DB is unreachable.
@@ -131,6 +133,16 @@ func BuildContext(input hookproto.HookInput) hookproto.RuleContext {
 				workMode = true
 			}
 		}
+	}
+
+	// shell 版ガード (scripts/pretooluse-guard.sh) が持っていたファイルベース
+	// 解決の移植 (132.6)。Go 移行時にこの 2 経路が落ち、R07 / R08 が
+	// 一度も発火しない状態が続いていた (2026-08-11 実測)。
+	if breezingRole == "" {
+		breezingRole = resolveBreezingRoleFromFile(projectRoot, input)
+	}
+	if !codexMode {
+		codexMode = resolveCodexModeFromBreezingActive(projectRoot)
 	}
 
 	return hookproto.RuleContext{
@@ -229,6 +241,15 @@ func evaluatePreTool(input hookproto.HookInput) hookproto.HookResult {
 				}
 			}
 		}
+	}
+
+	// Breezing role 自己登録 (shell 版 try_register_breezing_role の移植)。
+	// teammate の最初の Write (.claude/state/breezing-role-*.json) を捕捉し、
+	// hook payload の agent_id / session_id キーで roles ファイルへ登録する。
+	// 登録キーは payload 由来のみ (書かれた内容の ID は使わない = 他セッション
+	// への role 付与を防ぐ)。登録 Write 自体は approve する。
+	if result := tryRegisterBreezingRole(input); result != nil {
+		return *result
 	}
 
 	ctx := BuildContext(input)

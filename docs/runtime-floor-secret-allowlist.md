@@ -138,21 +138,32 @@ final file does not exist, it resolves the nearest existing ancestor and appends
 the missing suffix. A scratch-path symlink that resolves outside the scratch
 roots does not receive the skip. Resolution errors retain the `ask` result.
 
-### `WorkMode` is not wired yet
+### `WorkMode` wiring (fixed 2026-08-11, Plans.md 132.7)
 
 `WorkMode` is set from the `HARNESS_WORK_MODE` / `ULTRAWORK_MODE` environment
-variables, or from the `work_states` row matching the session ID. As of
-2026-08-10 **neither source is ever populated**: no skill, script, or hook sets
-those variables, and `state.SetWorkState` has no call site outside its own
-package. The skip path exists but has never been reachable in a normal `/work`
+variables, or from the `work_states` row matching the session ID. Historical
+note: as of 2026-08-10 neither source was ever populated — no skill, script,
+or hook set those variables, and `state.SetWorkState` had no call site outside
+its own package. The skip path existed but was unreachable in a normal `/work`
 or `/breezing` run, which is why those runs kept stopping on R04
 confirmations — 1,099 firings measured across 3,099 session logs, of which 299
 were the agent writing to its own memory directory.
 
-Until it is wired, an operator can set `HARNESS_WORK_MODE=1` in the `env` block
-of `~/.claude/settings.json`. That turns the skip on for *every* session, not
-just work runs, so it also removes the cross-repository write confirmation in
-interactive sessions. Destructive deletion is unaffected: R05 and the
+The wiring now works end to end: the SessionStart hook exports the real
+session id as `HARNESS_SESSION_ID` via `CLAUDE_ENV_FILE`
+(`internal/event/session_env.go`), `harness work-mode on/off` writes the
+`work_states` row under that id (fallbacks: `--session-id` flag, then a fresh
+`.claude/state/last-session-id.json` written on every UserPromptSubmit), and
+the guardrail looks the row up by the hook payload's session id — the same
+value. The legacy `.claude/state/session.json` id is rejected: it never
+matches the hook's id. SessionEnd clears the row; a 24h TTL is the backstop.
+
+An operator can still set `HARNESS_WORK_MODE=1` in the `env` block of
+`~/.claude/settings.json` as a manual override. That turns the skip on for
+*every* session, not just work runs, so it also removes the cross-repository
+write confirmation in interactive sessions — with the wiring fixed, prefer
+removing it once the fixed binary is deployed. Destructive deletion is
+unaffected: R05 and the
 protected-path deny tier still block `rm -rf` outside the worktree.
 
 R02 and R03 run before R04. Their protected-path decisions remain in force even

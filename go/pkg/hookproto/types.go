@@ -20,6 +20,12 @@ type HookInput struct {
 	HookEventName  string                 `json:"hook_event_name,omitempty"`
 	ToolName       string                 `json:"tool_name"`
 	ToolInput      map[string]interface{} `json:"tool_input"`
+	// AgentID / AgentType are present only when the hook fires inside a
+	// subagent call (CC hooks doc "Common input fields"). session_id stays
+	// the parent session's ID for subagent tool calls, so these are the
+	// only way to tell a subagent's tool call from a main-thread call.
+	AgentID   string `json:"agent_id,omitempty"`
+	AgentType string `json:"agent_type,omitempty"`
 	// PermissionSuggestions contains the "always allow/deny" options proposed by
 	// Claude Code for PermissionRequest hooks.
 	PermissionSuggestions []PermissionUpdateEntry `json:"permission_suggestions,omitempty"`

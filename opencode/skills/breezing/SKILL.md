@@ -30,12 +30,31 @@ R04/R05 の確認 skip が読む `ctx.WorkMode` は、`HARNESS_WORK_MODE` / `ULT
 （skill から設定できない）か SQLite `work_states` 行のどちらかで立つ。`bin/harness work-mode <on|off|status>`
 が後者を書く唯一の入口（`harness-work` の「Work Mode Lifecycle」節が正本）。
 
-- Lead は Plan gate に入る前（run 開始時）に `bin/harness work-mode on` を実行する
+- Lead は Plan gate に入る前（run 開始時）に `bin/harness work-mode on` を実行する。
+  `--codex` run では `bin/harness work-mode on --codex` を使う（R07 = Lead の直接
+  Write/Edit 禁止が同時に立つ）
 - Lead は run 終了時、**成功・失敗・中断の全経路**で `bin/harness work-mode off` を実行する
   （backend が `claude` / `codex` / `cursor` のどれでも同じ規律。cursor fast path の
   `session declare` / `--clear` と同じ「run 境界で必ず対で呼ぶ」形）
 - run 単位で 1 回のみ。task ごとに on/off しない
 - session ID が解決できない場合は非ゼロ終了 + 理由が stderr に出る（無言で成功しない）
+
+### Breezing run state (`breezing-active.json`) — guardrail の file producer
+
+Lead は run 開始時に `.claude/state/breezing-active.json` を書く。guardrail は
+このファイルを R07（codex mode）と R08（reviewer subagent 判定のスコープ）の
+file producer として読む（`go/internal/guardrail/breezing_state.go`）:
+
+```json
+{"impl_mode": "codex", "started_at": "<ISO8601>"}
+```
+
+- `impl_mode` は `--codex` なら `"codex"`、それ以外は `"claude"` / `"cursor"`
+- run 終了時（全経路）にこのファイルを削除する。残すと次の通常セッションでも
+  R07/R08 のスコープ判定が生き続ける
+- reviewer teammate（worktree spawn）には env `HARNESS_BREEZING_ROLE=reviewer` を
+  spawn コマンドの環境に付ける。セッション内 reviewer subagent は CC が付与する
+  `agent_type` で自動判定されるため追加作業は不要
 
 ## Narration Rules (UX Contract)
 

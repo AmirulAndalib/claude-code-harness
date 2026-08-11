@@ -31,7 +31,7 @@ The ambition stacks oldest-foundation-first; each layer is the ground for the ne
 - **L1 Judgment-only operation**: AI prepares the plan, implementation,
   comparison, and verification evidence; the operator (human) makes only the
   final judgment. (Foundation, already the Purpose above.)
-- **L2 Tool-agnostic enforcement**: one Harness (R01-R13 guardrails +
+- **L2 Tool-agnostic enforcement**: one Harness (R01-R15 guardrails +
   plan/work/review/release) applies from *any* of Claude / Codex / Cursor.
   A single policy engine adjudicates all three hosts through their native hooks
   — routing, not duplication. Two directions are equal first-class:

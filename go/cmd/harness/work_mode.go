@@ -1,49 +1,58 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/Chachamaru127/claude-code-harness/go/internal/hookhandler"
 	"github.com/Chachamaru127/claude-code-harness/go/internal/state"
 )
 
-// KNOWN GAP — this subcommand does not yet affect the guardrail (Plans.md 132.7).
-//
-// ReadLocalSessionID below resolves .claude/state/session.json, which is the
-// session-monitor state file. Its session_id is generated internally
-// (timestamp-based) and is NOT the session_id Claude Code passes to hooks. The
-// guardrail looks the row up by the hook payload's SessionID
-// (go/internal/guardrail/pre_tool.go), so the row this command writes is never
-// read. Measured 2026-08-10: after `work-mode on`, a pre-tool payload carrying
-// the real session_id still returned "ask".
-//
-// The state read/write machinery below is correct and tested; only the identity
-// resolution is wrong. Until 132.7 fixes it, `/breezing` relies on the operator
-// setting HARNESS_WORK_MODE=1 in ~/.claude/settings.json.
-//
-// When verifying a fix, drive the hook with the REAL session_id. Feeding the
-// hook the same id this command wrote proves only that SQLite round-trips —
-// that mistake is what let this gap ship past its first review.
-//
 // runWorkMode implements the "harness work-mode <on|off|status>" subcommand.
 //
-// This is the fix for Plans.md 132.3: ctx.WorkMode (which lets R04/R05 skip
-// their confirmation) was previously set only via HARNESS_WORK_MODE /
-// ULTRAWORK_MODE env vars or a work_states row keyed by session ID — and
-// nothing ever populated either source. This subcommand is the missing
-// writer for the SQLite-backed source (skills cannot set env vars for the
-// hook process, so the DB row is the only viable path).
+// This is the writer side of ctx.WorkMode / ctx.CodexMode (Plans.md 132.3 +
+// 132.7): the guardrail (go/internal/guardrail/pre_tool.go) looks work_states
+// up by the session_id in the hook payload, so the row written here MUST be
+// keyed by that same real session ID.
+//
+// Session-ID resolution (132.7). The legacy source `.claude/state/session.json`
+// is intentionally NOT used: its session_id is generated internally by the
+// session monitor and never matches the hook payload's ID (measured
+// 2026-08-10 — rows written under it are dead). Sources, in order:
+//
+//  1. --session-id <id> flag (explicit, e.g. tests or cross-session tooling)
+//  2. HARNESS_SESSION_ID env — exported into the session's Bash env by the
+//     SessionStart hook via CLAUDE_ENV_FILE (internal/event/session_env.go),
+//     carrying the exact ID Claude Code passes to hooks.
+//  3. .claude/state/last-session-id.json — written on every UserPromptSubmit
+//     by the track-command handler; accepted only when fresh (2h) because a
+//     concurrent session in the same project root could have written it last.
+//
+// When verifying, drive the guardrail hook with the REAL session_id from an
+// independent source (e.g. the transcript path). Feeding the hook whatever ID
+// this command resolved proves only that SQLite round-trips — that mistake is
+// what let the 132.3 gap ship past its first review.
 func runWorkMode(args []string) {
 	os.Exit(runWorkModeCommand(args, os.Stdout, os.Stderr))
 }
 
+// lastSessionIDMaxAge bounds how stale a last-session-id.json record may be
+// before work-mode refuses to trust it (another session may own it by then).
+const lastSessionIDMaxAge = 2 * time.Hour
+
+// lastSessionIDRecord mirrors hookhandler's last-session-id.json schema.
+type lastSessionIDRecord struct {
+	SessionID string `json:"session_id"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 func runWorkModeCommand(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "Usage: harness work-mode <on|off|status> [project-root]")
+		fmt.Fprintln(stderr, "Usage: harness work-mode <on|off|status> [project-root] [--session-id <id>] [--codex]")
 		return 1
 	}
 	action := args[0]
@@ -53,10 +62,21 @@ func runWorkModeCommand(args []string, stdout, stderr io.Writer) int {
 	}
 
 	var root string
-	for _, a := range args[1:] {
-		if !strings.HasPrefix(a, "-") {
+	var explicitSessionID string
+	var codexFlag bool
+	rest := args[1:]
+	for i := 0; i < len(rest); i++ {
+		a := rest[i]
+		switch {
+		case a == "--session-id" && i+1 < len(rest):
+			explicitSessionID = strings.TrimSpace(rest[i+1])
+			i++
+		case strings.HasPrefix(a, "--session-id="):
+			explicitSessionID = strings.TrimSpace(strings.TrimPrefix(a, "--session-id="))
+		case a == "--codex":
+			codexFlag = true
+		case !strings.HasPrefix(a, "-") && root == "":
 			root = a
-			break
 		}
 	}
 	projectRoot, err := resolveProjectRoot(sessionRootArgs(root))
@@ -65,9 +85,11 @@ func runWorkModeCommand(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	sessionID := hookhandler.ReadLocalSessionID(projectRoot)
+	sessionID, source := resolveRealSessionID(projectRoot, explicitSessionID)
 	if sessionID == "" {
-		fmt.Fprintln(stderr, "work-mode: no session id (set .claude/state/session.json or HARNESS_PROJECT_ROOT to a project with one)")
+		fmt.Fprintln(stderr, "work-mode: cannot resolve the real session id.")
+		fmt.Fprintln(stderr, "  Tried: --session-id flag, HARNESS_SESSION_ID env, .claude/state/last-session-id.json (fresh <2h).")
+		fmt.Fprintln(stderr, "  The legacy .claude/state/session.json id is NOT accepted: it never matches the id the guardrail hook receives.")
 		return 1
 	}
 
@@ -129,13 +151,47 @@ func runWorkModeCommand(args []string, stdout, stderr io.Writer) int {
 			opts.BypassGitPush = existing.BypassGitPush
 		}
 		opts.WorkMode = action == "on"
+		if codexFlag {
+			// --codex marks the run as codex-delegated: R07 then denies
+			// direct Write/Edit by the orchestrating Claude session.
+			opts.CodexMode = action == "on"
+		}
 		if err := store.SetWorkState(sessionID, opts); err != nil {
 			fmt.Fprintf(stderr, "work-mode: %v\n", err)
 			return 1
 		}
-		fmt.Fprintln(stdout, action)
+		fmt.Fprintf(stdout, "%s (session_id=%s via %s)\n", action, sessionID, source)
 		return 0
 	}
 	// unreachable: action validated above
 	return 1
+}
+
+// resolveRealSessionID resolves the session id the guardrail hook will see.
+// Returns the id and a human-readable source label for the audit line.
+func resolveRealSessionID(projectRoot, explicit string) (string, string) {
+	if explicit != "" {
+		return explicit, "--session-id"
+	}
+	if v := strings.TrimSpace(os.Getenv("HARNESS_SESSION_ID")); v != "" {
+		return v, "HARNESS_SESSION_ID env"
+	}
+	path := filepath.Join(projectRoot, ".claude", "state", "last-session-id.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", ""
+	}
+	var rec lastSessionIDRecord
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return "", ""
+	}
+	rec.SessionID = strings.TrimSpace(rec.SessionID)
+	if rec.SessionID == "" {
+		return "", ""
+	}
+	ts, err := time.Parse(time.RFC3339, rec.UpdatedAt)
+	if err != nil || time.Since(ts) > lastSessionIDMaxAge {
+		return "", ""
+	}
+	return rec.SessionID, "last-session-id.json"
 }
