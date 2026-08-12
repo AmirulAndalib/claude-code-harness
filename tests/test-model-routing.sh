@@ -54,35 +54,67 @@ grep -q '^CURSOR_MODEL=composer-2.5-fast$' <<<"${cursor_env}" || {
   exit 1
 }
 
+# Grok expectations pin the ids verified 2026-08-12 by reading grok-cli v1.1.7
+# src/grok/models.ts directly. The previous expectations (grok-4.5 /
+# grok-composer-2.5-fast) pinned ids that do NOT exist in that catalog, so the
+# router emitted call-time failures while the test stayed green — the test was
+# asserting the router matched itself, not that the ids were real.
 grok_worker_model="$(bash "${ROUTER}" --host grok --role worker --field model)"
-[ "${grok_worker_model}" = "grok-composer-2.5-fast" ] || {
-  echo "grok worker must route to grok-composer-2.5-fast"
+[ "${grok_worker_model}" = "grok-4.20-non-reasoning" ] || {
+  echo "grok worker must route to grok-4.20-non-reasoning"
   exit 1
 }
 
 grok_advisor_model="$(bash "${ROUTER}" --host grok --role advisor --field model)"
-[ "${grok_advisor_model}" = "grok-4.5" ] || {
-  echo "grok advisor must route to grok-4.5"
+[ "${grok_advisor_model}" = "grok-4.3" ] || {
+  echo "grok advisor must route to grok-4.3"
   exit 1
 }
 
 grok_reviewer_model="$(bash "${ROUTER}" --host grok --role reviewer --field model)"
-[ "${grok_reviewer_model}" = "grok-4.5" ] || {
-  echo "grok reviewer must route to grok-4.5"
+[ "${grok_reviewer_model}" = "grok-4.3" ] || {
+  echo "grok reviewer must route to grok-4.3"
   exit 1
 }
 
 grok_args="$(bash "${ROUTER}" --host grok --tier review --format args | tr '\n' ' ')"
-grep -q -- '--model grok-4.5' <<<"${grok_args}" || {
+grep -q -- '--model grok-4.3' <<<"${grok_args}" || {
   echo "grok args must include review model"
   exit 1
 }
 
 grok_env="$(bash "${ROUTER}" --host grok --tier standard --format env)"
-grep -q '^GROK_MODEL=grok-composer-2.5-fast$' <<<"${grok_env}" || {
+grep -q '^GROK_MODEL=grok-4.20-non-reasoning$' <<<"${grok_env}" || {
   echo "grok env must export GROK_MODEL"
   exit 1
 }
+
+# lite は grok-3-mini。grok カタログ中 reasoning_effort を受け付ける唯一の
+# モデルで、受理値は low|high のみ。
+grok_lite_model="$(bash "${ROUTER}" --host grok --tier lite --field model)"
+[ "${grok_lite_model}" = "grok-3-mini" ] || {
+  echo "grok lite must route to grok-3-mini"
+  exit 1
+}
+
+# 全 tier が実在するモデル ID だけを返すこと (存在しない ID の再発防止)。
+grok_known_ids="grok-4.3 grok-4.20-0309-reasoning grok-4.20-non-reasoning grok-4.20-multi-agent-0309 grok-3-mini"
+for tier in lite standard deep advisor review release long-context; do
+  m="$(bash "${ROUTER}" --host grok --tier "${tier}" --field model)"
+  case " ${grok_known_ids} " in
+    *" ${m} "*) ;;
+    *) echo "grok tier ${tier} routes to unknown model id: ${m}"; exit 1 ;;
+  esac
+done
+
+# grok の effort は grok 自身の語彙 (low|high) の内側に留めること。
+for tier in lite standard deep advisor review release long-context; do
+  e="$(bash "${ROUTER}" --host grok --tier "${tier}" --field effort)"
+  case "${e}" in
+    low|high) ;;
+    *) echo "grok tier ${tier} emits effort outside grok vocabulary: ${e}"; exit 1 ;;
+  esac
+done
 
 codex_args="$(bash "${ROUTER}" --host codex --tier review --format args | tr '\n' ' ')"
 grep -q -- '--model gpt-5.6-sol' <<<"${codex_args}" || {
@@ -162,7 +194,7 @@ fable_codex_advisor="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host codex -
 }
 
 fable_grok_advisor="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host grok --role advisor --field model)"
-[ "${fable_grok_advisor}" = "grok-4.5" ] || {
+[ "${fable_grok_advisor}" = "grok-4.3" ] || {
   echo "fable brain opt-in must not touch the grok model catalog"
   exit 1
 }

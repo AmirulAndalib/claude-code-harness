@@ -118,15 +118,33 @@ elif [ "$HOST" = "cursor" ]; then
     *) echo "ERROR: unknown cursor tier: $TIER" >&2; exit 2 ;;
   esac
 elif [ "$HOST" = "grok" ]; then
-  # Grok catalog (observed 2026-07-09 on CLI 0.2.93): grok-4.5, grok-composer-2.5-fast.
+  # Grok catalog — verified 2026-08-12 by reading grok-cli v1.1.7
+  # src/grok/models.ts (MODELS[] + DEFAULT_MODEL) directly, not from docs.
+  #
+  #   grok-4.3                     1M ctx, reasoning, "Recommended flagship
+  #                                reasoning model", DEFAULT_MODEL
+  #   grok-4.20-0309-reasoning     2M ctx, reasoning
+  #   grok-4.20-non-reasoning      2M ctx, "Recommended non-reasoning model"
+  #   grok-4.20-multi-agent-0309   2M ctx, responsesOnly + supportsClientTools:false
+  #                                → unusable for tool-driven harness roles
+  #   grok-3-mini                  131k ctx, budget, the ONLY model with
+  #                                supportsReasoningEffort (values: low|high)
+  #
+  # The previous table pinned grok-4.5 and grok-composer-2.5-fast; NEITHER id
+  # exists in the catalog (the latter looks like a copy of the cursor block's
+  # composer-2.5-fast). Both would have failed at call time.
+  #
+  # EFFORT here stays within grok's own vocabulary (low|high) because only
+  # grok-3-mini accepts reasoning_effort at all; `--format args` deliberately
+  # omits --effort for this host, so the value is advisory for the rest.
   # Keep model IDs only here — skills must not hardcode them.
   case "$TIER" in
-    lite) MODEL="grok-composer-2.5-fast"; EFFORT="low" ;;
-    standard) MODEL="grok-composer-2.5-fast"; EFFORT="medium" ;;
-    deep|advisor) MODEL="grok-4.5"; EFFORT="high" ;;
-    review) MODEL="grok-4.5"; EFFORT="high" ;;
-    release) MODEL="grok-4.5"; EFFORT="high" ;;
-    long-context) MODEL="grok-4.5"; EFFORT="high" ;;
+    lite) MODEL="grok-3-mini"; EFFORT="low" ;;
+    standard) MODEL="grok-4.20-non-reasoning"; EFFORT="low" ;;
+    deep|advisor) MODEL="grok-4.3"; EFFORT="high" ;;
+    review) MODEL="grok-4.3"; EFFORT="high" ;;
+    release) MODEL="grok-4.3"; EFFORT="high" ;;
+    long-context) MODEL="grok-4.20-0309-reasoning"; EFFORT="high" ;;
     spark) echo "ERROR: spark tier is codex-only" >&2; exit 2 ;;
     *) echo "ERROR: unknown grok tier: $TIER" >&2; exit 2 ;;
   esac

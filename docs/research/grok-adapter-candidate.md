@@ -41,7 +41,7 @@ Operator-local / CLI observation (Grok CLI `0.2.93`):
 | Plugin manifest validate | `grok plugin validate` accepts `.grok-plugin/plugin.json` packages with `skills: "./skills/"` | Shape only |
 | Isolated HOME install | `HOME=<tmp> grok plugin install <dist> --trust` writes `~/.grok/installed-plugins/` + registry | Depends on CLI |
 | Skill discovery in other project | `HOME=<tmp> grok inspect --json` from a temp cwd lists `harness-plan`, `harness-work`, `harness-review`, `breezing` with `source.type=plugin` | Single-environment proof |
-| Model IDs | Catalog includes `grok-4.5` and `grok-composer-2.5-fast` | Account catalog may differ |
+| Model IDs | 2026-08-12 に `src/grok/models.ts` を直読して確認: `grok-4.3` (DEFAULT) / `grok-4.20-0309-reasoning` / `grok-4.20-non-reasoning` / `grok-4.20-multi-agent-0309` / `grok-3-mini`。**旧記載の `grok-4.5` / `grok-composer-2.5-fast` は実在しない ID だった** | Account catalog may differ |
 
 ## Harness Evidence (This Repository)
 

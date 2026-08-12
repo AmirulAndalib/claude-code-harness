@@ -87,32 +87,37 @@ assert_contains "${ROOT_DIR}/docs/bootstrap-routing-contract.md" "Grok | \`suppo
 assert_contains "${ROOT_DIR}/docs/tool-capability-matrix.md" "| Grok | \`supported\` |"
 
 # Model routing contract
+# ids は 2026-08-12 に grok-cli v1.1.7 src/grok/models.ts を直読して確認した実カタログ。
+# 旧期待値 (grok-4.5 / grok-composer-2.5-fast) はカタログに存在しない ID で、
+# router が自分自身と一致することしか確かめていなかった。
 grok_worker="$(bash "$ROUTER" --host grok --role worker --field model)"
 [ -n "$grok_worker" ] || fail "grok worker model must be non-empty"
-[ "$grok_worker" = "grok-composer-2.5-fast" ] || fail "grok worker model routing mismatch: got $grok_worker"
+[ "$grok_worker" = "grok-4.20-non-reasoning" ] || fail "grok worker model routing mismatch: got $grok_worker"
 
 grok_explorer="$(bash "$ROUTER" --host grok --role explorer --field model)"
-[ "$grok_explorer" = "grok-composer-2.5-fast" ] || fail "grok explorer model routing mismatch"
+[ "$grok_explorer" = "grok-3-mini" ] || fail "grok explorer model routing mismatch"
 
 grok_reviewer="$(bash "$ROUTER" --host grok --role reviewer --field model)"
-[ "$grok_reviewer" = "grok-4.5" ] || fail "grok reviewer model routing mismatch"
+[ "$grok_reviewer" = "grok-4.3" ] || fail "grok reviewer model routing mismatch"
 
 grok_advisor="$(bash "$ROUTER" --host grok --role advisor --field model)"
-[ "$grok_advisor" = "grok-4.5" ] || fail "grok advisor model routing mismatch"
+[ "$grok_advisor" = "grok-4.3" ] || fail "grok advisor model routing mismatch"
 
 grok_release="$(bash "$ROUTER" --host grok --role release --field model)"
-[ "$grok_release" = "grok-4.5" ] || fail "grok release model routing mismatch"
+[ "$grok_release" = "grok-4.3" ] || fail "grok release model routing mismatch"
 
 grok_json="$(bash "$ROUTER" --host grok --role worker --format json)"
 grep -q '"host":"grok"' <<<"$grok_json" || fail "grok json format missing host"
-grep -q '"model":"grok-composer-2.5-fast"' <<<"$grok_json" || fail "grok json format missing model"
+grep -q '"model":"grok-4.20-non-reasoning"' <<<"$grok_json" || fail "grok json format missing model"
 
 grok_args="$(bash "$ROUTER" --host grok --tier review --format args | tr '\n' ' ')"
-grep -q -- '--model grok-4.5' <<<"$grok_args" || fail "grok args must include review model"
+grep -q -- '--model grok-4.3' <<<"$grok_args" || fail "grok args must include review model"
 
 grok_env="$(bash "$ROUTER" --host grok --tier standard --format env)"
-grep -q '^GROK_MODEL=grok-composer-2.5-fast$' <<<"$grok_env" || fail "grok env must export GROK_MODEL"
-grep -q '^GROK_EFFORT=medium$' <<<"$grok_env" || fail "grok env must export GROK_EFFORT"
+grep -q '^GROK_MODEL=grok-4.20-non-reasoning$' <<<"$grok_env" || fail "grok env must export GROK_MODEL"
+# grok の effort は grok 自身の語彙 (low|high) の内側に留める。
+# grok-3-mini 以外は reasoning_effort を受け付けないため medium は不正値だった。
+grep -q '^GROK_EFFORT=low$' <<<"$grok_env" || fail "grok env must export GROK_EFFORT"
 
 # Existing hosts must remain stable when grok is added
 claude_worker="$(bash "$ROUTER" --host claude --role worker --field model)"

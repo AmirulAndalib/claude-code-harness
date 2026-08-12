@@ -97,6 +97,14 @@ Change history for claude-code-harness.
 
 **今後**: `go/internal/guardrail/build_context_wiring_test.go` が `RuleContext` の全フィールドについて「実在する producer (env / SQLite / state ファイル / harness.toml) 経由で値が届くこと」を検証します。reflection でフィールド一覧と照合するため、**producer の証明なしにフィールドを増やすとテストが赤くなります**。あわせて `operator-supplied-knobs.v1.yaml` は grandfather 登録を全廃し、全エントリに `primary_producer` (env 以外の一次供給経路) の明記を必須化しました。テスト側には全 knob env をゼロにする共有ヘルパを入れ、開発機の `HARNESS_WORK_MODE=1` がテストプロセスへ漏れて期待値を反転させる事故 (2026-08-11 実測) を塞ぎました。
 
+#### Grok のモデル pin が実在しない ID を指していた問題 (Phase 133.3)
+
+**今まで**: `scripts/model-routing.sh` の grok tier 表は `grok-4.5` と `grok-composer-2.5-fast` を pin していました。2026-08-12 に grok-cli v1.1.7 の `src/grok/models.ts` を直読して照合したところ、**どちらもカタログに存在しない ID** でした (後者は cursor 側の `composer-2.5-fast` の取り違えと見られます)。呼び出せば必ず失敗する pin が長期間残っていたことになります。テストは通っていましたが、router が自分自身と一致することしか確かめておらず、ID の実在は検査対象外でした。
+
+**今後**: 実カタログへ更新しました。`lite` = `grok-3-mini` (grok で `reasoning_effort` を受け付ける唯一のモデル、値は `low`/`high` のみ)、`standard` = `grok-4.20-non-reasoning`、`deep`/`advisor`/`review`/`release` = `grok-4.3` (DEFAULT_MODEL・flagship reasoning・1M ctx)、`long-context` = `grok-4.20-0309-reasoning` (2M ctx)。`grok-4.20-multi-agent-0309` は `responsesOnly` かつ `supportsClientTools:false` のため、tool を使う harness role からは除外しています。effort も grok 自身の語彙 (`low`/`high`) 内に収めました (旧 `medium` は grok が受け付けない値)。回帰網として「全 tier が実在 ID のみを返す」「effort が grok の語彙内」の 2 検査を追加しています。`hosts.toml` と docs の 3 層すべてに降ろしました。
+
+なお gpt-5.6 の effort `max` は Codex CLI の config.toml での受理が未確証のため、`xhigh` 維持で変更していません。
+
 #### Phase 133 起票 — 4 ツール (Claude / Codex / Grok / Cursor) の 2026-08 仕様調査
 
 5 並列の調査で確証を取った適用候補を Phase 133 として起票しました。即時反映したのは `hosts.toml` の grok 記述のみです (grok-cli v1.1.7 の source 実査で「hook は user-level のみ、project-level hook は grok 自身が拒否」を確認し、admission-test evidence として記録)。cursor の binary 名変更 (`agent` が正、`cursor-agent` は legacy) / grok execution backend / モデルカタログ更新 (operator 裁定事項) / repair loop 状態外部化 / blind judge は task 化に留めています。
