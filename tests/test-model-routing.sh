@@ -265,3 +265,39 @@ grep -qx -- 'model_reasoning_effort="xhigh"' "${TMP_DIR}/args-explicit.txt" || {
 }
 
 echo "OK"
+
+# --- docs ↔ SSOT consistency (2026-08-12) --------------------------------
+# なぜ必要か: 133.3 で grok の pin を実カタログへ直した際、同一ファイル内の
+# 2 つ目の表 (Harness Role Defaults) の advisor/release 行だけ直し漏れ、
+# 独立レビューで指摘された。当時 docs と SSOT の一致を検査する仕組みは
+# 皆無で、修正漏れは grep の打ち切り次第で見逃せた。
+#
+# 検査対象は docs の**表の行** (先頭が `|`) に現れる grok モデル ID のみ。
+# 訂正注記や履歴の記述は散文なので自然に除外される。
+POLICY_DOC="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/docs/model-routing-policy.md"
+if [ -f "${POLICY_DOC}" ]; then
+  # router が出しうる grok モデル ID の集合を SSOT から機械的に作る
+  router_grok_ids=""
+  for tier in lite standard deep advisor review release long-context; do
+    router_grok_ids="${router_grok_ids} $(bash "${ROUTER}" --host grok --tier "${tier}" --field model)"
+  done
+
+  doc_grok_ids="$(grep '^|' "${POLICY_DOC}" | grep -o 'grok-[A-Za-z0-9._-]*' | sort -u)"
+  [ -n "${doc_grok_ids}" ] || {
+    echo "docs/model-routing-policy.md から grok の pin を 1 つも抽出できなかった (抽出条件が壊れている)"
+    exit 1
+  }
+
+  for id in ${doc_grok_ids}; do
+    case " ${router_grok_ids} " in
+      *" ${id} "*) ;;
+      *)
+        echo "docs/model-routing-policy.md の表に、router が出さない grok pin が残っている: ${id}"
+        echo "  router が出す ID:${router_grok_ids}"
+        exit 1
+        ;;
+    esac
+  done
+fi
+
+echo "OK (docs<->SSOT grok pins consistent)"

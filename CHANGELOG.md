@@ -103,6 +103,8 @@ Change history for claude-code-harness.
 
 **今後**: 実カタログへ更新しました。`lite` = `grok-3-mini` (grok で `reasoning_effort` を受け付ける唯一のモデル、値は `low`/`high` のみ)、`standard` = `grok-4.20-non-reasoning`、`deep`/`advisor`/`review`/`release` = `grok-4.3` (DEFAULT_MODEL・flagship reasoning・1M ctx)、`long-context` = `grok-4.20-0309-reasoning` (2M ctx)。`grok-4.20-multi-agent-0309` は `responsesOnly` かつ `supportsClientTools:false` のため、tool を使う harness role からは除外しています。effort も grok 自身の語彙 (`low`/`high`) 内に収めました (旧 `medium` は grok が受け付けない値)。回帰網として「全 tier が実在 ID のみを返す」「effort が grok の語彙内」の 2 検査を追加しています。`hosts.toml` と docs の 3 層すべてに降ろしました。
 
+初版では同一ファイル内の 2 つ目の表 (Harness Role Defaults) の advisor / release 行だけ直し漏れ、独立レビューで指摘されました。根因は **docs と正本 (`scripts/model-routing.sh`) の一致を機械検査する仕組みが無かった**ことです。docs の表の行に現れる grok pin が router の出力集合に含まれることを検証するゲートを追加し、欠陥を再導入する変異検査で検知を確認しました。
+
 なお gpt-5.6 の effort `max` は Codex CLI の config.toml での受理が未確証のため、`xhigh` 維持で変更していません。
 
 #### Phase 133 起票 — 4 ツール (Claude / Codex / Grok / Cursor) の 2026-08 仕様調査

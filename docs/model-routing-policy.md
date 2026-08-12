@@ -276,8 +276,8 @@ Notes:
 | `worker` | Sonnet 5, `medium` to `high` | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `medium` | `grok-4.20-non-reasoning`, `low` | implementation benefits from iteration and tests |
 | `explorer` / read-only fan-out | Haiku 4.5, `low` | `gpt-5.4-mini`, `low` | `composer-2-fast`, `low` | `grok-3-mini`, `low` | cheap context isolation |
 | `reviewer` | Fable 5, `xhigh` (primary verdict tier) | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `xhigh` (fresh-context pre-review only; primary verdict on brain) | `grok-4.3`, `high` | review is where deeper reasoning pays |
-| `advisor` | Opus 5, `xhigh` (Fable 5 via `HARNESS_BRAIN_MODEL=fable`) | `gpt-5.6-sol`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.5`, `high` | blocked-loop decisions need high confidence |
-| `release` | Sonnet 5, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `high` | `grok-4.5`, `high` | procedural but public-facing |
+| `advisor` | Opus 5, `xhigh` (Fable 5 via `HARNESS_BRAIN_MODEL=fable`) | `gpt-5.6-sol`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.3`, `high` | blocked-loop decisions need high confidence |
+| `release` | Sonnet 5, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `high` | `grok-4.3`, `high` | procedural but public-facing |
 
 ## Non-Goals
 
