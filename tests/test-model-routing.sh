@@ -290,6 +290,7 @@ done
 
 # 走査対象の doc 集合。grok の pin を表に持つ doc を足したらここに追加する。
 scanned_any_doc=0
+documented_tiers=""
 for doc in \
   "${ROOT_FOR_DOCS}/docs/model-routing-policy.md" \
   "${ROOT_FOR_DOCS}/docs/research/grok-adapter-candidate.md" \
@@ -319,13 +320,22 @@ for doc in \
   # (2) 行対応検査: 先頭セルが tier 名の行は、その tier の実際の ID と一致すること
   #     (実在するが tier の対応が誤った ID を弾く)
   while IFS= read -r line; do
-    row_tier="$(printf '%s' "${line}" | sed -n 's/^| *`\([a-z-]*\)` *|.*/\1/p')"
+    # 先頭セルを取り出して装飾 (バッククォート / 太字 / 空白) を剥がし、小文字化する。
+    # 初版は バッククォート必須かつ小文字限定の正規表現で、`long-context` を
+    # 装飾なしや大文字で書くだけで行が黙って skip された (敵対的再検証 round2 で実証)。
+    row_tier="$(printf '%s' "${line}" | awk -F'|' '{print $2}' \
+      | tr -d '`*' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
     [ -n "${row_tier}" ] || continue
     case " ${GROK_TIERS} " in *" ${row_tier} "*) ;; *) continue ;; esac
 
     # 改行区切りのままだと後続の case マッチ (前後空白必須) が外れるため空白へ正規化する
     row_ids="$(printf '%s' "${line}" | grep -oE 'grok-([0-9]|composer)[A-Za-z0-9._-]*' | sort -u | tr '\n' ' ' || true)"
     [ -n "${row_ids}" ] || continue
+
+    # 「記載あり」と数えるのは grok の ID を含む行だけ。同じ doc には claude /
+    # cursor 用の同名 tier 行もあるため、行の存在だけで数えると grok 行が
+    # 消えても網羅検査が素通りする (変異検査 M6 で実際に素通りした)。
+    documented_tiers="${documented_tiers} ${row_tier}"
     expected="$(bash "${ROUTER}" --host grok --tier "${row_tier}" --field model)"
     # 判定は「その tier の正解 ID が行に現れること」。表ごとに grok 列の位置が
     # 違う (tier 表は 2 列目、Role Defaults 表は 5 列目) ため列位置に依存させず、
@@ -350,5 +360,50 @@ done
   echo "grok の pin を持つ doc を 1 つも走査できなかった (抽出条件が壊れている)"
   exit 1
 }
+
+# (3) 網羅検査: 全 tier が doc の表に 1 行以上あること。
+#     行が丸ごと消された場合、行単位の検査だけでは黙って通ってしまう
+#     (敵対的再検証 round2 の指摘)。
+for tier in ${GROK_TIERS}; do
+  case " ${documented_tiers} " in
+    *" ${tier} "*) ;;
+    *)
+      echo "grok tier '${tier}' の行が docs の表に無い (行ごと消えると検査が素通りする)"
+      exit 1
+      ;;
+  esac
+done
+
+# (4) hosts.toml の grok pin も SSOT と一致すること。
+#     markdown の表ではないためゲート本体の走査外だが、ID を持つ 3 つ目の面。
+HOSTS_TOML="${ROOT_FOR_DOCS}/hosts.toml"
+if [ -f "${HOSTS_TOML}" ]; then
+  hosts_grok_model="$(awk '/^\[grok\]/{f=1;next} /^\[/{f=0} f && /^model/{gsub(/[" ]/,"");sub(/^model=/,"");print;exit}' "${HOSTS_TOML}")"
+  if [ -n "${hosts_grok_model}" ]; then
+    expected_host_model="$(bash "${ROUTER}" --host grok --tier deep --field model)"
+    [ "${hosts_grok_model}" = "${expected_host_model}" ] || {
+      echo "hosts.toml [grok] model が SSOT と不一致: hosts.toml=${hosts_grok_model} / router(deep)=${expected_host_model}"
+      exit 1
+    }
+  fi
+fi
+
+# (5) tier 語彙の drift 検査: このテストが持つ GROK_TIERS は router の case 分岐の
+#     二重管理になる。router 側に tier を足してテストを直し忘れると doc 検査から
+#     漏れるため、両者が一致することを機械的に確かめる (spark / * は除外)。
+router_tier_labels="$(awk '/^elif \[ "\$HOST" = "grok" \]/{f=1} f && /^  esac/{exit} f' "${ROUTER}" \
+  | sed -n 's/^    \([a-z|-]*\)).*/\1/p' | tr '|' '\n' | grep -v '^spark$' | sort -u | tr '\n' ' ')"
+for t in ${router_tier_labels}; do
+  case " ${GROK_TIERS} " in
+    *" ${t} "*) ;;
+    *) echo "router に grok tier '${t}' があるが、このテストの GROK_TIERS に無い (二重管理の drift)"; exit 1 ;;
+  esac
+done
+for t in ${GROK_TIERS}; do
+  case " ${router_tier_labels} " in
+    *" ${t} "*) ;;
+    *) echo "GROK_TIERS の '${t}' が router の case 分岐に無い"; exit 1 ;;
+  esac
+done
 
 echo "OK (docs<->SSOT grok pins consistent)"
