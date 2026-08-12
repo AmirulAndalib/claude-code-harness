@@ -401,6 +401,14 @@ func TestDoctor_CheckJSONFile(t *testing.T) {
 // TestDoctor_CheckStateDB verifies state.db discovery via CLAUDE_PLUGIN_DATA
 // and the fallback .harness/ directory.
 func TestDoctor_CheckStateDB(t *testing.T) {
+	// ResolveStatePath prefers CLAUDE_PLUGIN_DATA over the project root, so this
+	// test only exercises the project-root branch when that variable is empty.
+	// Claude Code sets it in every live session, which made this test fail
+	// locally while passing in CI — pin it empty so the assertion below is
+	// about the code path, not about who happens to run it.
+	// The env-driven branch has its own coverage in TestDoctor_CheckStateDB_ViaEnv.
+	t.Setenv("CLAUDE_PLUGIN_DATA", "")
+
 	dir := t.TempDir()
 
 	// No state.db anywhere — should still be ok=true (optional)

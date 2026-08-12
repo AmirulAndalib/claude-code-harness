@@ -1,0 +1,95 @@
+# operator-supplied-knobs.v1.yaml — Operator-supplied config knob registry (Phase 132.4)
+#
+# SSOT for the config-knob-wiring gate escape hatch.
+# Scanner: scripts/ci/check-config-knob-wiring.sh
+#
+# 目的: go/internal/guardrail・go/internal/policy が os.Getenv("HARNESS_*"|"ULTRAWORK_*")
+# で読む設定ノブのうち、repo 内に env producer (自動設定する仕組み) が無く、
+# operator が手動で設定することを前提に運用しているものをここに明示登録する。
+# ゲートはこのリストに載っているキーだけを producer 不在でも pass させる。
+#
+# 登録の条件: 全エントリは「operator が手で設定する override」であることに
+# 正式合意済みであり、primary_producer に env 以外の一次供給経路を明記する。
+# 一次供給経路が "none" のキーをこのリストに残してはならない (それは未配線
+# 欠陥の追認になる)。新しい os.Getenv キーを追加する場合は、(a) env 以外の
+# producer を実装して primary_producer に書く、(b) operator 手動設定として
+# ここに合意登録する、のどちらかを行うこと。
+#
+# 実際の事故 (2026-08-10): HARNESS_WORK_MODE / ULTRAWORK_MODE は
+# go/internal/guardrail/pre_tool.go の R04/R05 confirmation-skip 経路が読むが、
+# producer が repo 内に一つも無く、/breezing 実行が数ヶ月間 Yes/No ダイアログで
+# 止まり続けていた。
+#
+# triage 完了 (2026-08-11, Plans.md 132.6): ゲート初回実行で grandfather 登録
+# した 8 件を精査した結果、6 件は「env は override で、一次供給は設定ファイル」
+# という誤検知 (harness.toml [tdd.enforce] / .claude/state/active-task.json)。
+# 実欠陥は HARNESS_CODEX_MODE / HARNESS_BREEZING_ROLE の 2 件で、これらは
+# shell 版ガードが持っていたファイルベース解決 (.claude/state/
+# breezing-active.json / breezing-session-roles.json) を Go へ移植して解消した。
+# 教訓: このゲートは env producer しか見ないため、設定ファイル経由の供給を
+# 「未配線」と誤検知する。一次供給経路の真偽は primary_producer の実在で判断
+# すること (rule↔context の実挙動は go/internal/guardrail/
+# build_context_wiring_test.go が検証する)。
+
+version: 1
+
+entries:
+  - key: "HARNESS_WORK_MODE"
+    consumer: "go/internal/guardrail/pre_tool.go:114"
+    primary_producer: "harness work-mode on/off → work_states row keyed by real session id (HARNESS_SESSION_ID exported by SessionStart env hook; Plans.md 132.7)"
+    reason: "operator sets this as a manual override / emergency escape hatch. The primary producer is the SQLite path"
+    registered: "2026-08-10"
+
+  - key: "ULTRAWORK_MODE"
+    consumer: "go/internal/guardrail/pre_tool.go:115"
+    primary_producer: "same as HARNESS_WORK_MODE (alias)"
+    reason: "operator sets this as a manual override / emergency escape hatch. The primary producer is the SQLite path"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_ACTIVE_PHASE"
+    consumer: "go/internal/guardrail/plan_preapproval.go:162"
+    primary_producer: ".claude/state/active-task.json (written by harness-work / breezing skills; plan_preapproval.go:143 reads it first)"
+    reason: "operator sets this as a manual override. Triage 2026-08-11 (132.6): gate false positive — the file producer is primary, env is an override layered on top"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_ACTIVE_TASK"
+    consumer: "go/internal/guardrail/plan_preapproval.go:163"
+    primary_producer: ".claude/state/active-task.json (written by harness-work / breezing skills; plan_preapproval.go:143 reads it first)"
+    reason: "operator sets this as a manual override. Triage 2026-08-11 (132.6): gate false positive — the file producer is primary, env is an override layered on top"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_TDD_ENFORCE_ENABLED"
+    consumer: "go/internal/guardrail/pre_tool.go:80"
+    primary_producer: "harness.toml [tdd.enforce] enabled (pre_tool.go resolveTddRuntimeConfig reads it first)"
+    reason: "operator sets this as a manual override. Triage 2026-08-11 (132.6): gate false positive — harness.toml is the primary producer, env is an override"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_TDD_ENFORCE_LEVEL"
+    consumer: "go/internal/guardrail/pre_tool.go:81"
+    primary_producer: "harness.toml [tdd.enforce] level"
+    reason: "operator sets this as a manual override. Triage 2026-08-11 (132.6): gate false positive — harness.toml is the primary producer, env is an override"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_TDD_HOOK_ENABLED"
+    consumer: "go/internal/guardrail/pre_tool.go:84"
+    primary_producer: "harness.toml [tdd.enforce] hook_enabled"
+    reason: "operator sets this as a manual override. Triage 2026-08-11 (132.6): gate false positive — harness.toml is the primary producer, env is an override"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_TDD_BYPASS_AUDIT_REQUIRED"
+    consumer: "go/internal/guardrail/pre_tool.go:87"
+    primary_producer: "harness.toml [tdd.enforce] bypass_audit_required"
+    reason: "operator sets this as a manual override. Triage 2026-08-11 (132.6): gate false positive — harness.toml is the primary producer, env is an override"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_CODEX_MODE"
+    consumer: "go/internal/guardrail/pre_tool.go:116"
+    primary_producer: ".claude/state/breezing-active.json impl_mode=codex (guardrail/breezing_state.go, shell parity restored 132.6) + harness work-mode on --codex (SQLite)"
+    reason: "operator sets this as a manual override. Real defect until 2026-08-11: the Go migration dropped the shell guard's file resolution, leaving R07 unable to fire — now restored"
+    registered: "2026-08-10"
+
+  - key: "HARNESS_BREEZING_ROLE"
+    consumer: "go/internal/guardrail/pre_tool.go:117"
+    primary_producer: ".claude/state/breezing-session-roles.json keyed by hook payload agent_id/session_id + reviewer agent_type during active breezing (guardrail/breezing_state.go, shell parity restored 132.6). Env remains the producer for worktree-spawned teammate sessions (breezing Lead exports it at spawn)"
+    reason: "operator/spawner sets this for worktree teammates. Real defect until 2026-08-11: the Go migration dropped the shell guard's roles-file resolution, leaving R08 unable to fire — now restored"
+    registered: "2026-08-10"

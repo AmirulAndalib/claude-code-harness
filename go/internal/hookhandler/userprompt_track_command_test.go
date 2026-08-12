@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTrackCommandHandler_NoInput(t *testing.T) {
@@ -249,5 +250,52 @@ func TestTrackCommandHandler_LongPromptTruncated(t *testing.T) {
 	runeCount := len([]rune(entry.PromptPreview))
 	if runeCount > 200 {
 		t.Errorf("prompt_preview should be at most 200 runes, got %d", runeCount)
+	}
+}
+
+// --- 132.7: last-session-id producer -------------------------------------
+// この producer 自体が無検査だと「配線はあるが誰も検証していない」を再演する
+// (本 Phase が codify した欠陥類型)。
+
+func TestTrackCommandHandler_RecordsLastSessionID(t *testing.T) {
+	dir := t.TempDir()
+	h := &TrackCommandHandler{ProjectRoot: dir}
+
+	payload := `{"prompt":"hello no slash","session_id":"real-uuid-1234","cwd":"` + dir + `"}`
+	var out bytes.Buffer
+	if err := h.Handle(strings.NewReader(payload), &out); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "state", "last-session-id.json"))
+	if err != nil {
+		t.Fatalf("last-session-id.json not written: %v", err)
+	}
+	var rec lastSessionIDRecord
+	if err := json.Unmarshal(data, &rec); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if rec.SessionID != "real-uuid-1234" {
+		t.Fatalf("session_id = %q, want real-uuid-1234", rec.SessionID)
+	}
+	ts, err := time.Parse(time.RFC3339, rec.UpdatedAt)
+	if err != nil {
+		t.Fatalf("updated_at not RFC3339: %v", err)
+	}
+	if time.Since(ts) > time.Minute {
+		t.Fatalf("updated_at not fresh: %s", rec.UpdatedAt)
+	}
+}
+
+func TestTrackCommandHandler_NoSessionIDNoWrite(t *testing.T) {
+	dir := t.TempDir()
+	h := &TrackCommandHandler{ProjectRoot: dir}
+
+	var out bytes.Buffer
+	if err := h.Handle(strings.NewReader(`{"prompt":"hi"}`), &out); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".claude", "state", "last-session-id.json")); !os.IsNotExist(err) {
+		t.Fatalf("must not write a record without session_id (err=%v)", err)
 	}
 }

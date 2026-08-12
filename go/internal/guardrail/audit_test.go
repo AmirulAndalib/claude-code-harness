@@ -309,6 +309,7 @@ func TestEvaluatePreTool_AuditFailureIsFailOpen(t *testing.T) {
 }
 
 func TestEvaluatePreTool_AuditRootDoesNotChangeRuleEvaluationRoot(t *testing.T) {
+	clearGuardrailKnobEnv(t)
 	evaluationRoot := t.TempDir()
 	// Task 126.3 approves OS temporary roots, so keep the R04 fixture under the package directory.
 	auditRoot := newNonTemporaryAuditFixture(t)

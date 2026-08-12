@@ -66,6 +66,13 @@ type rawPayload struct {
 	// event name (used for host inference: "preToolUse" ⇒ cursor)
 	HookEventName string `json:"hook_event_name"`
 
+	// subagent identity (CC sets these only when the hook fires inside a
+	// subagent call; session_id stays the parent's). Dropping them here made
+	// the guardrail's agent_type/agent_id resolution dead on the wire —
+	// found by the 2026-08-11 review, wire-probed against the real binary.
+	AgentID   string `json:"agent_id"`
+	AgentType string `json:"agent_type"`
+
 	// harness extension
 	PluginRoot string `json:"plugin_root"`
 }
@@ -98,6 +105,8 @@ func Normalize(raw []byte, hostHint string) (hookproto.HookInput, string, error)
 		SessionID:     firstNonEmpty(p.SessionID, p.ConversationID, p.ConversationID2),
 		CWD:           firstNonEmpty(p.CWD, p.WorkspaceRoot, firstSlice(p.WorkspaceRoots)),
 		HookEventName: p.HookEventName,
+		AgentID:       p.AgentID,
+		AgentType:     p.AgentType,
 		Host:          host,
 	}
 

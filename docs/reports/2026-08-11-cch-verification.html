@@ -1,0 +1,457 @@
+<title>CCH は仕様どおり動いているか — 全体検証レポート</title>
+<style>
+:root{
+  --bg:#F5F4F1; --surface:#FCFBF9; --surface-2:#F0EFEA;
+  --ink:#1B1B22; --ink-soft:#5A5A64; --ink-faint:#8C8C92;
+  --line:#E4E2DB; --line-strong:#D2CFC6;
+  --primary:#313A7E; --primary-soft:#E9EAF4; --primary-ink:#262E66;
+  --kernel:#191B2C; --kernel-2:#23263c; --kernel-line:#343750; --kernel-ink:#C9CBE0;
+  --done:#2F8F5B; --done-soft:#E4F2EA; --done-line:#B7DCC7;
+  --wip:#B8821C; --wip-soft:#F6EDD8;
+  --risk:#B5462F; --risk-soft:#F6E7E2; --risk-line:#E5C0B4;
+  --info:#2C5A7A; --info-soft:#E3ECF1;
+  --plain:#1f7a6d; --plain-soft:#E1F1EE; --plain-line:#BBE0D9;
+  --radius:10px;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  line-height:1.85;word-break:keep-all;overflow-wrap:normal;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+h1,h2,h3{line-height:1.5;margin:0}
+p{margin:0 0 14px}
+a{color:var(--primary-ink)}
+
+/* hero */
+.hero{background:linear-gradient(150deg,#191B2C 0%,#23263c 55%,#313A7E 130%);color:#fff;padding:52px 0 44px;margin-bottom:38px}
+.badge{display:inline-block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid rgba(255,255,255,.35);border-radius:99px;padding:4px 12px;color:#C9CBE0;margin-bottom:16px}
+.hero h1{font-size:31px;letter-spacing:-.01em;margin-bottom:12px}
+.tag{color:#BFC2DA;font-size:15px;max-width:74ch;margin-bottom:22px}
+.thesis{border-left:3px solid #8E97D8;padding:10px 0 10px 18px;font-size:17px;color:#fff;max-width:80ch;background:rgba(255,255,255,.04)}
+.hero-meta{margin-top:24px;display:flex;flex-wrap:wrap;gap:10px 26px;font-size:12.5px;color:#9DA0BC}
+.hero-meta b{color:#C9CBE0;font-weight:600}
+
+/* blocks */
+section{margin-bottom:44px}
+.kicker{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px}
+section>h2{font-size:22px;margin-bottom:14px}
+.plainbox{background:var(--plain-soft);border:1px solid var(--plain-line);border-radius:var(--radius);padding:20px 22px;margin-bottom:22px}
+.plainbox h3{font-size:15px;color:var(--plain);margin-bottom:8px}
+.plainbox p:last-child{margin-bottom:0}
+.tlgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.tlcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+.tlcard h4{margin:0 0 6px;font-size:14px;color:var(--primary-ink)}
+.tlcard p{margin:0;font-size:14px;color:var(--ink-soft)}
+
+.figure{background:var(--kernel);border:1px solid var(--kernel-line);border-radius:var(--radius);
+  padding:24px;color:var(--kernel-ink);margin:18px 0}
+.figure h4{color:#fff;font-size:14px;margin:0 0 16px;letter-spacing:.02em}
+.chain{display:flex;flex-direction:column;gap:0}
+.cstep{background:var(--kernel-2);border:1px solid var(--kernel-line);border-radius:8px;padding:12px 16px}
+.cstep b{color:#fff;display:block;font-size:14px}
+.cstep span{font-size:13px;color:#9DA0BC}
+.carrow{text-align:center;color:#5B5F80;font-size:15px;line-height:1;padding:6px 0}
+.cstep.hit{border-color:#4E9E75;background:#1D2B26}
+.cstep.hit b{color:#8FE0B4}
+.cstep.miss{opacity:.5}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin:14px 0}
+th{background:var(--surface-2);text-align:left;padding:10px 12px;font-size:12px;
+  letter-spacing:.04em;color:var(--ink-soft);border-bottom:1px solid var(--line-strong)}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr.hit td{background:var(--done-soft)}
+tr.gap td{background:var(--risk-soft)}
+tr.warnrow td{background:var(--wip-soft)}
+code{font-family:var(--mono);font-size:.92em;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+
+.pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap}
+.p-deny{background:var(--risk-soft);color:var(--risk);border:1px solid var(--risk-line)}
+.p-ask{background:var(--wip-soft);color:var(--wip);border:1px solid #E3CE9A}
+.p-warn{background:var(--info-soft);color:var(--info);border:1px solid #B8D0DE}
+.p-ok{background:var(--done-soft);color:var(--done);border:1px solid var(--done-line)}
+.p-dead{background:#2B2B33;color:#EBB7A8;border:1px solid #4A3B38}
+
+/* interactive explorer */
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 4px}
+.chip{font:inherit;font-size:13px;cursor:pointer;background:var(--surface);border:1px solid var(--line-strong);
+  color:var(--ink-soft);border-radius:99px;padding:6px 15px}
+.chip[aria-pressed="true"]{background:var(--primary);border-color:var(--primary);color:#fff}
+.chip:focus-visible{outline:3px solid #8E97D8;outline-offset:2px}
+.explorer{display:grid;grid-template-columns:1.05fr .95fr;gap:16px;align-items:start;margin-top:12px}
+.rulelist{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);overflow:hidden}
+.rrow{display:grid;grid-template-columns:74px 1fr auto;gap:10px;align-items:center;width:100%;text-align:left;
+  font:inherit;font-size:13.5px;background:none;border:none;border-bottom:1px solid var(--line);
+  padding:10px 13px;cursor:pointer;color:var(--ink)}
+.rrow:last-child{border-bottom:none}
+.rrow:hover{background:var(--surface-2)}
+.rrow[aria-selected="true"]{background:var(--primary-soft);box-shadow:inset 3px 0 0 var(--primary)}
+.rrow:focus-visible{outline:3px solid #8E97D8;outline-offset:-3px}
+.rrow.dim{opacity:.32}
+.rrow code{background:none;padding:0;font-weight:600;color:var(--primary-ink)}
+.detail{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:18px 20px;
+  position:sticky;top:16px}
+.detail h4{margin:0 0 4px;font-size:16px}
+.detail .sub{font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;font-family:var(--mono)}
+.dfield{margin-bottom:12px}
+.dfield b{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:3px}
+.dfield p{margin:0;font-size:13.5px}
+pre.codeblock{background:var(--kernel);color:#C9CBE0;font-family:var(--mono);font-size:12px;
+  padding:11px 13px;border-radius:8px;overflow-x:auto;margin:0;line-height:1.6}
+
+.steps{counter-reset:s;list-style:none;padding:0;margin:0}
+.steps li{counter-increment:s;position:relative;padding-left:42px;margin-bottom:16px}
+.steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:27px;height:27px;border-radius:99px;
+  background:var(--primary);color:#fff;font-size:13px;display:grid;place-items:center;font-weight:600}
+.steps b{display:block;font-size:15px}
+.steps .why{font-size:13px;color:var(--ink-soft)}
+
+.verdict{background:var(--done-soft);border:1px solid var(--done-line);border-radius:var(--radius);padding:20px 22px}
+.verdict h3{font-size:16px;color:var(--done);margin-bottom:8px}
+.verdict p:last-child{margin-bottom:0}
+.openbox{background:var(--wip-soft);border:1px solid #E3CE9A;border-radius:var(--radius);padding:20px 22px;margin-top:20px}
+.openbox h3{font-size:16px;color:var(--wip);margin-bottom:8px}
+.openbox ul{margin:0;padding-left:20px;font-size:14px}
+.openbox li{margin-bottom:6px}
+
+footer{border-top:1px solid var(--line-strong);margin-top:52px;padding:26px 0 60px;font-size:12.5px;color:var(--ink-soft)}
+footer h4{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);margin:0 0 6px}
+footer ul{margin:0 0 18px;padding-left:18px}
+footer li{margin-bottom:3px}
+.disclaimer{font-style:italic;color:var(--ink-faint)}
+
+@media (max-width:900px){
+  .explorer{grid-template-columns:1fr}
+  .tlgrid{grid-template-columns:1fr}
+  .detail{position:static}
+  .hero h1{font-size:25px}
+}
+@media print{
+  body{background:#fff}
+  .hero{padding:30px 0 26px;margin-bottom:26px}
+  .controls{display:none}
+  .explorer{grid-template-columns:1fr !important;display:block}
+  .rrow.dim{opacity:1}
+  .detail{display:none}
+  section{margin-bottom:26px;page-break-inside:auto}
+  .figure,.plainbox,.verdict,.openbox,.tlcard{page-break-inside:avoid}
+  table{page-break-inside:auto}
+  tr,.steps li,.cstep{page-break-inside:avoid}
+  thead{display:table-header-group}
+  h2{page-break-after:avoid}
+  @page{size:A4 portrait;margin:13mm}
+}
+</style>
+
+<div class="hero">
+  <div class="wrap">
+    <span class="badge">claude-code-harness / 全体検証</span>
+    <h1>CCH は、書かれている仕様どおりに動いているか</h1>
+    <p class="tag">ガードレール 15 ルール・文脈 13 項目・フック 20 イベント・配布バイナリを、実際にペイロードを流し込んで観測した結果です。コードを読んだだけの推測は含みません。</p>
+    <div class="thesis">15 ルール中 13 が実測で正しく動いていた。壊れているのはルールではなく、<b>ルールへ情報を届ける配線</b>で、供給元が存在しない項目が 2 つある。加えて、他プロジェクトは 1 日古いバイナリで動いており、修正はリリースするまで届かない。</div>
+    <div class="hero-meta">
+      <span><b>作成</b> 2026-08-11</span>
+      <span><b>対象</b> v5.6.0 / branch fix/r04-agent-state-exception</span>
+      <span><b>測定</b> 稼働バイナリへの直接投入</span>
+      <span><b>位置づけ</b> 派生物。正本ではない</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+  <div class="plainbox">
+    <h3>やさしく言うと</h3>
+    <p>CCH は、AI が何か実行する直前に割り込んで「許可・確認・拒否」を決める仕組みです。中身は 2 段構えで、<b>① 状況を集める</b>（誰が、どのモードで、どのプロジェクトで）→ <b>② 15 個のルールで判定する</b>、という順に動きます。</p>
+    <p>今回 15 ルール全部に実際の操作を投げ込んだところ、13 個は期待どおりに反応しました。反応しなかった 2 個（R07 と R08）は、ルール自体は正しく書かれているのに、<b>①が集めるはずの情報を誰も渡していない</b>ため、永久に条件を満たしません。</p>
+    <p>もう 1 つ実務に効く事実があります。このリポジトリは 8/10 のバイナリで動いていますが、<b>他のプロジェクトは 8/9 のバイナリ</b>で動いていました。先日入れた修正はそちらに届いていません。</p>
+  </div>
+  <div class="tlgrid">
+    <div class="tlcard"><h4>breezing はもう止まらない？</h4><p>止まりません。ただし支えているのは <code>~/.claude/settings.json</code> の <code>HARNESS_WORK_MODE=1</code> という 1 行だけです。外すと元に戻ります。</p></div>
+    <div class="tlcard"><h4>危険な操作は止まる？</h4><p>止まります。実測で <code>sudo</code>・<code>--force</code> push・<code>--no-verify</code>・秘密ファイルの staging・保護ブランチへの <code>reset --hard</code> はすべて拒否されました。</p></div>
+    <div class="tlcard"><h4>今すぐ何かする必要は？</h4><p>ありません。危険な操作の防御は生きています。ただしリリースしないと、他プロジェクトへ修正が届きません。</p></div>
+    <div class="tlcard"><h4>いちばん怖いのはどれ？</h4><p>R08 です。breezing のレビュー担当が実装に手を出せる状態で、機械的な歯止めが効いていません。</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">01 — Structure</div>
+  <h2>CCH は何でできているか</h2>
+  <p>まず全体の骨格です。検証はこの各層に対して行いました。</p>
+  <table>
+    <tr><th style="width:150px">層</th><th>実体</th><th style="width:120px">今回の検証</th></tr>
+    <tr><td><b>ガードレール</b></td><td>15 ルール（R01〜R15）＋ runtime floor 2 種。実行前に許可・確認・拒否を返す</td><td>全件に実操作を投入</td></tr>
+    <tr><td><b>文脈</b></td><td><code>BuildContext</code> が集める 13 項目。ルールの判定材料になる</td><td>全項目の供給元を追跡</td></tr>
+    <tr><td><b>フック</b></td><td>20 イベント（PreToolUse / PostToolUse / SessionStart ほか）</td><td>登録状況と配布コピーの一致</td></tr>
+    <tr><td><b>スキル</b></td><td>21 個（plan / work / review / release / breezing ほか）</td><td>ミラー同期を確認</td></tr>
+    <tr><td><b>エージェント</b></td><td>4 個（worker / reviewer / advisor / test-wiring-auditor）</td><td>存在確認</td></tr>
+    <tr><td><b>CLI</b></td><td>36 サブコマンド。Go 実装、内部パッケージ 48</td><td>ゲート実行</td></tr>
+  </table>
+
+  <div class="figure">
+    <h4>判定はこの順に流れる</h4>
+    <div class="chain">
+      <div class="cstep"><b>① AI がツールを呼ぼうとする</b><span>Write / Edit / Bash / Read など</span></div>
+      <div class="carrow">↓</div>
+      <div class="cstep"><b>② 状況を集める（BuildContext）</b><span>13 項目。ここが今回の弱点</span></div>
+      <div class="carrow">↓</div>
+      <div class="cstep"><b>③ 15 ルールを上から順に評価する</b><span>最初に一致したルールの判定で確定する</span></div>
+      <div class="carrow">↓</div>
+      <div class="cstep"><b>④ 許可 / 確認 / 拒否 を返す</b><span>確認＝作業が止まる。拒否＝その場で終わる</span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">02 — Measured</div>
+  <h2>15 ルールの実測結果</h2>
+  <p>1 ルールずつ実際のペイロードをバイナリに流し込み、返ってきた判定を記録しました。行を選ぶと、投入した操作と生の応答が右に出ます。</p>
+
+  <div class="controls" role="group" aria-label="表示するルールを絞り込む">
+    <button class="chip" data-filter="all" aria-pressed="true">すべて (17)</button>
+    <button class="chip" data-filter="live" aria-pressed="false">期待どおり反応した (13)</button>
+    <button class="chip" data-filter="bydesign" aria-pressed="false">設定・設計で無反応 (2)</button>
+    <button class="chip" data-filter="dead" aria-pressed="false">起動不能 (2)</button>
+  </div>
+
+  <div class="explorer">
+    <div class="rulelist" id="rulelist" role="listbox" aria-label="ガードレールのルール一覧"></div>
+    <div class="detail" id="detail" aria-live="polite"></div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">03 — Wiring</div>
+  <h2>文脈 13 項目に、値を入れる仕組みはあるか</h2>
+  <p>ルールに情報を届ける側です。ここが切れていると、ルールは正しく書かれていても永久に発火しません。</p>
+  <table>
+    <tr><th style="width:230px">文脈項目</th><th>供給元</th><th style="width:110px">状態</th></tr>
+    <tr class="hit"><td><code>Input</code></td><td>フックのペイロード</td><td><span class="pill p-ok">実配線</span></td></tr>
+    <tr class="hit"><td><code>ProjectRoot</code></td><td>自動解決</td><td><span class="pill p-ok">実配線</span></td></tr>
+    <tr class="warnrow"><td><code>WorkMode</code></td><td>env（operator が手で設定）／ SQLite（<code>work-mode</code> CLI は識別子不一致で無効）</td><td><span class="pill p-ask">応急処置</span></td></tr>
+    <tr class="gap"><td><code>CodexMode</code></td><td><b>供給元なし</b> → R07 が起動不能</td><td><span class="pill p-dead">配線なし</span></td></tr>
+    <tr class="gap"><td><code>BreezingRole</code></td><td><b>供給元なし</b> → R08 が起動不能</td><td><span class="pill p-dead">配線なし</span></td></tr>
+    <tr class="hit"><td><code>ProtectedBranchPushPolicy</code></td><td><code>harness.toml</code> の <code>protectedBranchPush = "ask"</code></td><td><span class="pill p-ok">実配線</span></td></tr>
+    <tr class="hit"><td><code>ConsumePlanPreapproval</code></td><td><code>.claude/state/plan-preapprovals.json</code>（5.2KB 実在）</td><td><span class="pill p-ok">実配線</span></td></tr>
+    <tr class="hit"><td><code>ProtectedPathAskList</code></td><td><code>harness.toml</code>（任意機能。今は未使用）</td><td><span class="pill p-ok">実配線</span></td></tr>
+    <tr class="hit"><td><code>TddEnforceLevel</code> / <code>TddHookEnabled</code></td><td><code>harness.toml</code> の <code>[tdd.enforce] level = "off"</code></td><td><span class="pill p-ok">実配線</span></td></tr>
+    <tr class="hit"><td><code>TddBypass</code> ほか 3 項目</td><td>env（手動の一時解除スイッチ。設計どおり operator 供給）</td><td><span class="pill p-ok">実配線</span></td></tr>
+  </table>
+  <p><code>go/internal/breezing</code> の中身も確認しましたが、role という概念そのものがありません。R08 は「実装されているが、起動する手段が存在しない」で確定です。</p>
+</section>
+
+<section>
+  <div class="kicker">04 — Provenance</div>
+  <h2>どのバイナリが実際に動いているか</h2>
+  <p>今回いちばん実務に効く発見です。フックの起動スクリプトは <code>bin/harness</code> を持つ場所を上から順に探し、<b>最初に見つかったものを使います</b>。</p>
+
+  <div class="figure">
+    <h4>探索順と、実際に一致する場所</h4>
+    <div class="chain">
+      <div class="cstep miss"><b>① CLAUDE_PLUGIN_ROOT</b><span>未設定</span></div>
+      <div class="carrow">↓</div>
+      <div class="cstep hit"><b>② CLAUDE_PROJECT_DIR / 現在地</b><span>このリポジトリはここで一致 → 8/10 18:12 のバイナリ（R04 修正あり）</span></div>
+      <div class="carrow">↓</div>
+      <div class="cstep hit"><b>③ marketplaces クローン</b><span>他プロジェクトはここに落ちる → 8/9 16:19 のバイナリ（R04 修正なし）</span></div>
+      <div class="carrow">↓</div>
+      <div class="cstep miss"><b>④ plugins/cache/…/5.6.0</b><span>bin/ ディレクトリが存在しない（実測）</span></div>
+    </div>
+  </div>
+
+  <table>
+    <tr><th style="width:200px">場所</th><th style="width:110px">バイナリ</th><th style="width:120px">日付</th><th>記憶ディレクトリへの書き込み</th></tr>
+    <tr class="hit"><td>このリポジトリ</td><td>あり</td><td>8/10 18:12</td><td>無言で許可（修正が効いている）</td></tr>
+    <tr class="gap"><td>marketplace クローン</td><td>あり</td><td>8/9 16:19</td><td><span class="pill p-ask">ask</span> 修正が入っていない</td></tr>
+    <tr><td>cache 5.6.0</td><td>なし</td><td>—</td><td>—</td></tr>
+  </table>
+  <p><b>他プロジェクトで確認ダイアログが出ない唯一の理由は、環境変数 <code>HARNESS_WORK_MODE=1</code> です。</b>これがリリースの意味を正確に定義します。リリースするまで、コードの修正は他プロジェクトに一切届きません。</p>
+</section>
+
+<section>
+  <div class="kicker">05 — Side effect</div>
+  <h2>応急処置には副作用があった</h2>
+  <p><code>HARNESS_WORK_MODE=1</code> が Bash の子プロセスにも継承されていることを、このセッションで実測しました。その結果、テストプロセスにも漏れています。</p>
+  <div class="figure">
+    <h4>同じテストを、環境変数の有無だけ変えて実行した</h4>
+    <pre class="codeblock">go test ./...        （今の環境そのまま）  →  22 ok / 1 FAIL
+  FAIL: TestEvaluatePreTool_AuditRootDoesNotChangeRuleEvaluationRoot
+
+同じテスト、HARNESS_WORK_MODE を外す         →  ok</pre>
+  </div>
+  <p>テスト側が環境変数を掃除していないため、応急処置がガードレールのテストを 1 件落としています。<code>t.Setenv</code> で空にする 1 行で直ります。</p>
+  <table>
+    <tr><th style="width:250px">ゲート</th><th style="width:130px">結果</th><th>備考</th></tr>
+    <tr class="gap"><td><code>go test ./...</code></td><td>22 ok / <b>1 FAIL</b></td><td>上記の環境変数漏れが原因。外せば緑</td></tr>
+    <tr class="hit"><td><code>tests/validate-plugin.sh</code></td><td>136 / 0 / 0</td><td>2 回実行して一致</td></tr>
+    <tr class="hit"><td>skill ミラー</td><td>in-sync</td><td>codex / opencode とも</td></tr>
+    <tr class="hit"><td>フック配線</td><td>20 イベント</td><td>tracked と plugin コピーが完全一致</td></tr>
+  </table>
+</section>
+
+<section>
+  <div class="kicker">06 — Drift</div>
+  <h2>仕様と実装のズレ</h2>
+  <table>
+    <tr><th style="width:34px">#</th><th>内容</th><th style="width:90px">深刻度</th></tr>
+    <tr class="gap"><td>1</td><td>R07 / R08 が起動不能。codex モードの直接書き込み禁止と、レビュー担当の書き込み禁止が効いていない</td><td>中</td></tr>
+    <tr class="gap"><td>2</td><td><code>work-mode</code> CLI が識別子不一致で無効（Plans.md 132.7 として起票済み）</td><td>中</td></tr>
+    <tr class="gap"><td>3</td><td>応急処置の環境変数がテストを 1 件落とす</td><td>中</td></tr>
+    <tr class="gap"><td>4</td><td>他プロジェクトは 8/9 バイナリ。R04 の修正が未達</td><td>中</td></tr>
+    <tr class="warnrow"><td>5</td><td><code>spec.md:34</code> と <code>CLAUDE.md</code> が「R01-R13」表記。実体は R15 まである</td><td>低</td></tr>
+    <tr class="warnrow"><td>6</td><td>CLAUDE.md が settings / workflows を「多層防御」と書くが、ガードレール層は警告のみ。deny は permissions 層の単層</td><td>低</td></tr>
+    <tr class="warnrow"><td>7</td><td>Phase 132.4 で入れたゲートが env キーだけを見るため誤検知 6/8。設定ファイル経由の供給を見ていない</td><td>低</td></tr>
+  </table>
+</section>
+
+<section>
+  <div class="kicker">07 — Target state</div>
+  <h2>完成図</h2>
+  <p>現在と完成形を、同じ 5 項目の骨格で並べます。</p>
+  <table>
+    <tr><th style="width:150px">項目</th><th>今</th><th>完成形</th></tr>
+    <tr><td><b>ルール</b></td><td>15 個中 13 稼働 / 2 起動不能</td><td>15 個すべてに「立てる手段」が実在</td></tr>
+    <tr><td><b>文脈</b></td><td>13 項目中 11 実配線 / 1 応急処置 / 2 供給元なし</td><td>13 項目すべてに供給元。CI が毎回確認</td></tr>
+    <tr><td><b>breezing</b></td><td>環境変数 1 行で停止回避。ただしテストを 1 件壊す</td><td>run 開始時に自動で切り替わる。環境変数は不要</td></tr>
+    <tr><td><b>他プロジェクト</b></td><td>8/9 バイナリ。修正が未達</td><td>リリース済みバイナリで同じ挙動</td></tr>
+    <tr><td><b>検査</b></td><td>ルール↔テストの対応はゲート化済（<code>rulecoverage</code>）。<b>ルール↔文脈の配線は無検査</b></td><td>両方の軸を CI が確認</td></tr>
+  </table>
+  <p><code>go/internal/rulecoverage</code> を開いて確認しました。これは<b>すでに存在する検査ゲート</b>で、ルール ID をテスト・deny baseline・shell ゲートと突き合わせます。ただし見ている軸が「ルールにテストがあるか」なので、テストを持つ R07 / R08 を「カバー済み」と判定してしまいます。検査の仕組みと置き場所は既にあり、足りないのは軸が 1 本だけです。</p>
+</section>
+
+<section>
+  <div class="kicker">08 — Next</div>
+  <h2>次の一手（推奨順）</h2>
+  <ol class="steps">
+    <li><b>文脈 13 項目の配線テストを <code>rulecoverage</code> に追加する</b>
+      <span class="why">なぜ: 既存ゲートに軸を 1 本足すだけ。R07 / R08 / 132.3 の失敗が同時に赤くなる。製品コードを触らないので後戻りリスクが最小。</span></li>
+    <li><b>テストの環境変数を掃除する（<code>t.Setenv</code> で空に）</b>
+      <span class="why">なぜ: 今 FAIL している 1 件が直る。1 行の変更。</span></li>
+    <li><b><code>work-mode</code> の識別子を修正する（132.7）</b>
+      <span class="why">なぜ: 直れば環境変数の応急処置を外せる。手順 1 が先にないと、直ったことを確認できない。</span></li>
+    <li><b>R07 / R08 に供給元を実装する（132.6）</b>
+      <span class="why">なぜ: R08 はレビュー担当の独立性を守る歯止め。今はそれが機械的に効いていない。</span></li>
+    <li><b>v5.6.0 をリリースする</b>
+      <span class="why">なぜ: 他プロジェクトへ R04 の修正を届ける唯一の手段。外部公開にあたるため、明示的な判断が要る。</span></li>
+  </ol>
+</section>
+
+<section>
+  <div class="verdict">
+    <h3>判定</h3>
+    <p>危険な操作に対する防御は実測で生きている。<code>sudo</code>・履歴破壊・秘密ファイルの staging・保護ブランチ操作は、すべて拒否された。<b>今すぐ手当てが必要な故障はない。</b></p>
+    <p>一方で、構造上の弱点が 1 つある。ルールを検査する仕組みはあるが、<b>ルールに情報を届ける配線を検査する仕組みがない</b>。R07 / R08 が長期間死んでいたことも、work-mode の配線が効いていなかったことも、同じ 1 つの穴から出ている。手順 1 と 2 はテストだけで塞げる。</p>
+  </div>
+  <div class="openbox">
+    <h3>正直な但し書き</h3>
+    <ul>
+      <li>前回「ルールは 13 個」と報告したのは R01〜R13 を数えたもので、実エンジンは 15 個（R14 / R15 が後から追加されている）。本レポートは 15 で統一している。</li>
+      <li>R05 の確認（ask）は今回一度も観測できなかった。runtime floor が先に拒否するため。「R05 = 確認が出る」と書くと実測と食い違う。</li>
+      <li><code>git reset --hard HEAD~1</code> はガードレールを素通りする。R11 は保護ブランチ名を指した時だけ発火する設計。止めているのは <code>~/.claude/settings.json</code> の deny（実在を確認済み）で、層は 1 枚。</li>
+      <li>ルールの網羅性そのものは検証していない。「登録されている 15 個が動くか」を測ったのであって、「守るべき操作がすべて 15 個に含まれているか」は別の問い。</li>
+      <li>Codex / Cursor ホストでの実挙動は今回測っていない。測ったのは Claude ホストの経路のみ。</li>
+      <li>本レポートは実装を伴わない。記載した修正はいずれも未着手。</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <h4>出典（SSOT）</h4>
+  <ul>
+    <li><code>go/internal/policy/rules.go</code> — 15 ルールの定義（R01:133 / R04:209 / R07:288 / R08:303 / R11:375 / R13:431）</li>
+    <li><code>go/internal/guardrail/pre_tool.go:110</code> — <code>BuildContext</code>（文脈 13 項目の組み立て）</li>
+    <li><code>go/pkg/hookproto</code> — <code>RuleContext</code> 構造体（13 フィールド）</li>
+    <li><code>go/internal/rulecoverage/coverage.go</code> — 既存のルール↔検査ゲート</li>
+    <li><code>harness.toml</code> — <code>protectedBranchPush</code>(24) / <code>[tdd.enforce] level</code>(152)</li>
+    <li><code>~/.claude/settings.json</code> — permissions deny 38 件 / env / sandbox 無効</li>
+    <li><code>Plans.md</code> Phase 132.6・132.7 — 未着手タスクの起票内容</li>
+    <li><code>.claude/rules/defense-layer-blast-radius.md</code> — 防御層ごとの影響範囲</li>
+    <li><code>hooks/hooks.json</code> / <code>.claude-plugin/hooks.json</code> — 20 イベントの配線</li>
+  </ul>
+  <h4>測定方法と制約</h4>
+  <ul>
+    <li>各ルールに対し、稼働バイナリ <code>bin/harness hook pre-tool --host claude</code> へ標準入力で実ペイロードを投入し、返却 JSON を記録した。</li>
+    <li>環境変数の影響を分離するため、<code>HARNESS_WORK_MODE</code> を「外した状態」と「1 の状態」の 2 通りで全件を測定した。</li>
+    <li>バイナリの出どころは、フック起動スクリプトの探索順に沿って各候補の <code>bin/harness</code> の実在と更新日時を確認し、marketplace クローンにも同一ペイロードを投入して差を観測した。</li>
+    <li>制約: 測定はすべて macOS / Claude ホスト / このリポジトリを起点に行った。Codex・Cursor ホスト、および他プロジェクトを起点とした実セッションでの挙動は測定していない。</li>
+    <li>制約: ルールの網羅性（守るべき操作が漏れなく 15 個に入っているか）は検証範囲外。</li>
+  </ul>
+  <p class="disclaimer">本レポートは 2026-08-11 時点の測定にもとづく派生物であり、仕様の正本ではない。正本は上記 SSOT を参照すること。</p>
+</footer>
+</div>
+
+<script>
+const RULES = [
+  {id:"R01", name:"sudo の禁止", cls:"live", probe:'Bash: sudo rm /etc/hosts', out:"deny", raw:'"permissionDecision":"deny"\n"reason":"sudo is not allowed. If it is required,\n ask the user to run it manually"', ctx:"—", note:"期待どおり拒否。管理者権限の実行は人間に委ねられる。"},
+  {id:"R02", name:"保護パスへの書き込み", cls:"live", probe:'Write: .claude-plugin/settings.json', out:"warn", raw:'"permissionDecision":"allow"\n"additionalContext":"Warning: detected file write\n to a protected path: …/.claude-plugin/settings.json"', ctx:"—", note:"ガードレール層は「許可＋警告」。実際に止めているのは ~/.claude/settings.json の deny で、層は 1 枚。CLAUDE.md の「多層防御」表記と実態がずれている。"},
+  {id:"R03", name:"シェル経由の保護パス書き込み", cls:"live", probe:'Bash: echo x > .claude/settings.json', out:"warn", raw:'"permissionDecision":"allow"\n"additionalContext":"Warning: detected shell write\n to a protected path: …/.claude/settings.json"', ctx:"—", note:"R02 と同じく警告のみ。deny 相当の遮断は permissions 層が担う。"},
+  {id:"R04", name:"プロジェクト外への書き込み", cls:"live", probe:'Write: /Users/…/elsewhere/foo.txt', out:"ask", raw:'"permissionDecision":"ask"\n"permissionDecisionReason":"Write outside the\n project root: /Users/…/elsewhere/foo.txt\\nAllow it?"', ctx:"WorkMode", note:"breezing を止めていた本体。WorkMode が立つと skip する。実測 1,099 件の停止のうち最多。"},
+  {id:"R04b", name:"R04 — 自分の記憶ディレクトリ", cls:"live", probe:'Write: ~/.claude/projects/<slug>/memory/n.md', out:"pass", raw:'（出力なし = 無言で許可）', ctx:"—", note:"Phase 132.1 の修正が効いている。ただしこれはこのリポジトリのバイナリのみ。marketplace の 8/9 バイナリでは ask のまま。"},
+  {id:"R05", name:"破壊的な削除", cls:"live", probe:'Bash: rm -rf /Users/…/elsewhere/dir', out:"deny", raw:'"permissionDecision":"deny"\n"reason":"RUNTIME_FLOOR:worktree-escape: runtime\n action hard floor: destructive …"', ctx:"WorkMode", note:"R05 の確認（ask）は観測できなかった。runtime floor が先に拒否するため。WorkMode を立てても floor は解除されない。"},
+  {id:"R06", name:"強制 push の禁止", cls:"live", probe:'Bash: git push --force origin topic', out:"deny", raw:'"permissionDecision":"deny"\n"reason":"git push --force is not allowed.\n History-destroying operations are for…"', ctx:"—", note:"履歴破壊は拒否。期待どおり。"},
+  {id:"R07", name:"codex モードでの直接書き込み禁止", cls:"dead", probe:'Write: src/x.ts', out:"dead", raw:'（出力なし）\n※ CodexMode が false のため早期 return', ctx:"CodexMode", note:"起動不能。CodexMode を立てる仕組みが env・SQLite とも存在しない（repo 全域を検索して 0 件）。ルール自体は正しく書かれている。"},
+  {id:"R08", name:"レビュー担当の書き込み禁止", cls:"dead", probe:'Write: src/y.ts', out:"dead", raw:'（出力なし）\n※ BreezingRole != "reviewer" で早期 return', ctx:"BreezingRole", note:"起動不能。go/internal/breezing に role という概念自体がない。breezing のレビュー担当が実装に手を出せる状態で、機械的な歯止めが効いていない。今回いちばん実害に近い。"},
+  {id:"R09", name:"秘密ファイル読み取りの警告", cls:"live", probe:'Read: .env', out:"warn", raw:'"permissionDecision":"allow"\n"additionalContext":"Warning: reading a file that\n may contain sensitive data: …/.env"', ctx:"—", note:"Read ツール経由は警告のみで通る。Bash 経由は runtime floor が拒否する（別項）。"},
+  {id:"R10", name:"git の検証バイパス禁止", cls:"live", probe:'Bash: git commit --no-verify -m x', out:"deny", raw:'"permissionDecision":"deny"\n"reason":"--no-verify / --no-gpg-sign is not\n allowed. Do not bypass hooks or signatures"', ctx:"—", note:"フックや署名の迂回を拒否。期待どおり。"},
+  {id:"R11", name:"保護ブランチの reset --hard", cls:"live", probe:'Bash: git reset --hard origin/main', out:"deny", raw:'"permissionDecision":"deny"\n"reason":"git reset --hard on a protected branch\n is not allowed. Use a method that does not\n destroy history."', ctx:"—", note:"保護ブランチ名を指した場合は拒否。期待どおり。"},
+  {id:"R11b", name:"R11 — HEAD~1 を指した場合", cls:"bydesign", probe:'Bash: git reset --hard HEAD~1', out:"pass", raw:'（出力なし = 無言で許可）', ctx:"—", note:"設計どおり。R11 はブランチ参照の形を見るため HEAD~1 では発火しない。止めているのは ~/.claude/settings.json の Bash(git reset --hard:*) deny（実在を確認）。層は 1 枚。"},
+  {id:"R12", name:"main への直接 push", cls:"live", probe:'Bash: git push origin main', out:"ask", raw:'"permissionDecision":"ask"\n"permissionDecisionReason":"Direct push to\n main/master. Run it after user confirmation?"', ctx:"ProtectedBranchPushPolicy", note:"harness.toml の protectedBranchPush = \"ask\" が実際に効いていることの証拠。設定ファイル経由の供給が生きている実例。"},
+  {id:"R13", name:"重要ファイル変更の警告", cls:"live", probe:'Write: package.json / .github/workflows/*', out:"warn", raw:'"permissionDecision":"allow"\n"additionalContext":"Warning: detected a change\n to an important file: …/package.json"', ctx:"—", note:"対象は package.json / Dockerfile / docker-compose.yml / .github/workflows/* / schema.prisma / wrangler.toml / index.html の 7 種。tests/ は対象外。"},
+  {id:"R14", name:"src 変更にテストを要求", cls:"bydesign", probe:'Write: src/newfeature.ts', out:"pass", raw:'（出力なし = 無言で許可）', ctx:"TddEnforceLevel", note:"設定どおり。harness.toml が [tdd.enforce] level = \"off\" / enabled = false。意図的に無効化されている機能で、欠陥ではない。"},
+  {id:"R15", name:"秘密ファイルの staging 禁止", cls:"live", probe:'Bash: git add .env', out:"deny", raw:'"permissionDecision":"deny"\n"reason":"staging secret or credential file is\n not allowed: …/.env"', ctx:"—", note:"秘密ファイルの commit 前段階で拒否。期待どおり。"},
+  {id:"FLOOR", name:"runtime floor — 秘密の読み取り", cls:"live", probe:'Bash: cat /Users/…/other/.env', out:"deny", raw:'"permissionDecision":"deny"\n"reason":"RUNTIME_FLOOR:secret-read: runtime action\n hard floor: credential or secret …"', ctx:"—", note:"ルールより手前の hard floor。WorkMode でも解除されない。許可プレフィックス内（LocalWork / orca workspaces）は対象外。"}
+];
+const OUT = {
+  deny:{t:"拒否",c:"p-deny"}, ask:{t:"確認",c:"p-ask"}, warn:{t:"許可+警告",c:"p-warn"},
+  pass:{t:"無言で許可",c:"p-ok"}, dead:{t:"無反応",c:"p-dead"}
+};
+const list = document.getElementById("rulelist");
+const detail = document.getElementById("detail");
+let selected = "R08";
+
+function render(){
+  list.innerHTML = "";
+  RULES.forEach(r=>{
+    const b = document.createElement("button");
+    b.className = "rrow";
+    b.type = "button";
+    b.setAttribute("role","option");
+    b.dataset.cls = r.cls;
+    b.dataset.id = r.id;
+    b.setAttribute("aria-selected", String(r.id===selected));
+    const o = OUT[r.out];
+    b.innerHTML = '<code>'+r.id+'</code><span>'+r.name+'</span><span class="pill '+o.c+'">'+o.t+'</span>';
+    b.addEventListener("click", ()=>{ selected = r.id; render(); showDetail(); });
+    list.appendChild(b);
+  });
+  applyFilter();
+}
+function showDetail(){
+  const r = RULES.find(x=>x.id===selected);
+  const o = OUT[r.out];
+  detail.innerHTML =
+    '<h4>'+r.name+'</h4>'+
+    '<div class="sub">'+r.id+' &nbsp;·&nbsp; 判定: <span class="pill '+o.c+'">'+o.t+'</span></div>'+
+    '<div class="dfield"><b>投入した操作</b><p><code>'+r.probe.replace(/</g,"&lt;")+'</code></p></div>'+
+    '<div class="dfield"><b>返ってきた応答</b><pre class="codeblock">'+r.raw.replace(/</g,"&lt;")+'</pre></div>'+
+    '<div class="dfield"><b>依存する文脈項目</b><p><code>'+r.ctx+'</code></p></div>'+
+    '<div class="dfield"><b>読み取り</b><p>'+r.note+'</p></div>';
+}
+let filter = "all";
+function applyFilter(){
+  document.querySelectorAll(".rrow").forEach(el=>{
+    el.classList.toggle("dim", filter!=="all" && el.dataset.cls!==filter);
+  });
+}
+document.querySelectorAll(".chip").forEach(c=>{
+  c.addEventListener("click", ()=>{
+    filter = c.dataset.filter;
+    document.querySelectorAll(".chip").forEach(x=>x.setAttribute("aria-pressed", String(x===c)));
+    applyFilter();
+  });
+});
+render(); showDetail();
+</script>

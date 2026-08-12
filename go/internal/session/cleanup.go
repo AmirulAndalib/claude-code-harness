@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Chachamaru127/claude-code-harness/go/internal/orchestration"
+	"github.com/Chachamaru127/claude-code-harness/go/internal/state"
 )
 
 // CleanupHandler は SessionEnd フックハンドラ。
@@ -78,7 +79,32 @@ func (h *CleanupHandler) Handle(r io.Reader, w io.Writer) error {
 	// accumulator (idempotent with the TaskCompleted rollup). Record-only, fail-open.
 	orchestration.Run(resolveProjectRoot(inp.CWD), inp.SessionID)
 
+	// 132.7 DoD(d): セッション終了時に work/codex mode を解除する。
+	// 異常終了で SessionEnd が落ちても 24h TTL (SetWorkState) が背止めになる。
+	h.clearWorkState(resolveProjectRoot(inp.CWD), inp.SessionID)
+
 	return writeJSON(w, cleanupResponse{Continue: true, Message: "Session cleanup completed"})
+}
+
+// clearWorkState はこのセッションの work_states 行を無効化する (fail-open)。
+func (h *CleanupHandler) clearWorkState(projectRoot, sessionID string) {
+	if sessionID == "" || projectRoot == "" {
+		return
+	}
+	dbPath := state.ResolveStatePath(projectRoot)
+	if _, err := os.Stat(dbPath); err != nil {
+		return // DB 未作成なら何もしない (新規作成しない)
+	}
+	store, err := state.NewHarnessStore(dbPath)
+	if err != nil {
+		return
+	}
+	defer store.Close()
+	existing, err := store.GetWorkState(sessionID)
+	if err != nil || existing == nil {
+		return
+	}
+	_ = store.SetWorkState(sessionID, state.WorkStateOptions{})
 }
 
 // cleanupGlob はステートディレクトリ内の glob パターンにマッチするファイルを削除する。

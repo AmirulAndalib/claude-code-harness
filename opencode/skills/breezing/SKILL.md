@@ -24,6 +24,38 @@ operator が `/harness-plan` や `/harness-review` を個別に指示する必�
 `--reviewer-only` / `--no-commit` 等の既存フラグは、この pipeline の該当段だけを動かす per-run override として働く。
 低リスクの高速 run で Phase D を省きたい時は `--no-review-gate` を渡す（Phase B の per-task review は省かれない。省くのは run 全体 diff への統合レビューだけ）。
 
+### Work Mode Lifecycle (`bin/harness work-mode`)
+
+R04/R05 の確認 skip が読む `ctx.WorkMode` は、`HARNESS_WORK_MODE` / `ULTRAWORK_MODE` env
+（skill から設定できない）か SQLite `work_states` 行のどちらかで立つ。`bin/harness work-mode <on|off|status>`
+が後者を書く唯一の入口（`harness-work` の「Work Mode Lifecycle」節が正本）。
+
+- Lead は Plan gate に入る前（run 開始時）に `bin/harness work-mode on` を実行する。
+  `--codex` run では `bin/harness work-mode on --codex` を使う（R07 = Lead の直接
+  Write/Edit 禁止が同時に立つ）
+- Lead は run 終了時、**成功・失敗・中断の全経路**で `bin/harness work-mode off` を実行する
+  （backend が `claude` / `codex` / `cursor` のどれでも同じ規律。cursor fast path の
+  `session declare` / `--clear` と同じ「run 境界で必ず対で呼ぶ」形）
+- run 単位で 1 回のみ。task ごとに on/off しない
+- session ID が解決できない場合は非ゼロ終了 + 理由が stderr に出る（無言で成功しない）
+
+### Breezing run state (`breezing-active.json`) — guardrail の file producer
+
+Lead は run 開始時に `.claude/state/breezing-active.json` を書く。guardrail は
+このファイルを R07（codex mode）と R08（reviewer subagent 判定のスコープ）の
+file producer として読む（`go/internal/guardrail/breezing_state.go`）:
+
+```json
+{"impl_mode": "codex", "started_at": "<ISO8601>"}
+```
+
+- `impl_mode` は `--codex` なら `"codex"`、それ以外は `"claude"` / `"cursor"`
+- run 終了時（全経路）にこのファイルを削除する。残すと次の通常セッションでも
+  R07/R08 のスコープ判定が生き続ける
+- reviewer teammate（worktree spawn）には env `HARNESS_BREEZING_ROLE=reviewer` を
+  spawn コマンドの環境に付ける。セッション内 reviewer subagent は CC が付与する
+  `agent_type` で自動判定されるため追加作業は不要
+
 ## Narration Rules (UX Contract)
 
 敵は **冗長さ** であって進捗報告ではない。**起動時に実行計画を簡潔に明示してから実行を開始する**。見やすい進捗報告は歓迎する。冗長な繰り返し・中身のない前置きだけを禁ずる。
@@ -234,12 +266,14 @@ cursor backend は Worker agent spawn / self_review 5 件ゲート / sprint-cont
 #### 既定 flow（cursor backend）
 
 1. **banner + 実行計画** (`🚀 cursor / <model> / <branch> / <task>` + これから進める 2-4 step、合計 5 行以内、1 秒以内)
+   - run 全体で 1 回だけ、まだ実行していなければ `bin/harness work-mode on`（R04/R05 の確認 skip を有効化。詳細は「Work Mode Lifecycle」節）
 2. **1 bash で並列 pre-check**: `git branch --show-current` + `cat VERSION` + `Plans.md tail` + `cursor-agent --version`
 3. **1 bash で resolve**: `bash "${HARNESS_PLUGIN_ROOT}/scripts/resolve-impl-backend.sh"` + `bash "${HARNESS_PLUGIN_ROOT}/scripts/model-routing.sh" --host cursor --role worker --field model`
 4. **即 委譲**: `bash "${HARNESS_PLUGIN_ROOT}/scripts/cursor-companion.sh" task --write --workspace <wt> "<task>"`
    - 委譲開始時に `bin/harness session declare --task <task-id>` で共有 presence に作業宣言（他セッションから task 番号で逆引き可能になる）
 5. cursor 出力を Lead が diff レビュー → cherry-pick → Plans.md `cc:done [hash]` 更新
    - 更新後 `bin/harness session declare --clear` で presence の task 宣言を解除
+   - run 全体が終わる時（成功・失敗・中断いずれでも）は `bin/harness work-mode off` を忘れない
 
 #### Reviewer-only mode (`--cursor --reviewer-only`) — read = lean
 

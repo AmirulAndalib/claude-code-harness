@@ -615,6 +615,99 @@ func TestR04_WorkModeBypass(t *testing.T) {
 	}
 }
 
+func TestR04_AgentOwnMemoryDirectoryIsNotAsked(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := makeCtx("Write", map[string]interface{}{
+		"file_path": filepath.Join(home, ".claude", "projects", "some-slug", "memory", "note.md"),
+	})
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionApprove {
+		t.Errorf("expected approve for agent's own memory directory, got %s", result.Decision)
+	}
+}
+
+// TestR04_ClaudeSettingsKeepsProtectedPathWarning pins the FULL-CHAIN contract
+// for ~/.claude/settings.json: R02's protectedPathWarn entry in helpers.go
+// ("setup metadata") matches before R04 is reached and returns Approve
+// *carrying a warning*.
+//
+// Scope note: because R02 intercepts, this test does NOT exercise R04 for this
+// path and therefore cannot detect an over-broad IsAgentStatePath. That
+// property is pinned by TestR04_ClaudeSettingsAsksAtRuleLevel below, which
+// evaluates R04 in isolation, and by
+// shellscan.TestIsAgentStatePathRejectsBehaviorDirectories.
+func TestR04_ClaudeSettingsKeepsProtectedPathWarning(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := makeCtx("Write", map[string]interface{}{
+		"file_path": filepath.Join(home, ".claude", "settings.json"),
+	})
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionApprove {
+		t.Errorf("expected approve for ~/.claude/settings.json, got %s", result.Decision)
+	}
+	if !strings.Contains(result.SystemMessage, "setup metadata") {
+		t.Errorf("expected the protected-path warning to survive, got SystemMessage=%q", result.SystemMessage)
+	}
+}
+
+// TestR04_ClaudeSettingsAsksAtRuleLevel evaluates R04 in isolation, bypassing
+// R02's earlier protected-path match, so that it genuinely exercises the
+// IsAgentStatePath branch for a behavior-changing path under ~/.claude.
+//
+// This is the regression net for an over-broad allowlist: if IsAgentStatePath
+// were widened to cover ~/.claude generally, R04 would start approving
+// settings.json and this test would fail. The full-chain test above cannot
+// catch that, because R02 answers first either way.
+func TestR04_ClaudeSettingsAsksAtRuleLevel(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx := ruleIndex("R04:confirm-write-outside-project")
+	if idx < 0 {
+		t.Fatal("R04:confirm-write-outside-project not found in Rules")
+	}
+	for _, name := range []string{"settings.json", "settings.local.json"} {
+		t.Run(name, func(t *testing.T) {
+			ctx := makeCtx("Write", map[string]interface{}{
+				"file_path": filepath.Join(home, ".claude", name),
+			})
+			result := Rules[idx].Evaluate(ctx)
+			if result == nil {
+				t.Fatalf("expected R04 to return a decision for ~/.claude/%s, got nil (skipped)", name)
+			}
+			if result.Decision != hookproto.DecisionAsk {
+				t.Errorf("expected R04 to ask for ~/.claude/%s, got %s", name, result.Decision)
+			}
+		})
+	}
+}
+
+// TestR04_AgentMemoryIsSkippedAtRuleLevel is the positive counterpart: at the
+// rule level, the agent's own memory directory must be skipped (nil), not asked.
+func TestR04_AgentMemoryIsSkippedAtRuleLevel(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx := ruleIndex("R04:confirm-write-outside-project")
+	if idx < 0 {
+		t.Fatal("R04:confirm-write-outside-project not found in Rules")
+	}
+	ctx := makeCtx("Write", map[string]interface{}{
+		"file_path": filepath.Join(home, ".claude", "projects", "any-slug", "memory", "note.md"),
+	})
+	if result := Rules[idx].Evaluate(ctx); result != nil {
+		t.Errorf("expected R04 to skip the agent memory directory, got %s", result.Decision)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // R05: rm -rf confirmation
 // ---------------------------------------------------------------------------

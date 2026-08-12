@@ -369,6 +369,28 @@ host の fallback に限る。
 Parallel / Breezing ではタスクごとの worktree に書く。同じ worktree の
 `active-task.json` を複数タスクで共有しない。
 
+### Work Mode Lifecycle (`bin/harness work-mode`)
+
+R04（project root 外への書き込み）/ R05（危険な rm）の確認 skip は
+`ctx.WorkMode` に依存するが、これを立てる経路は 2 つとも実効しない状態だった:
+`HARNESS_WORK_MODE` / `ULTRAWORK_MODE` env は skill / hook から設定する手段がなく、
+`state.SetWorkState`（SQLite `work_states` 行）も呼び出し元が皆無だった。
+`bin/harness work-mode <on|off|status>` がこの SQLite 経路を書く唯一の入口になる。
+
+- Lead は **run 開始時**（Phase A 開始前、solo 実行では最初の実装アクション前）に
+  `bin/harness work-mode on` を実行する。`--codex` run では
+  `bin/harness work-mode on --codex`（R07 = Lead の直接 Write/Edit 禁止が同時に立つ）
+- Lead は **run 終了時**、成功・失敗・中断の全経路で `bin/harness work-mode off` を実行する。
+  `active-task.json` と同じ「終了時はどの経路でも後始末する」規律を適用する
+- run 単位（Phase A〜C を通じて 1 回）であり、`active-task.json` のようなタスクごとの
+  書き込みではない。子 worktree で個別に on/off しない
+- session ID の解決順は `--session-id` フラグ → `HARNESS_SESSION_ID` env
+  （SessionStart hook が CLAUDE_ENV_FILE 経由で export する実 session_id）→
+  `.claude/state/last-session-id.json`（鮮度 2 時間以内）。旧
+  `.claude/state/session.json` の内部 ID は guardrail が受け取る ID と一致しない
+  ため**受理されない**。解決できない場合 `work-mode` は非ゼロ終了し理由を
+  stderr に出す（無言で成功しない）
+
 ### Advisor Protocol（全モード共通）
 
 Advisor は「実装者」でも「レビュー担当」でもない。迷った時だけ、実行役が次の一歩を決めるための相談役として入る。

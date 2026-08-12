@@ -1345,6 +1345,22 @@ else
 fi
 
 echo ""
+echo "21. Config knob wiring (Phase 132.4)"
+echo "----------------------------------------"
+
+if bash "$PLUGIN_ROOT/scripts/ci/check-config-knob-wiring.sh" > /dev/null 2>&1; then
+    pass_test "HARNESS_*/ULTRAWORK_* の consumed knob は producer または registry を持ちます"
+else
+    fail_test "config knob wiring contract failed — 'bash scripts/ci/check-config-knob-wiring.sh' で詳細確認"
+fi
+
+if bash "$PLUGIN_ROOT/tests/test-config-knob-wiring.sh" > /dev/null 2>&1; then
+    pass_test "config knob wiring gate の契約テストが通ります (test-config-knob-wiring.sh)"
+else
+    fail_test "config knob wiring gate 契約テスト失敗 — 'bash tests/test-config-knob-wiring.sh' で詳細確認"
+fi
+
+echo ""
 echo "=========================================="
 echo "テスト結果サマリー"
 echo "=========================================="

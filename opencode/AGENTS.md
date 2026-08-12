@@ -111,19 +111,26 @@ Details: [docs/CLAUDE-commands.md](docs/CLAUDE-commands.md)
 
 ## Permission Boundaries
 
-以下は settings.json の deny/ask + ガードレールエンジン (R01-R13) による**多層防御**。
+以下は settings.json の deny/ask とガードレールエンジン (R01-R15) の組み合わせ。
+**層の役割は非対称**であることに注意 — deny 相当の遮断は operator の settings
+(user scope `~/.claude/settings.json` 等) の permissions 層が担い、ガードレール層は
+ルールごとに deny / ask / 警告つき許可のいずれかを返す (2026-08-11 実測で確認)。
+「両層が同じ操作を deny する二重防御」ではない行が多い。
 
-| Rule | 防御層 | 理由 |
-|------|--------|------|
-| `.claude-plugin/settings*`, `.claude/settings*` | deny | 自己書き換え防止 |
-| `.eslintrc*`, `eslint.config.*`, `biome.json`, `tsconfig*.json` | deny | 品質基準の保護 |
-| `.github/workflows/*` | deny | CI パイプラインの保護 |
-| `git push --force` | ask + R06 deny | 不可逆操作の防止 |
-| `git push origin main/master` | R12 ask（設定で deny / allow 可） | protected branch 保護 |
-| `git reset --hard` | ask + R11 deny | 不可逆操作の防止 |
-| `mcp__codex__*` | deny | Codex MCP 直接使用の防止 |
+| Rule | permissions 層 | ガードレール層 (実測) | 理由 |
+|------|--------------|--------------------|------|
+| `.claude-plugin/settings*`, `.claude/settings*` | deny | R02/R03: **警告つき許可** | 自己書き換え防止 (遮断は permissions 層のみ) |
+| `.eslintrc*`, `eslint.config.*`, `biome.json`, `tsconfig*.json` | deny | 対象外 | 品質基準の保護 |
+| `.github/workflows/*` | deny | R13: **警告つき許可** | CI パイプラインの保護 (遮断は permissions 層のみ) |
+| `git push --force` | deny | R06: deny | 不可逆操作の防止 (真の二重防御) |
+| `git push origin main/master` | — | R12: ask（設定で deny / allow 可） | protected branch 保護 |
+| `git reset --hard` | deny | R11: deny (**保護ブランチ参照時のみ**。`HEAD~1` 等は素通り) | 不可逆操作の防止 |
+| `git add <secret file>` | — | R15: deny | 秘密ファイルの staging 防止 |
+| `mcp__codex__*` | deny | 対象外 | Codex MCP 直接使用の防止 |
 
 変更が必要な場合はユーザーに手動操作を依頼すること。
+
+**防御層を追加・変更する前に必読**: [.claude/rules/defense-layer-blast-radius.md](.claude/rules/defense-layer-blast-radius.md) — 層ごとの強制力と影響範囲（`permissions` と hook は agent のみ / `sandbox` は OS が全プロセスに強制）、強制力が強い層ほど適用範囲を狭くする原則、追加前の 5 点チェック、`excludedCommands` がサブプロセスへ継承されない事実、user scope 昇格前の 1 プロジェクト検証。2026-08-10 に同型の事故を 2 回起こしたため codify。
 
 - Cursor 実装バックエンド利用時のルール: [skills/cursor-do/references/cursor-cli-only.md](skills/cursor-do/references/cursor-cli-only.md)
 
@@ -162,7 +169,7 @@ Details: [.claude/rules/test-quality.md](.claude/rules/test-quality.md) / [.clau
 Harness が目指す 3 層の野望 (土台 → てっぺん)。詳細は [spec.md](spec.md) (Purpose / Execution Backend Contract / Mode 1・Mode 2)。
 
 - **L1 判断専念**: AI が plan / 実装 / 比較 / 検証 evidence を準備し、operator (人間) は最終判断のみ行う。
-- **L2 ツール非依存 (tool-agnostic)**: 同一 Harness (R01-R13 + plan/work/review/release) が Claude / Codex / Cursor の「どれからでも」効く。1 つの policy engine が 3 host を native hook 経由で adjudicate する (複製でなく routing)。harness が駆動する向きと、host「から」使う向きの両方を対等にサポート。
+- **L2 ツール非依存 (tool-agnostic)**: 同一 Harness (R01-R15 + plan/work/review/release) が Claude / Codex / Cursor の「どれからでも」効く。1 つの policy engine が 3 host を native hook 経由で adjudicate する (複製でなく routing)。harness が駆動する向きと、host「から」使う向きの両方を対等にサポート。
 - **L3 協調 (collaboration, 将来の本丸)**: 複数ツールが同一プロジェクトを、人間をコピペ係にせず協調する。Mode 1 = 完全自律オーケストレーション (v1 は Lead=Claude 固定)、Mode 2 = 人間在席の peer co-drive (live notice messaging)。フル peer-Lead 協調は段階導入。
 
 ## Codex / Cursor hook 誤解防止
@@ -171,7 +178,7 @@ Codex / Cursor の hook について繰り返し起きた誤解を固定する�
 
 - **FACT-1 (generated, not inline)**: Codex / Cursor は一級の hook ホスト。hook は config.toml に inline で書かれず、`harness gen` が生成する `.codex/hooks.json` / `.cursor/hooks.json` (gitignore された build artifact) に入る。すべて `bin/harness hook pre-tool --host <h>` を呼ぶ。
 - **FACT-2 (no inline != no hooks)**: 「config.toml に inline hooks が無い」は「config の中に書かない」の意味であって「hook が無い」ではない。この 2 つを混同しない。
-- **FACT-3 (enforcement wired / delivery wired)**: hook は 2 層。(a) enforcement (PreToolUse → R01-R13 policy engine) は 3 host 対称に配線済みで `harness gen` が生成する。(b) Mode 2 delivery (inbox-check / monitor 受信) も生成配線済み — `GenerateDeliveryHooksJSON` は Phase 105.9 [b82143fe] で `harness gen` に接続され、生成される Codex/Cursor hooks.json に inbox-check (turn 境界 delivery) が入る。identity は Phase 121.2 で runtime env 解決 (`inbox check --from-env`、`{{TEAM}}`/`{{AGENT}}` placeholder は撤去)。Claude host の Stop 配線は Phase 121.3 で tracked `hooks/hooks.json` + `.claude-plugin/hooks.json` に追加 (env 展開 + stdin session_id fallback)。live monitor は opt-in で既定 OFF。
+- **FACT-3 (enforcement wired / delivery wired)**: hook は 2 層。(a) enforcement (PreToolUse → R01-R15 policy engine) は 3 host 対称に配線済みで `harness gen` が生成する。(b) Mode 2 delivery (inbox-check / monitor 受信) も生成配線済み — `GenerateDeliveryHooksJSON` は Phase 105.9 [b82143fe] で `harness gen` に接続され、生成される Codex/Cursor hooks.json に inbox-check (turn 境界 delivery) が入る。identity は Phase 121.2 で runtime env 解決 (`inbox check --from-env`、`{{TEAM}}`/`{{AGENT}}` placeholder は撤去)。Claude host の Stop 配線は Phase 121.3 で tracked `hooks/hooks.json` + `.claude-plugin/hooks.json` に追加 (env 展開 + stdin session_id fallback)。live monitor は opt-in で既定 OFF。
 - **FACT-4 (materialize して確認)**: あるホストが capability を欠くと結論する前に、必ず `harness gen` 出力を実際に materialize して中身を確認する。config コメントだけで「無い」と断定しない。not_observed != absent。
 
 <!-- harness-integrity: last-audit=2026-05-18 -->

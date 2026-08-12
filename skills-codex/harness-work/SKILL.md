@@ -605,6 +605,15 @@ for task in execution_order:
     print("📊 Progress: Task {completed}/{total} 完了 — {task.内容}")
 ```
 
+### Work Mode Lifecycle (`bin/harness work-mode`)
+
+Claude Code 版と同一の契約（正本: `skills/harness-work/SKILL.md` の同名節）。
+R04/R05 の確認 skip が読む `ctx.WorkMode` は SQLite `work_states` 行でのみ立てられる
+（`HARNESS_WORK_MODE` / `ULTRAWORK_MODE` env は skill から設定できない）。
+Lead は Phase A 開始前（solo 実行では最初の実装アクション前）に `bin/harness work-mode on` を実行し、
+run 終了時は**成功・失敗・中断の全経路**で `bin/harness work-mode off` を実行する。run 単位で 1 回のみ。
+session ID が解決できない場合、`work-mode` は非ゼロ終了し理由を stderr に出す。
+
 ### Advisor Protocol（全モード共通）
 
 Advisor は「実装者」でも「レビュー担当」でもない。
