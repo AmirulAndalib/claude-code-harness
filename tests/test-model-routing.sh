@@ -272,32 +272,83 @@ echo "OK"
 # 独立レビューで指摘された。当時 docs と SSOT の一致を検査する仕組みは
 # 皆無で、修正漏れは grep の打ち切り次第で見逃せた。
 #
-# 検査対象は docs の**表の行** (先頭が `|`) に現れる grok モデル ID のみ。
-# 訂正注記や履歴の記述は散文なので自然に除外される。
-POLICY_DOC="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/docs/model-routing-policy.md"
-if [ -f "${POLICY_DOC}" ]; then
-  # router が出しうる grok モデル ID の集合を SSOT から機械的に作る
-  router_grok_ids=""
-  for tier in lite standard deep advisor review release long-context; do
-    router_grok_ids="${router_grok_ids} $(bash "${ROUTER}" --host grok --tier "${tier}" --field model)"
-  done
+# 初版のゲートは (i) docs/model-routing-policy.md だけを走査し、
+# (ii) 「router が出す ID の集合に属するか」しか見ていなかったため、
+# 敵対的再検証で 2 つの回避が実証された:
+#   A. 別の doc (docs/research/grok-adapter-candidate.md) に悪い ID を書く
+#   B. 実在するが tier の対応が誤った ID を行に入れ替える
+# 両方を塞ぐため、(1) 走査対象を doc 集合へ拡張し、(2) tier 名を含む行は
+# その tier で router が返す ID と一致することまで検証する。
+ROOT_FOR_DOCS="${ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+GROK_TIERS="lite standard deep advisor review release long-context"
 
-  doc_grok_ids="$(grep '^|' "${POLICY_DOC}" | grep -o 'grok-[A-Za-z0-9._-]*' | sort -u)"
-  [ -n "${doc_grok_ids}" ] || {
-    echo "docs/model-routing-policy.md から grok の pin を 1 つも抽出できなかった (抽出条件が壊れている)"
-    exit 1
-  }
+# router が出しうる grok モデル ID の集合を SSOT から機械的に作る
+router_grok_ids=""
+for tier in ${GROK_TIERS}; do
+  router_grok_ids="${router_grok_ids} $(bash "${ROUTER}" --host grok --tier "${tier}" --field model)"
+done
 
+# 走査対象の doc 集合。grok の pin を表に持つ doc を足したらここに追加する。
+scanned_any_doc=0
+for doc in \
+  "${ROOT_FOR_DOCS}/docs/model-routing-policy.md" \
+  "${ROOT_FOR_DOCS}/docs/research/grok-adapter-candidate.md" \
+; do
+  [ -f "${doc}" ] || continue
+
+  doc_grok_ids="$(grep '^|' "${doc}" | grep -oE 'grok-([0-9]|composer)[A-Za-z0-9._-]*' | sort -u | tr '\n' ' ' || true)"
+  [ -n "${doc_grok_ids}" ] || continue
+  scanned_any_doc=1
+
+  # (1) 実在検査: 表に、記録済みカタログに無い grok ID が残っていないか。
+  #     基準は router の出力集合ではなく **カタログ全体** (grok_known_ids)。
+  #     カタログ一覧を載せる doc (grok-adapter-candidate.md) は、router が
+  #     意図的に使わない ID (multi-agent 等) を含むのが正しいため。
+  #     存在しない ID (grok-4.5 等) はどの doc にあってもここで落ちる。
   for id in ${doc_grok_ids}; do
-    case " ${router_grok_ids} " in
+    case " ${grok_known_ids} " in
       *" ${id} "*) ;;
       *)
-        echo "docs/model-routing-policy.md の表に、router が出さない grok pin が残っている: ${id}"
-        echo "  router が出す ID:${router_grok_ids}"
+        echo "${doc#${ROOT_FOR_DOCS}/} の表に、カタログに存在しない grok ID が残っている: ${id}"
+        echo "  カタログ: ${grok_known_ids}"
         exit 1
         ;;
     esac
   done
-fi
+
+  # (2) 行対応検査: 先頭セルが tier 名の行は、その tier の実際の ID と一致すること
+  #     (実在するが tier の対応が誤った ID を弾く)
+  while IFS= read -r line; do
+    row_tier="$(printf '%s' "${line}" | sed -n 's/^| *`\([a-z-]*\)` *|.*/\1/p')"
+    [ -n "${row_tier}" ] || continue
+    case " ${GROK_TIERS} " in *" ${row_tier} "*) ;; *) continue ;; esac
+
+    # 改行区切りのままだと後続の case マッチ (前後空白必須) が外れるため空白へ正規化する
+    row_ids="$(printf '%s' "${line}" | grep -oE 'grok-([0-9]|composer)[A-Za-z0-9._-]*' | sort -u | tr '\n' ' ' || true)"
+    [ -n "${row_ids}" ] || continue
+    expected="$(bash "${ROUTER}" --host grok --tier "${row_tier}" --field model)"
+    # 判定は「その tier の正解 ID が行に現れること」。表ごとに grok 列の位置が
+    # 違う (tier 表は 2 列目、Role Defaults 表は 5 列目) ため列位置に依存させず、
+    # かつ備考セルが別の実在 ID に言及していても誤検知しない形にする。
+    # これで「実在するが tier 対応が誤った ID への差し替え」は正解 ID が行から
+    # 消えるため検出される。
+    # 既知の限界: 正解 ID が備考セルにだけ現れ、モデルセルが誤っている場合は
+    # 検出できない。列位置に依存しない代償として受け入れる。
+    case " ${row_ids} " in
+      *" ${expected} "*) ;;
+      *)
+        echo "${doc#${ROOT_FOR_DOCS}/} の tier '${row_tier}' 行に、その tier の正解 grok pin が無い"
+        echo "  doc の行に現れる ID: ${row_ids}"
+        echo "  router が返す ID   : ${expected}"
+        exit 1
+        ;;
+    esac
+  done < <(grep '^|' "${doc}")
+done
+
+[ "${scanned_any_doc}" = "1" ] || {
+  echo "grok の pin を持つ doc を 1 つも走査できなかった (抽出条件が壊れている)"
+  exit 1
+}
 
 echo "OK (docs<->SSOT grok pins consistent)"

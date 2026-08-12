@@ -103,7 +103,7 @@ Change history for claude-code-harness.
 
 **今後**: 実カタログへ更新しました。`lite` = `grok-3-mini` (grok で `reasoning_effort` を受け付ける唯一のモデル、値は `low`/`high` のみ)、`standard` = `grok-4.20-non-reasoning`、`deep`/`advisor`/`review`/`release` = `grok-4.3` (DEFAULT_MODEL・flagship reasoning・1M ctx)、`long-context` = `grok-4.20-0309-reasoning` (2M ctx)。`grok-4.20-multi-agent-0309` は `responsesOnly` かつ `supportsClientTools:false` のため、tool を使う harness role からは除外しています。effort も grok 自身の語彙 (`low`/`high`) 内に収めました (旧 `medium` は grok が受け付けない値)。回帰網として「全 tier が実在 ID のみを返す」「effort が grok の語彙内」の 2 検査を追加しています。`hosts.toml` と docs の 3 層すべてに降ろしました。
 
-初版では同一ファイル内の 2 つ目の表 (Harness Role Defaults) の advisor / release 行だけ直し漏れ、独立レビューで指摘されました。根因は **docs と正本 (`scripts/model-routing.sh`) の一致を機械検査する仕組みが無かった**ことです。docs の表の行に現れる grok pin が router の出力集合に含まれることを検証するゲートを追加し、欠陥を再導入する変異検査で検知を確認しました。
+初版では同一ファイル内の 2 つ目の表 (Harness Role Defaults) の advisor / release 行だけ直し漏れ、独立レビューで指摘されました。根因は **docs と正本 (`scripts/model-routing.sh`) の一致を機械検査する仕組みが無かった**ことです。docs の表の行に現れる grok pin を検証するゲートを追加しました。初版のゲートは敵対的再検証で 2 通りの回避が実証されたため強化しています: (i) 走査対象が 1 ファイルのみだった → grok の表を持つ doc 集合へ拡張、(ii) ID 集合への所属しか見ていなかった → tier 名の行はその tier の正解 ID が現れることまで検証。実在検査の基準は router の出力ではなく**記録済みカタログ**にしてあります (カタログ一覧を載せる doc は router が使わない ID を含むのが正しいため)。3 通りの回避シナリオを再現する変異検査で、すべて検知することを確認しました。
 
 なお gpt-5.6 の effort `max` は Codex CLI の config.toml での受理が未確証のため、`xhigh` 維持で変更していません。
 
