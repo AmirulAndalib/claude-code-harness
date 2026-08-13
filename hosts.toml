@@ -32,21 +32,63 @@ model      = "default"
 delivery_strategy = "turn"
 delivery_event_turn = "stop"
 
-# Grok: the runtime codec/floor adapter exists, but native lifecycle-hook
-# generation remains deferred. Admission-test evidence (2026-08-11, source
-# inspection of grok-cli v1.1.7 src/hooks/{types,config,executor}.ts):
-#   - grok-cli HAS a full hook contract (PreToolUse/PostToolUse/SessionStart/
-#     SessionEnd/Stop/Subagent*/Task*/PreCompact/PostCompact) structurally
-#     close to Claude Code's.
-#   - BUT hooks load ONLY from ~/.grok/user-settings.json. Project-level
-#     .grok/settings.json hooks are intentionally refused (repo-committed
-#     hook files are treated as an injection vector by grok-cli itself).
-# Consequence: the project-committed hook_path below CANNOT work as-is.
-# Promotion paths: (a) generate the hook block into the USER-level
-# ~/.grok/user-settings.json via scripts/setup-grok.sh, or (b) use grok only
-# as an execution backend (`grok -p ... --format json`, cursor-do style)
-# where CCH-side containment (worktree + Lead review + cherry-pick) applies.
-# Do not infer a project-native-hook claim from this descriptor.
+# Grok: the runtime codec/floor adapter exists (bin/harness hook pre-tool
+# --host grok, wired in go/internal/hookcodec — DenyOutput emits a
+# byte-identical Claude PreToolUse deny envelope for host=grok), but native
+# lifecycle-hook FILE generation via `harness gen` remains deferred (see
+# go/internal/hostgen/hostgen.go: GenerateHooksJSON has no `case "grok"`
+# branch yet; flipping hook_generation away from "deferred" without that
+# branch fails closed with "unknown host").
+#
+# CORRECTION (2026-08-13, re-measured against the CLI actually installed on
+# this machine: `grok 0.2.118 (1e1687c1cf6a) [stable]`, "Grok Build TUI", the
+# Rust binary at ~/.local/bin/grok -> ~/.grok/bin/grok):
+#   The 2026-08-11 evidence below this line previously cited "grok-cli
+#   v1.1.7 src/hooks/{types,config,executor}.ts" — that is a DIFFERENT,
+#   unrelated TypeScript project at a developer-local checkout path, not the
+#   product this repo integrates with. Its "project hooks refused" claim does
+#   NOT apply to the real installed CLI. Corrected, primary-source facts:
+#   - `~/.grok/docs/user-guide/10-hooks.md` (bundled CLI docs, not this
+#     repo's docs) states project-level hooks ARE supported and merged from
+#     `<project>/.grok/hooks/*.json`, `<project>/.claude/settings.json`
+#     (Claude compat), `<project>/.cursor/hooks.json` (Cursor compat), and
+#     hooks bundled inside installed plugins — gated by a one-time
+#     folder-trust grant (`--trust` / `/hooks-trust`), the same gate used for
+#     MCP/LSP. This is the opposite of "intentionally refused".
+#   - Empirically confirmed via `grok inspect --json` (`externalCompat.cells`):
+#     `{vendor:"claude", surface:"hooks", enabled:true, source:"default"}` —
+#     the claude-compat hook surface is ON by default for this project.
+#   - Empirically confirmed via the same `hooks` array: grok actually
+#     discovered and loaded `hooks/hooks.json` files bundled inside FOUR
+#     other real Claude Code plugins (codex, security-guidance, vercel,
+#     agentforce-adlc) that are installed only under
+#     `~/.claude/plugins/{marketplaces,cache}/...` — i.e. the claude-compat
+#     hook loader is not theoretical, it is actively firing for other
+#     plugins in this exact environment.
+#   - The CCH package grok has installed itself
+#     (`~/.grok/installed-plugins/grok-f755b9c9`, built by `build_grok()` in
+#     scripts/build-host-plugin-dist.sh) shows `hooks: false` in
+#     `grok inspect --json` `.plugins[]` — NOT because grok refuses it, but
+#     because `build_grok()` never copies a `hooks/` directory into the grok
+#     dist (it copies skills/, scripts/, .grok/AGENTS.md, .grok-plugin/,
+#     hosts/registry.json only). This is a packaging gap in this repo, not a
+#     grok CLI limitation.
+#   - `bin/harness hook pre-tool --host grok` was probed directly with a
+#     Claude-shaped stdin payload (`{"session_id":...,"tool_name":"Bash",
+#     "tool_input":{"command":"git push --force origin main"},"cwd":...}`)
+#     and correctly denied (exit 2, byte-identical JSON to --host claude).
+#     A Read of a safe file returned exit 0. The wire contract already works;
+#     nothing in the policy engine blocks grok.
+#
+# Net effect: true native hook parity for grok is a well-scoped, LOW-RISK
+# follow-up (not a `~/.grok/user-settings.json` global mutation) — ship
+# `hooks/hooks.json` inside the grok dist (mirrors what codex/vercel/etc.
+# already do) + add a `grokDoc()` case to hostgen.go + flip
+# hook_generation + one-time operator `--trust` grant. That is real code
+# work deserving its own phase/tests/review, so it is intentionally NOT done
+# here. Until then, use grok only as an execution backend
+# (scripts/grok-companion.sh, cursor-do style) where CCH-side containment
+# (worktree + Lead review + cherry-pick) applies.
 [grok]
 hook_generation = "deferred"
 hook_event = "PreToolUse"

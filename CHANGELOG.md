@@ -6,6 +6,21 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Added
+
+- **Grok execution backend** (`scripts/grok-companion.sh`): headless delegation via `grok -p ... --output-format json`, modelled on `cursor-companion.sh` (same exit-code taxonomy, read-only default, worktree fingerprint gate, secret masking). Binary absent は not-configured (exit 3) で degrade する。
+- **Repair-loop state externalisation** (`scripts/repair-loop-state.sh` + `templates/schemas/repair-loop.v1.json`): review→fix→re-review ループの iteration / verdict / findings を `.claude/state/repair-loop/<task>.json` へ外部化し、`MAX_REVIEWS` 超過を `check` の終了コードで機械判定する。会話内の自己申告カウンタを置き換える。
+- **Blind judge** (`skills/harness-review/references/blind-judge.md`, opt-in `--blind-judge`): rubric を見せない第二審。外部向け UI コピー / docs / cognitive-load HTML のみが対象で、コード・テスト・設定・スキーマは対象外。rubric verdict との乖離は advisory finding として出すだけで、verdict を書き換えない。
+
+### Fixed
+
+- **Cursor CLI binary rename への追随**: 公式 docs が全例を `agent` 表記に統一し `cursor-agent` を legacy alias とした変更に合わせ、`agent` → `cursor-agent` の順で probe するようにした。`agent` は汎用名のため、symlink 解決後の実パス「成分」が厳密に `cursor-agent` である場合だけ採用する identity check を併設（判定のために未知のバイナリを実行しない）。適用箇所は `cursor-companion.sh` / `orchestration-scorecard.sh` / `release-preflight-host-smoke.sh` / `cursor-do` / `cursor-setup` の 5 系統。
+- **grok host descriptor の evidence 訂正** (`hosts.toml`): 「project 級 hook は拒否される」という記述は別系統の `grok-cli v1.1.7` (TypeScript) を根拠にしていた。実機の grok 0.2.118 は claude 互換で hook を読み、`bin/harness hook pre-tool --host grok` は `--host claude` と byte 一致の判定を返す。実際に欠けていたのは CCH 側の配布（`build_grok()` が `hooks/` を同梱しない）だったことを記録した。`hook_generation = "deferred"` は据え置き。
+
+### Documentation
+
+- **CC CLI 新機能の一次ソース検証** (`docs/CLAUDE-feature-table.md`): raw CHANGELOG からの逐語引用で 4 件を確証。subagent 同時実行キャップ (既定 20 / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, 2.1.217)、nested spawn 深さ (既定 3 / `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`, 2.1.219)、`sandbox.network.strictAllowlist` (2.1.219)、sandbox credential-masking (2.1.224)。credential-masking は **macOS では `deny` にフォールバック**するため、`denyRead` 回避策の置き換えは提案に留め未採用。
+
 ## [5.7.0] - 2026-08-12
 
 ### Fixed

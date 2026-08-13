@@ -88,6 +88,38 @@ bash scripts/model-routing.sh --host grok --role worker --format json
 grok plugin validate /tmp/cch-grok-dist
 ```
 
+## Hooks Correction (2026-08-13, Phase 133.2)
+
+`hosts.toml`'s `[grok]` descriptor previously cited "grok-cli v1.1.7
+src/hooks/{types,config,executor}.ts" as evidence that project-level hooks
+are refused. That source is a different, unrelated TypeScript project — not
+the CLI this repo integrates with. Re-measured directly against the
+installed CLI (`grok 0.2.118`, "Grok Build TUI", Rust):
+
+- `~/.grok/docs/user-guide/10-hooks.md` (bundled CLI docs) documents project
+  hooks as supported: `<project>/.grok/hooks/*.json`,
+  `<project>/.claude/settings.json` (Claude compat), and hooks bundled
+  inside installed plugins are all merged, gated by a one-time folder-trust
+  grant. This is the opposite of "intentionally refused".
+- `grok inspect --json` on this repo shows `externalCompat.cells` with
+  `{vendor:"claude", surface:"hooks", enabled:true, source:"default"}`, and
+  its `hooks[]` array shows the claude-compat loader actively firing for
+  four other real Claude Code plugins (codex, security-guidance, vercel,
+  agentforce-adlc) installed only under `~/.claude/plugins/`.
+- `bin/harness hook pre-tool --host grok`, probed directly with a
+  Claude-shaped payload, denies `git push --force` with the byte-identical
+  envelope `--host claude` produces (exit 2). The policy engine side is
+  already correct for grok.
+- The gap is packaging, not CLI policy: the grok dist this repo builds
+  (`scripts/build-host-plugin-dist.sh` `build_grok()`) never copies a
+  `hooks/` directory into the package, so `grok inspect` correctly reports
+  `hooks: false` for the installed `claude-code-harness` plugin. Native hook
+  parity is therefore a scoped follow-up (ship `hooks/hooks.json` in the
+  grok dist + a `grokDoc()` case in `go/internal/hostgen/hostgen.go` + flip
+  `hook_generation`), not a blocked path.
+
+Full evidence and citations: `hosts.toml` `[grok]` comment block.
+
 ## Blocked Wording
 
 | Allowed | Blocked |

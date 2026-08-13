@@ -229,6 +229,7 @@ docs/research/*
 !docs/research/phase-77-review-closeout.md
 !docs/research/public-claims-audit-2026-07-10.md
 !docs/research/repo-health-ci-cd-gaps.md
+!docs/research/133-6-cc-cli-claim-verification.md
 docs/private/
 
 # 一時的な画像ファイル

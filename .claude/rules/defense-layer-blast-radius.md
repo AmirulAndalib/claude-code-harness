@@ -66,6 +66,20 @@ git push            ← git は excludedCommands に無い → サンドボッ�
 
 何も遮断しない設定（`autoMode.environment` のような判定役への情報提供）は、この手順を通さなくてよい。壊しようがないため。
 
+## PROPOSAL (未適用・提案のみ): credential-masking による denyRead 代替の検討候補 (133.6)
+
+CC CLI `2.1.221`/`2.1.224` で追加された sandbox credential file `mode: "mask"` (一次情報:
+raw CHANGELOG.md、`docs/research/133-6-cc-cli-claim-verification.md` で確認済み) は、
+上記 2 事故がいずれも「設定とシークレットが同居するディレクトリを丸ごと `denyRead`」した
+ことが原因である以上、値単位 masking という**目的に合った専用機構**である可能性がある。
+
+ただし CHANGELOG 原文に「macOS ではファイル masking は `deny` にフォールバックする」と
+明記されており、上記 2 事故はいずれも macOS 実行環境。**この提案の実効性は Linux/WSL
+限定の可能性が高く、macOS 運用がメインの本 repo では未検証のまま「追加前の必須チェック」
+のデフォルト選択肢には昇格させない。** 詳細な機能比較と未検証事項は
+`docs/sandbox-allowlist-recipe.md` の PROPOSAL セクションを参照。本ファイルの本文・
+チェックリストは今回変更していない (提案の記録のみ)。
+
 ## 関連
 
 - [`CLAUDE.md` — Permission Boundaries](../../CLAUDE.md)

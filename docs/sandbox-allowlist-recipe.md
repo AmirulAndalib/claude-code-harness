@@ -279,6 +279,45 @@ firecrawl scrape "https://techblog.zozo.com/" -o /tmp/test.md
 
 `"enabled": false` にする。または `--no-sandbox` flag で起動。ただし security 後退するため一時利用に限る。
 
+## PROPOSAL (未適用・提案のみ): credential-masking + strictAllowlist による denyRead 代替 (133.6)
+
+> **これは提案であり、live 設定への適用ではない。** `~/.claude/settings.json` は本タスクで
+> 一切変更していない。適用判断はユーザー (オーナー) が行う。
+
+`docs/research/133-6-cc-cli-claim-verification.md` で一次情報 (raw CHANGELOG.md) から確認した
+CC CLI の新機能 3 件は、`.claude/rules/defense-layer-blast-radius.md` が記録する 2 件の実事故
+(gh CLI 設定ディレクトリを denyRead で塞いで credential helper が死亡 / sandbox.enabled で SSH
+alias 解決が破壊) を構造的に防げる可能性がある。
+
+| CC バージョン | 機能 | 現行 `denyRead` との違い |
+|---|---|---|
+| `2.1.219` | `sandbox.network.strictAllowlist` | 未許可ホストを prompt 無しで deny。ファイル読み取りには関与しないため、gh/npm/ssh の設定ファイル読み取りは影響を受けない |
+| `2.1.221` | credential file `mode: "mask"` (Linux/WSL 限定、macOS は `deny` フォールバック) | ディレクトリ丸ごと `denyRead` するのではなく、sandboxed プロセスにはダミー値を見せ、egress 時のみ sandbox proxy が実値へ差し替える。**CLI 本体は自分の設定ファイルを正常に読める**まま、実際の secret だけが外部に出ない |
+| `2.1.224` | `extract` / `onExtractNoMatch` / `decode: "jwt"` + `maskClaims` / `awsPairs` + `sigv4` | 構造化 credential (JWT、AWS SigV4 署名) を値単位で masking。`network.tlsTerminate` が前提条件 |
+
+**なぜ既存事故を防げる可能性があるか**: 2 件の事故はいずれも「設定とシークレットが同じ
+ディレクトリに混在しているファイルを、ディレクトリ単位で `denyRead` した」ことが原因
+(`~/.config/gh` は gh CLI 本体が毎回読む設定と OAuth token が同居)。`mode: "mask"` は
+ディレクトリ単位ではなくファイル内の値単位で動作するため、CLI 本体からは「ファイルは読める、
+値だけダミー」という状態になり、gh CLI が起動時に設定を読めず死亡する経路を構造的に回避できる
+可能性がある。
+
+**未検証・要確認事項** (適用前に検証が必要、本タスクではここまで):
+
+1. macOS では credential file masking が `deny` にフォールバックする (2.1.221 changelog 原文)。
+   `defense-layer-blast-radius.md` の 2 事故はいずれも macOS 実行環境のため、**macOS では
+   この提案の効果が限定的** (denyRead と同じ deny 挙動になる可能性が高い) — Linux/WSL 環境限定の
+   改善である可能性が高い
+2. `network.tlsTerminate` 前提条件の運用コスト (TLS 中間者化が必要) は未調査
+3. `strictAllowlist` は network 側のみで、filesystem denyRead 問題そのものへの解決ではない
+   (別軸の改善)
+4. 実際の gh/npm/ssh 設定ファイルへの `mode: "mask"` 適用パターンの具体例は未検証
+
+**現行の推奨変更なし**: 上記の未検証事項 (特に 1) により、現時点で `denyRead` からの置き換えを
+推奨しない。macOS 中心の運用実態を踏まえ、Linux/WSL 環境での採用可否を先に検証してから
+`.claude/rules/defense-layer-blast-radius.md` の「追加前の必須チェック」に選択肢として
+追記することを次の一手として提案する。
+
 ## 関連
 
 - `templates/sandbox-settings.json.template` — harness の reference 設定。**本 recipe と 29 ドメイン allowlist + 9 ドメイン denylist が完全同期**。新規プロジェクト (= `sandbox` 既存無し = Case A) で一括流用するなら、template の `sandbox` セクション全体をコピーすると確実。**既存 sandbox がある場合 (Case B) は jq merge を使う**こと (template の丸ごとコピーは既存 `filesystem` / `failIfUnavailable` を破壊する)

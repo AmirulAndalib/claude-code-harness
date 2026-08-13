@@ -483,6 +483,12 @@ else
     fail_test "plan-preapproval の契約テストに失敗 — 'bash tests/test-plan-preapproval.sh' で詳細確認"
 fi
 
+if bash "$PLUGIN_ROOT/tests/test-repair-loop-state.sh" >/dev/null 2>&1; then
+    pass_test "repair-loop.v1 schema と MAX_REVIEWS 上限の機械判定が動作します (test-repair-loop-state.sh)"
+else
+    fail_test "repair-loop-state の契約テストに失敗 — 'bash tests/test-repair-loop-state.sh' で詳細確認"
+fi
+
 if bash "$PLUGIN_ROOT/tests/test-release-version-sync.sh" >/dev/null 2>&1; then
     pass_test "release version sync checker の contract fixture が通ります (test-release-version-sync.sh)"
 else
@@ -840,6 +846,18 @@ if bash "$PLUGIN_ROOT/tests/test-cursor-companion.sh" > /dev/null 2>&1; then
     pass_test "cursor-companion ラッパーの exit-code/読取既定/worktree guard 契約が維持されています (test-cursor-companion.sh)"
 else
     fail_test "cursor-companion ラッパーの契約テストに失敗 — 'bash tests/test-cursor-companion.sh' で詳細確認"
+fi
+
+if bash "$PLUGIN_ROOT/tests/test-cursor-agent-alias-resolution.sh" > /dev/null 2>&1; then
+    pass_test "cursor-agent/agent alias 解決の identity check・フォールバック契約が維持されています (test-cursor-agent-alias-resolution.sh)"
+else
+    fail_test "cursor-agent/agent alias 解決の契約テストに失敗 — 'bash tests/test-cursor-agent-alias-resolution.sh' で詳細確認"
+fi
+
+if bash "$PLUGIN_ROOT/tests/test-grok-companion.sh" > /dev/null 2>&1; then
+    pass_test "grok-companion ラッパーの exit-code/読取既定/worktree guard 契約が維持されています (test-grok-companion.sh)"
+else
+    fail_test "grok-companion ラッパーの契約テストに失敗 — 'bash tests/test-grok-companion.sh' で詳細確認"
 fi
 
 # Issue #193 §3: cursor 系 scripts が release tarball に同梱される前提を git-tracked + export-ignore 不在で保証する
