@@ -309,21 +309,54 @@ func isUnderProjectRoot(filePath, projectRoot string) bool {
 	return strings.HasPrefix(cleaned, root) || cleaned == root
 }
 
-func dangerousRemovalTargetsWithinProject(command string, targets []string, projectRoot string) bool {
-	if len(targets) == 0 || projectRoot == "" || !filepath.IsAbs(projectRoot) {
+// dangerousRemovalTargetsAreAgentOwned reports whether EVERY removal target of
+// command lies in space this agent owns and is expected to churn:
+//
+//   - inside the project root (the working tree, incl. a task worktree), or
+//   - inside THIS session's own scratch tree — a temp path carrying the session
+//     id as a component. Not the shared temp root, and not another session's
+//     scratch: /tmp holds other agents' and other tools' state too.
+//
+// Judgement is by TARGET, never by actor: a subagent gets no more latitude than
+// the Lead, and being "in a worktree" is not itself a licence to delete.
+//
+// Deliberately NOT included: shellscan.IsAgentStatePath. R04 lets the agent
+// WRITE into ~/.claude/projects/<slug>/memory and ~/.claude/plans without
+// confirmation, but a recursive delete there destroys accumulated knowledge
+// rather than churning scratch. Do not "simplify" this to R04 parity.
+//
+// Every pre-existing refusal is kept: unknown targets, glob/expansion/traversal
+// metacharacters, an indeterminate shell context, and targets whose resolved
+// path escapes the root all still fall through to confirmation.
+func dangerousRemovalTargetsAreAgentOwned(command string, targets []string, projectRoot, sessionID string) bool {
+	if len(targets) == 0 {
 		return false
 	}
 
-	resolvedRoot, err := filepath.EvalSymlinks(projectRoot)
-	if err != nil {
-		return false
-	}
-	rootInfo, err := os.Stat(resolvedRoot)
-	if err != nil || !rootInfo.IsDir() {
-		return false
+	// The project root is optional: a target may still qualify as ephemeral
+	// scratch when the root is unknown or unusable.
+	resolvedRoot := ""
+	if projectRoot != "" && filepath.IsAbs(projectRoot) {
+		if candidate, err := filepath.EvalSymlinks(projectRoot); err == nil {
+			if info, statErr := os.Stat(candidate); statErr == nil && info.IsDir() {
+				resolvedRoot = candidate
+			}
+		}
 	}
 
-	if shellscan.RemovalContextIndeterminate(command, targets) {
+	// 削除対象が変数経由で組み立てられている場合、同一コマンド内で一度だけ
+	// リテラル代入された変数に限って解決する。解決できないものはそのまま
+	// 残るので、下の `$` チェックが従来どおり確認へ落とす。
+	targets = shellscan.ExpandLiteralAssignments(command, targets)
+
+	// 判定不能スキャナは `$` を「対象が増えうる」印として扱う。展開を静的に
+	// 解決できた場合に限り、解析用に解決済みのコマンド文字列を渡す (実行は
+	// しない)。1 つでも解決できない参照が残れば元のまま = 従来どおり確認。
+	scanCommand := command
+	if resolvedCommand, resolved := shellscan.ResolveCommandForAnalysis(command); resolved {
+		scanCommand = resolvedCommand
+	}
+	if shellscan.RemovalContextIndeterminate(scanCommand, targets) {
 		return false
 	}
 	for _, target := range targets {
@@ -333,12 +366,24 @@ func dangerousRemovalTargetsWithinProject(command string, targets []string, proj
 
 		targetPath := target
 		if !filepath.IsAbs(targetPath) {
+			if resolvedRoot == "" {
+				return false
+			}
 			targetPath = filepath.Join(projectRoot, targetPath)
 		}
 		resolvedTarget, err := evalSymlinksAllowMissing(targetPath)
-		if err != nil || !pathWithinRoot(resolvedTarget, resolvedRoot) {
+		if err != nil {
 			return false
 		}
+		if resolvedRoot != "" && pathWithinRoot(resolvedTarget, resolvedRoot) {
+			continue
+		}
+		// Symlinks are already resolved above, so a link planted inside the
+		// scratchpad that points at $HOME cannot pass as session scratch.
+		if shellscan.IsWithinSessionScratch(resolvedTarget, sessionID) {
+			continue
+		}
+		return false
 	}
 
 	return true

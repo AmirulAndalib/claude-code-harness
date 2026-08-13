@@ -144,8 +144,8 @@ validate_findings() {
         and ((keys_unsorted - ["severity", "issue", "file"]) | length) == 0
         and has("severity") and has("issue")
         and ((.severity as $s | $sev | index($s)) != null)
-        and (.issue | type == "string")
-        and ((has("file") | not) or (.file | type == "string"))
+        and ((.issue | type) == "string") and ((.issue | length) >= 1)
+        and ((has("file") | not) or (.file == null) or ((.file | type) == "string"))
       )' >/dev/null 2>&1; then
     return 0
   fi

@@ -180,13 +180,25 @@ done <<'BADEOF'
 [{"severity":"major","issue":"x","note":"extra property"}]
 [{"severity":"major","issue":123}]
 ["not an object"]
+[{"severity":"minor","issue":""}]
 BADEOF
 BAD_PATH="${PROJECT}/.claude/state/repair-loop/${BAD_TASK}.json"
 [ "$(jq -r '.iterations | length' "${BAD_PATH}")" -eq 0 ] \
   || fail "(9) a schema-invalid findings payload was written into the state file"
-"${SCRIPT}" record "${PROJECT}" "${BAD_TASK}" REQUEST_CHANGES \
-  '[{"severity":"major","issue":"valid","file":"a.sh"}]' >/dev/null \
-  || fail "(9) a schema-valid findings payload was wrongly rejected"
+# 逆方向も検査する。過剰な拒否も欠陥であり、schema が許すものは通さねばならない。
+# 特に file: null は「多くの JSON シリアライザが未設定の任意フィールドに出す形」で、
+# schema は ["string","null"] を許可している。
+while IFS= read -r good_findings; do
+  [ -n "${good_findings}" ] || continue
+  "${SCRIPT}" record "${PROJECT}" "${BAD_TASK}" REQUEST_CHANGES "${good_findings}" >/dev/null \
+    || fail "(9) a schema-VALID findings payload was wrongly rejected: ${good_findings}"
+done <<'GOODEOF'
+[]
+[{"severity":"major","issue":"valid","file":"a.sh"}]
+[{"severity":"minor","issue":"file omitted"}]
+[{"severity":"recommendation","issue":"file is null","file":null}]
+[{"severity":"critical","issue":"日本語とバッククォート ` を含む"}]
+GOODEOF
 validate_against_schema "${BAD_PATH}" >/dev/null
 pass "record rejects findings that the schema would reject, and still accepts valid ones"
 
