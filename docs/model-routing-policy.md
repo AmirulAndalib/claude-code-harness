@@ -243,13 +243,13 @@ Notes:
 
 | Harness tier | Grok model (router default) | Effort label | Use cases |
 | --- | --- | --- | --- |
-| `lite` | `grok-3-mini` | `low` | read-only exploration, cheap fan-out. Grok カタログ中 `reasoning_effort` を受け付ける唯一のモデル (low\|high) |
-| `standard` | `grok-4.20-non-reasoning` | `low` | normal worker implementation ("Recommended non-reasoning model", 2M ctx) |
-| `deep` | `grok-4.3` | `high` | architecture, security, recovery |
-| `review` | `grok-4.3` | `high` | harness-review / reviewer path |
-| `advisor` | `grok-4.3` | `high` | advisor-request decisions |
-| `release` | `grok-4.3` | `high` | release preflight wording checks |
-| `long-context` | `grok-4.20-0309-reasoning` | `high` | large repo reads (2M ctx。`grok-4.3` の 1M より広い) |
+| `lite` | `grok-4.5` | `low` | read-only exploration, cheap fan-out |
+| `standard` | `grok-4.5` | `medium` | normal worker implementation |
+| `deep` | `grok-4.6` | `xhigh` | architecture, security, recovery (`xhigh` は grok-4.6 の既定 effort) |
+| `review` | `grok-4.6` | `xhigh` | harness-review / reviewer path |
+| `advisor` | `grok-4.6` | `xhigh` | advisor-request decisions |
+| `release` | `grok-4.6` | `high` | release preflight wording checks |
+| `long-context` | `grok-4.6` | `high` | large repo reads (500k ctx) |
 
 Adapter surfaces:
 
@@ -261,8 +261,8 @@ Notes:
 
 - Grok remains `candidate`; routing defaults are contract fixtures, not a
   public support claim.
-- Verified catalog (2026-08-12, grok-cli v1.1.7 `src/grok/models.ts` を直読): `grok-4.3` (DEFAULT_MODEL / flagship reasoning / 1M ctx)、`grok-4.20-0309-reasoning` (2M)、`grok-4.20-non-reasoning` (2M / 推奨 non-reasoning)、`grok-4.20-multi-agent-0309` (2M。`responsesOnly` かつ `supportsClientTools:false` のため tool 駆動の harness role には使えない)、`grok-3-mini` (131k / 低コスト / `supportsReasoningEffort`)。
-- **訂正 (2026-08-12)**: 従来ここに記載していた `grok-4.5` と `grok-composer-2.5-fast` は**カタログに存在しない ID** だった (後者は cursor の `composer-2.5-fast` の取り違えと見られる)。呼び出し時に失敗する pin が長期間残っていたため、tier 表を実カタログへ更新し、実在 ID 以外を弾く回帰テストを `tests/test-model-routing.sh` に追加した。
+- Verified catalog (2026-08-13, 実際にインストールされている `grok 0.2.118` が取得したアカウントカタログ): **`grok-4.6`** (既定 / frontier / 500k ctx / effort `xhigh`\|`high`\|`medium`\|`low`) と **`grok-4.5`** (500k ctx / effort `high`\|`medium`\|`low`) の **2 つのみ**。
+- **訂正 (2026-08-13)**: 2026-08-12 に記載した `grok-4.3` / `grok-4.20-*` / `grok-3-mini` は、`grok-cli` という**同名の別プロダクト** (TypeScript) のカタログだった。その前の `grok-composer-2.5-fast` と同様、実 CLI には存在しない ID で、呼び出し時に必ず失敗する。皮肉なことに、さらにその前の `grok-4.5` は実在した — 当時のコメントが「observed on CLI 0.2.93」= 実バイナリでの観測だったため。**capability もカタログも、実際に動く binary で確かめる** (CLAUDE.md FACT-4)。
 - Account catalogs may differ; treat missing models as residual risk, not a
   silent fallback in the router.
 - `HARNESS_BRAIN_MODEL` is claude-host only and never changes the Grok catalog.
@@ -271,13 +271,13 @@ Notes:
 
 | Harness surface | Claude default | Codex default | Cursor default | Grok default | Why |
 | --- | --- | --- | --- | --- | --- |
-| Interactive operator session | `opusplan`, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `medium` | `grok-4.20-non-reasoning`, `low` | strong default without forcing max spend |
-| `/harness-plan` | `opusplan` or Opus 5 for non-trivial planning | `gpt-5.6-sol`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.3`, `high` | planning quality affects all downstream work |
-| `worker` | Sonnet 5, `medium` to `high` | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `medium` | `grok-4.20-non-reasoning`, `low` | implementation benefits from iteration and tests |
-| `explorer` / read-only fan-out | Haiku 4.5, `low` | `gpt-5.4-mini`, `low` | `composer-2-fast`, `low` | `grok-3-mini`, `low` | cheap context isolation |
-| `reviewer` | Fable 5, `xhigh` (primary verdict tier) | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `xhigh` (fresh-context pre-review only; primary verdict on brain) | `grok-4.3`, `high` | review is where deeper reasoning pays |
-| `advisor` | Opus 5, `xhigh` (Fable 5 via `HARNESS_BRAIN_MODEL=fable`) | `gpt-5.6-sol`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.3`, `high` | blocked-loop decisions need high confidence |
-| `release` | Sonnet 5, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `high` | `grok-4.3`, `high` | procedural but public-facing |
+| Interactive operator session | `opusplan`, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `medium` | `grok-4.5`, `low` | strong default without forcing max spend |
+| `/harness-plan` | `opusplan` or Opus 5 for non-trivial planning | `gpt-5.6-sol`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.6`, `xhigh` | planning quality affects all downstream work |
+| `worker` | Sonnet 5, `medium` to `high` | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `medium` | `grok-4.5`, `medium` | implementation benefits from iteration and tests |
+| `explorer` / read-only fan-out | Haiku 4.5, `low` | `gpt-5.4-mini`, `low` | `composer-2-fast`, `low` | `grok-4.5`, `low` | cheap context isolation |
+| `reviewer` | Fable 5, `xhigh` (primary verdict tier) | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `xhigh` (fresh-context pre-review only; primary verdict on brain) | `grok-4.6`, `xhigh` | review is where deeper reasoning pays |
+| `advisor` | Opus 5, `xhigh` (Fable 5 via `HARNESS_BRAIN_MODEL=fable`) | `gpt-5.6-sol`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.6`, `xhigh` | blocked-loop decisions need high confidence |
+| `release` | Sonnet 5, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `high` | `grok-4.6`, `high` | procedural but public-facing |
 
 ## Non-Goals
 

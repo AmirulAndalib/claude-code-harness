@@ -41,7 +41,7 @@ Operator-local / CLI observation (Grok CLI `0.2.93`):
 | Plugin manifest validate | `grok plugin validate` accepts `.grok-plugin/plugin.json` packages with `skills: "./skills/"` | Shape only |
 | Isolated HOME install | `HOME=<tmp> grok plugin install <dist> --trust` writes `~/.grok/installed-plugins/` + registry | Depends on CLI |
 | Skill discovery in other project | `HOME=<tmp> grok inspect --json` from a temp cwd lists `harness-plan`, `harness-work`, `harness-review`, `breezing` with `source.type=plugin` | Single-environment proof |
-| Model IDs | 2026-08-12 に `src/grok/models.ts` を直読して確認: `grok-4.3` (DEFAULT) / `grok-4.20-0309-reasoning` / `grok-4.20-non-reasoning` / `grok-4.20-multi-agent-0309` / `grok-3-mini` | Account catalog may differ |
+| Model IDs | 実際にインストールされている `grok 0.2.118` のアカウントカタログ (2026-08-13 実測): **`grok-4.6` (既定) と `grok-4.5` の 2 つのみ** | 下の「カタログ訂正」を必ず読むこと |
 
 > **訂正 (2026-08-12)**: 従来この表に載せていた 2 つのモデル ID は、実カタログに存在しないものだった
 > (片方は cursor 側 composer の取り違えと見られる)。実在しない ID を表の行に残すと
@@ -128,3 +128,18 @@ Full evidence and citations: `hosts.toml` `[grok]` comment block.
 | setup-grok install / package smoke | Claude SessionStart parity |
 | skill discovery via inspect | PreToolUse deny parity |
 | model-routing host `grok` | Breezing multitask public support claim |
+
+## カタログ訂正 (2026-08-13)
+
+この文書は 2026-08-12 まで、`grok` のモデルカタログを `/Users/tachibanashuuta/LocalWork/Code/grok-cli` の `src/grok/models.ts` から読んで記録していた。**それは同名の別プロダクトだった。**
+
+- 記録していたもの (TypeScript 版 `grok-cli` v1.1.7): flagship 1 種 + 2M ctx 系 3 種 + budget 1 種
+- 実際に動く CLI (`grok 0.2.118`, "Grok Build TUI", Rust): **2 種のみ**。`grok-4.6` (既定 / 500k ctx / effort は xhigh・high・medium・low) と `grok-4.5` (500k ctx / effort は high・medium・low)
+
+つまり `scripts/model-routing.sh` に入っていた 5 つの pin は **1 つも実在せず**、grok へ委譲を始めた瞬間に全 tier が失敗する状態だった。さらにその前の世代の pin (`grok-composer-2.5-fast`) も同様に存在しない ID で、これは cursor の `composer-2.5-fast` の取り違えと見られる。
+
+皮肉なことに、2 世代前の `grok-4.5` は**実在した**。当時のコメントは `observed 2026-07-09 on CLI 0.2.93` — つまり実バイナリでの観測だった。source tree を読んで「訂正」したことで、正しい値が誤った値に置き換わっていた。
+
+この表の Model IDs 行には、当初から備考に `Account catalog may differ` と書いてあった。的中している。
+
+**教訓**: capability もカタログも、**実際に動く binary** で確かめる (CLAUDE.md FACT-4)。同名の source tree は根拠にならない。同じ取り違えが hook capability の記述 (Phase 133.2) にも波及していた。

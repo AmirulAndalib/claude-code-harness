@@ -14,6 +14,7 @@ Change history for claude-code-harness.
 
 ### Changed
 
+- **Grok のモデル pin を実カタログへ訂正**。`scripts/model-routing.sh` が pin していた 5 つの ID は **1 つも実在しなかった**。原因は 2 世代連続で「同名の別プロダクト」(TypeScript の `grok-cli`) を根拠にしたこと。実際に動く `grok 0.2.118` のアカウントカタログは **`grok-4.6`（既定 / 500k ctx / effort `xhigh`・`high`・`medium`・`low`）と `grok-4.5`（500k ctx / effort `high`・`medium`・`low`）の 2 つのみ**。tier 割当: `lite`/`standard` = `grok-4.5`、`deep`/`advisor`/`review` = `grok-4.6` (`xhigh`)、`release`/`long-context` = `grok-4.6` (`high`)。4 層（router / `hosts.toml` / policy doc / research doc）すべてへ降下。effort の回帰検査は平坦な許可リストから**モデル別**へ強化した（`grok-4.5` は `xhigh` を受け付けない）。
 - **削除確認 (R05) が対象で判断するようになった**。従来は「プロジェクト外の削除は一律確認」で、エージェント自身の scratchpad も対象だった (同じ場所への書き込みは R04 が無言で通すのに、削除だけ確認される非対称)。確認せず通すのは、プロジェクトルート配下、または **このセッション自身の** scratch (OS 一時領域の下で、パス成分にセッション ID を持つもの) だけを消す場合に限る。判断は対象のみで行い、サブエージェントかどうか・worktree の中かどうかでは変えない。
   - 引き続き確認する: 一時領域のルート自体 (`rm -rf /tmp`)、**他セッションの scratch**、scratchpad 内の symlink で外へ脱出する形、glob、二重代入・コマンド置換・空白を含む値・未定義参照で対象が確定しない形、`xargs` で stdin から対象が増える形、`~/.claude/projects/<slug>/memory` の再帰削除 (R04 は書き込みを通すが、削除は蓄積した知識の喪失なので別扱い)
   - 併せて 2 つの過剰保守を解除: 対象がすべて絶対パスならパイプ (`|`) は判定不能にしない (パイプ両側の削除対象は元々両方抽出できており、`xargs` 系は独立に検出される)。同一コマンド内で一度だけリテラル代入された変数は解決する (エージェントは `F="$S/x"` の形で対象を組み立てるため、解決しないと実質すべての削除が確認になる)
