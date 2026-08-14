@@ -145,6 +145,20 @@ argument-hint のどれにも一致しない自由文入力は `bash scripts/bre
 | `--no-review-gate` | Phase D（Integrated Review Gate）をスキップ。Phase B の per-task review は維持 | false |
 | `--auto-mode` | Harness 側の Auto Mode rollout を明示。CC 2.1.111 で不要になった `--enable-auto-mode` とは別物 | false |
 
+### `--parallel N` と CC 側の実キャップ（133.9、一次ソース確証済み）
+
+`--parallel N` は Harness 側の希望値であって、実際に同時に走る数は CC が決める。
+**CC は同時実行中の subagent を既定 20 に制限する**（`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`、2.1.217）。
+20 を超える N を渡しても超過分は待ち行列に入るだけで、エラーにはならない。
+つまり `--parallel 40` は「40 並列」ではなく「20 並列 + 待ち」になる。
+
+**ネストした spawn は既定で深さ 3 まで**（`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`、2.1.219 で 1 → 3 に緩和）。
+Lead（深さ 0）→ Worker / Reviewer（1）→ Worker が呼ぶ advisor 等（2）は収まる。
+Mode 1 の Producer → Sub-Lead → Composer も 3 段以内。
+これを超える階層を設計するときは、env で上げない限り**静かに spawn が拒否される**ことを前提にする。
+
+どちらも Harness 側は env を明示設定しない（CC の既定に従う）。変えたい場合は run の env で渡す。
+
 ## Natural Language Backend Triggers
 
 `composer` / `コンポーザー` / `Composer で` / `composer 2.5` / `composer モード` は、正式に `cursor backend` の trigger として扱う。

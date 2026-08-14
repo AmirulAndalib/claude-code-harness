@@ -34,11 +34,48 @@ delivery_event_turn = "stop"
 
 # Grok: the runtime codec/floor adapter exists (bin/harness hook pre-tool
 # --host grok, wired in go/internal/hookcodec — DenyOutput emits a
-# byte-identical Claude PreToolUse deny envelope for host=grok), but native
-# lifecycle-hook FILE generation via `harness gen` remains deferred (see
-# go/internal/hostgen/hostgen.go: GenerateHooksJSON has no `case "grok"`
-# branch yet; flipping hook_generation away from "deferred" without that
-# branch fails closed with "unknown host").
+# byte-identical Claude PreToolUse deny envelope for host=grok), and native
+# lifecycle-hook FILE generation is now wired (133.8).
+#
+# RESOLVED (2026-08-14, Phase 133.8, measured against `grok 1.0.3
+# (1a29d5bc12d4) [stable]` — note the version moved again from the 0.2.118
+# measured on 2026-08-13, so capability was re-measured rather than assumed):
+#   - `GenerateHooksJSON` now has a `case "grok"` (grokDoc, Claude document
+#     shape, command carries `--host grok`), so hook_generation is "generate".
+#   - `harness gen` writes `.grok/hooks/harness-pretool.json` (493 bytes:
+#     PreToolUse + the Stop delivery entry).
+#   - `grok inspect` picks it up: the Hooks count went 35 -> 36 (PreToolUse
+#     alone) -> 37 (after the Stop delivery entry was added), with two
+#     `command matcher=*  project` rows. **This refutes the 2026-08-11 claim
+#     below that project-level hooks are rejected** — that claim came from
+#     grok-cli (TypeScript), a different product from the Rust "Grok Build
+#     TUI" actually installed. Project-level hooks ARE read by 1.0.3.
+#   - Side finding: grok accepted `Stop` too, so the loader does not reject a
+#     whole file on the first event it does not recognize — which WEAKENS the
+#     27-event hypothesis recorded below as the cause of the plugin-level gap.
+#     Keep it as a candidate, not a conclusion.
+#
+# UNTESTED LINK (discovery != firing): the generated command is the RELATIVE
+# path `bin/harness hook pre-tool --host grok`. Whether grok's hook executor
+# resolves it — and with which working directory — has not been observed.
+# Claude needs the valid_root bootstrap wrapper for exactly this class of
+# problem. If firing turns out to fail, that wrapper (or an absolute path) is
+# the first thing to try; the discovery evidence above says nothing about it.
+#   - Folder trust is already granted (`grok inspect` → "Project trusted: yes"),
+#     so the one-time `--trust` step listed below is done.
+#   - `build_grok()` now copies `hooks/` into the dist (verified by
+#     materializing the dist: `hooks/hooks.json`, 27 events).
+#
+# STILL NOT OBSERVED: grok does not list `plugin: claude-code-harness` among
+# plugin-provided hooks, even though it discovers the plugin's 20 skills and
+# the installed cache already contains `hooks/hooks.json`. The dist change
+# cannot be verified end-to-end until the plugin is reinstalled from a dist
+# built after this change. A candidate cause worth testing then: CCH's
+# hooks.json declares 27 event types (TeammateIdle, WorktreeCreate,
+# InstructionsLoaded, StopFailure, ...) while every plugin grok does list
+# declares only events it knows (vercel: SessionStart/SessionEnd). If the
+# loader rejects a file on the first unknown event name, bundling alone will
+# not be enough. Do not record this as fixed until `grok inspect` lists it.
 #
 # CORRECTION (2026-08-13, re-measured against the CLI actually installed on
 # this machine: `grok 0.2.118 (1e1687c1cf6a) [stable]`, "Grok Build TUI", the
@@ -80,17 +117,19 @@ delivery_event_turn = "stop"
 #     A Read of a safe file returned exit 0. The wire contract already works;
 #     nothing in the policy engine blocks grok.
 #
-# Net effect: true native hook parity for grok is a well-scoped, LOW-RISK
-# follow-up (not a `~/.grok/user-settings.json` global mutation) — ship
-# `hooks/hooks.json` inside the grok dist (mirrors what codex/vercel/etc.
-# already do) + add a `grokDoc()` case to hostgen.go + flip
-# hook_generation + one-time operator `--trust` grant. That is real code
-# work deserving its own phase/tests/review, so it is intentionally NOT done
-# here. Until then, use grok only as an execution backend
-# (scripts/grok-companion.sh, cursor-do style) where CCH-side containment
-# (worktree + Lead review + cherry-pick) applies.
+# Net effect (updated 2026-08-14, Phase 133.8): the follow-up described above
+# is DONE for the project-level path — `grokDoc()` added, hook_generation
+# flipped, dist ships `hooks/`, folder trust already granted — and `grok
+# inspect` confirms the generated project hook is loaded. The plugin-level
+# path remains unconfirmed (see STILL NOT OBSERVED above).
+#
+# `~/.grok/user-settings.json` is still NOT written: mutating a user-scope
+# config mid-run is what defense-layer-blast-radius.md's staged-rollout rule
+# exists to prevent. Execution-backend use (scripts/grok-companion.sh,
+# cursor-do style, with worktree + Lead review + cherry-pick containment)
+# remains valid and is unaffected by this change.
 [grok]
-hook_generation = "deferred"
+hook_generation = "generate"
 hook_event = "PreToolUse"
 hook_path  = ".grok/hooks/harness-pretool.json"
 matcher    = "*"

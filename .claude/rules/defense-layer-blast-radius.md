@@ -80,6 +80,31 @@ raw CHANGELOG.md、`docs/research/133-6-cc-cli-claim-verification.md` で確認�
 `docs/sandbox-allowlist-recipe.md` の PROPOSAL セクションを参照。本ファイルの本文・
 チェックリストは今回変更していない (提案の記録のみ)。
 
+## hook payload が信頼根であること (133.12 で明記)
+
+ガードレールの緩和のうち 2 つは、hook payload の `session_id` を**そのまま信じる**ことで
+成り立っている。所有の暗号的な裏付けは無い。
+
+| 使い道 | 与える権限 | 実装 |
+|---|---|---|
+| work-mode の解決 | **R04 / R05 を丸ごと skip する** | `loadWorkStateFromDB(dbPath, input.SessionID)` |
+| 「自分の scratch」判定 | 一時領域内の当該 ID 配下だけ再帰削除を通す | `shellscan.IsWithinSessionScratch` |
+
+**より強い束縛 (署名・per-session secret) は入れない。** 理由は、`session_id` を偽装できる
+相手は上表の 1 行目を通じて**より大きな権限**を既に取れるため。後者だけを暗号的に縛っても
+床は上がらず、複雑さだけが増える。payload は work-mode / cwd / tool 名を含めて丸ごと
+信頼根であり、そこが破れる経路 (改竄された payload、侵害された host adapter) では
+ガードレール層全体の前提が崩れる。**この層は「信頼された runtime から来る宣言を前提に、
+誤操作と行き過ぎを止める」ものであって、敵対的な runtime に対する防御ではない。**
+
+弱い ID による横取りだけは別で、これは実際に塞いである。`SessionIDComponentPattern`
+(`^[A-Za-z0-9][A-Za-z0-9._-]{15,127}$`) が `.` や `a` や `tmp` のような短い/攻撃者が選べる
+成分を弾くため、無関係な一時ディレクトリを「自分の scratch」に見せかけることはできない。
+
+新しい緩和を `session_id` に紐付けるときは、上表に行を足し、与える権限が
+1 行目 (R04/R05 の skip) を超えないことを確認する。超えるなら、その緩和は payload の
+信頼だけでは正当化できない。
+
 ## 関連
 
 - [`CLAUDE.md` — Permission Boundaries](../../CLAUDE.md)

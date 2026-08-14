@@ -315,6 +315,18 @@ func removalContextIndeterminate(command string, relativeTarget bool, depth int)
 		rmDangerous, _ := dangerousRM(tokens)
 		segmentDangerous, _ := dangerousRemoval(segment, 0)
 		if segmentDangerous {
+			// Do NOT gate priorNonRemovalSegment on relativeTarget. An absolute
+			// target is not a stable target: a preceding segment can plant a
+			// symlink at one of its components, leaving the path spelled the
+			// same while it points somewhere else. That is the 133.10 breakout,
+			// and `TestR05_PrecedingSegmentCanCreateExternalSymlink` plus
+			// `preceding_segment_also_blocks_absolute_target_proof` pin it
+			// (measured 2026-08-14: relaxing this made both fail).
+			//
+			// The cost is that any leading command — `cd`, `echo`, `ls` — makes
+			// a recursive delete ask, which is how most command blocks start.
+			// The remedy is on the caller's side (issue the delete as its own
+			// tool call, or turn work-mode on), not a looser rule here.
 			if priorNonRemovalSegment || !dangerousCommandDirectlyInvoked(tokens) {
 				return true
 			}

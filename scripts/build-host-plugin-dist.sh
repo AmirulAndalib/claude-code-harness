@@ -407,6 +407,26 @@ build_grok() {
   fi
   copy_tree "${ROOT_DIR}/skills" "${OUT_DIR}/skills"
   copy_runtime_helpers "${OUT_DIR}"
+  # 133.8: the grok dist shipped without hooks/ entirely, so the policy engine
+  # was never reachable from grok even though `--host grok` returns a decision
+  # byte-identical to `--host claude`. grok reads the Claude hook layout
+  # (`Harness Compatibility → claude → hooks on`), which is `hooks/hooks.json`.
+  #
+  # Shipping hooks/ alone is not enough. Its commands go through the valid_root
+  # bootstrap, which only accepts a directory holding BOTH `bin/harness` and a
+  # `.claude-plugin/plugin.json` naming this plugin. Without them the wrapper
+  # finds no valid root inside the dist and exits 0 — the guardrail silently
+  # does not run for anyone who installed only the grok package. So the grok
+  # dist carries the same closure the claude dist does.
+  copy_tree "${ROOT_DIR}/hooks" "${OUT_DIR}/hooks"
+  copy_tree "${ROOT_DIR}/.claude-plugin" "${OUT_DIR}/.claude-plugin"
+  copy_hook_script_closure "${OUT_DIR}" "hooks/hooks.json"
+  mkdir -p "${OUT_DIR}/bin"
+  for bin in harness harness-darwin-amd64 harness-darwin-arm64 harness-linux-amd64 harness-windows-amd64.exe; do
+    if [ -f "${ROOT_DIR}/bin/${bin}" ]; then
+      cp "${ROOT_DIR}/bin/${bin}" "${OUT_DIR}/bin/${bin}"
+    fi
+  done
   mkdir -p "${OUT_DIR}/.grok"
   if [ -f "${ROOT_DIR}/.grok/AGENTS.md" ]; then
     cp "${ROOT_DIR}/.grok/AGENTS.md" "${OUT_DIR}/.grok/AGENTS.md"

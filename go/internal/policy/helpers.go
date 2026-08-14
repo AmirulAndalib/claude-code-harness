@@ -210,6 +210,17 @@ func isProtectedPath(filePath string) bool {
 var (
 	bashRedirectionTargetPattern = regexp.MustCompile(`(?:^|[\s;&|])(?:\d*&>>?|\d*>>?|&>>?|>\|)\s*['"]?([^'"` + "`" + `\s;&|]+)['"]?`)
 	bashTeeCommandPattern        = regexp.MustCompile(`(?:^|[|;&]\s*)tee\b([^;&|]*)`)
+
+	// Commands whose LAST operand is the path they create or replace. Until
+	// 133.12 only redirections and `tee` were extracted, so R03 measured as:
+	// redirect deny / tee deny / ln, cp, mv, install all silently allowed —
+	// four equivalent ways to put a file at a protected path.
+	//
+	// A refuter reached the 133.10 breakout through `ln -s` specifically, but
+	// patching only `ln` would leave the other three open. This is the same
+	// lesson 133.10 recorded when it chose one general rule over case-by-case
+	// patching of `$` expansion.
+	bashDestinationOperandPattern = regexp.MustCompile(`(?:^|[|;&]\s*)(?:ln|cp|mv|install)\b([^;&|<>]*)`)
 )
 
 func stripShellTokenQuotes(token string) string {
@@ -245,7 +256,91 @@ func extractBashWriteTargets(command string) []string {
 		}
 	}
 
+	targets = append(targets, bashDestinationOperands(command)...)
+
 	return targets
+}
+
+// bashDestinationOperands returns the destination path of each ln/cp/mv/install
+// invocation in command.
+//
+// Only the LAST operand is taken. For every form these commands accept
+// (`cp SRC DST`, `mv SRC... DIR`, `ln -s TARGET LINK`, `install -m 755 SRC DST`)
+// the final operand is what gets created or replaced; earlier operands are
+// sources, which are reads and not R03's concern. Flags and their values are
+// skipped, and taking the last operand keeps a flag value like the `755` of
+// `install -m 755` from ever being read as a path.
+//
+// The single-operand form is deliberately NOT reported. `ln -s /some/target`
+// creates a link in the *shell's* working directory, which the hook payload's
+// cwd does not reliably describe for a command that may have chained a `cd`.
+// Reporting a guessed path would classify the wrong file. The dangerous case
+// this rule exists for always names its destination explicitly.
+func bashDestinationOperands(command string) []string {
+	var targets []string
+	for _, m := range bashDestinationOperandPattern.FindAllStringSubmatch(command, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		var operands []string
+		explicitDestination := ""
+		fields := strings.Fields(m[1])
+		for i := 0; i < len(fields); i++ {
+			token := stripShellTokenQuotes(fields[i])
+			if token == "" || token == "--" {
+				continue
+			}
+			// `-t DIR` / `--target-directory DIR` / `--target-directory=DIR`
+			// put the destination FIRST, which is the one form where "the last
+			// operand is the destination" does not hold. Dropping the flag as
+			// an ordinary option hid the destination completely: measured
+			// 2026-08-14, `cp -t <protected> /tmp/src` and the mv/ln/install
+			// equivalents were all allowed while `cp /tmp/src <protected>` was
+			// denied.
+			if dest, consumed, ok := destinationFlag(fields, i); ok {
+				explicitDestination = dest
+				i += consumed
+				continue
+			}
+			if strings.HasPrefix(token, "-") {
+				continue
+			}
+			// Unresolved expansions are not paths we can classify; the caller
+			// already treats an unresolvable protected path conservatively.
+			if strings.ContainsAny(token, "`$") {
+				continue
+			}
+			operands = append(operands, token)
+		}
+		if explicitDestination != "" {
+			targets = append(targets, explicitDestination)
+			continue
+		}
+		if len(operands) < 2 {
+			continue
+		}
+		targets = append(targets, operands[len(operands)-1])
+	}
+	return targets
+}
+
+// destinationFlag reports the directory named by a -t/--target-directory option
+// starting at fields[i], plus how many extra fields it consumed.
+func destinationFlag(fields []string, i int) (dest string, consumed int, ok bool) {
+	token := stripShellTokenQuotes(fields[i])
+
+	for _, prefix := range []string{"--target-directory=", "-t="} {
+		if strings.HasPrefix(token, prefix) {
+			return stripShellTokenQuotes(strings.TrimPrefix(token, prefix)), 0, true
+		}
+	}
+	if token == "-t" || token == "--target-directory" {
+		if i+1 >= len(fields) {
+			return "", 0, false
+		}
+		return stripShellTokenQuotes(fields[i+1]), 1, true
+	}
+	return "", 0, false
 }
 
 func classifyBashProtectedWrite(command, projectRoot string) protectedPathMatch {
