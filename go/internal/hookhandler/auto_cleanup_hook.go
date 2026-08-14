@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 )
 
 // AutoCleanupHandler は PostToolUse フックハンドラ（自動サイズチェック）。
@@ -165,18 +167,90 @@ func (h *AutoCleanupHandler) checkPlans(absPath string, maxLines int, cwd, local
 	return feedback
 }
 
+// sessionLogRetentionDays mirrors the split rule in the maintenance skill:
+// only entries older than this may be moved out of session-log.md.
+const sessionLogRetentionDays = 30
+
+// sessionLogEntryPattern matches the headers that delimit entries.
+//
+// Two spellings are accepted on purpose. The writer emits
+// `## セッション: <RFC3339>` (go/internal/session/summary.go), which is what
+// the live file contains, while the maintenance reference documents
+// `## YYYY-MM-DD`. Matching only one of them would make this count zero on the
+// other and silence the warning permanently — a worse failure than the
+// over-firing it replaces. The optional time suffix is tolerated but not
+// captured, and dropping it is deliberate rather than a shortcut. A date-only
+// parse lands at 00:00 UTC, so an entry on the boundary day compares as older
+// than a mid-day cutoff and is counted as archivable. That errs toward counting
+// MORE entries, which makes the warning fire more readily. Keeping the time
+// would push borderline entries to "still fresh" and silence it — and a warning
+// that goes quiet is the failure mode this whole change exists to avoid
+// (measured: three boundary-day entries all count as archivable).
+var sessionLogEntryPattern = regexp.MustCompile(`(?m)^##\s+(?:セッション:\s*)?(\d{4}-\d{2}-\d{2})(?:[T\s]\S*)?\s*$`)
+
 // checkSessionLog は session-log.md の行数をチェックする。
+//
+// 行数超過だけでは警告しない。/maintenance が実際に退避できるのは
+// 「直近 sessionLogRetentionDays 日より古いエントリ」だけなので、
+// 全エントリが保持期間内なら移動対象はゼロになる。その状態で警告を出すと、
+// 従えば保持ルール違反、従わなければ毎回警告という詰みになる。
+//
+// 実測 (2026-08-14): 688 行 / 上限 600 に対し、27 エントリ全部が 30 日以内で
+// 移動対象 0 件。上限を 500 → 600 に上げた数日後に再び超過しており、
+// 数字を動かしても不一致が起きる位置がずれるだけだった。
+//
+// 対処できない警告は無視される警告になり、他の警告の信用を削る
+// (patterns.md P43「承認され続ける ask は制御ではない」と同じ構造)。
+// よって発火条件そのものを「行数超過 かつ 退避可能なエントリが 1 件以上」に絞る。
 func (h *AutoCleanupHandler) checkSessionLog(absPath string, maxLines int, locale string) string {
 	lines, err := countLines(absPath)
 	if err != nil {
 		return ""
 	}
-	if lines > maxLines {
-		return localizedHarnessMessage(locale,
-			fmt.Sprintf("Warning: session-log.md has %d lines (limit: %d). Consider splitting it by month with /maintenance.", lines, maxLines),
-			fmt.Sprintf("⚠️ session-log.md が %d 行です（上限: %d行）。/maintenance で月別に分割することを推奨します。", lines, maxLines))
+	if lines <= maxLines {
+		return ""
 	}
-	return ""
+
+	archivable, err := countArchivableSessionLogEntries(absPath, time.Now())
+	if err != nil {
+		// 判定できないときは従来どおり警告する。黙るほうへ倒すと、
+		// 解析が壊れた瞬間に警告が消えたことに誰も気づけない。
+		archivable = -1
+	}
+	if archivable == 0 {
+		return ""
+	}
+
+	return localizedHarnessMessage(locale,
+		fmt.Sprintf("Warning: session-log.md has %d lines (limit: %d). Consider splitting it by month with /maintenance.", lines, maxLines),
+		fmt.Sprintf("⚠️ session-log.md が %d 行です（上限: %d行）。/maintenance で月別に分割することを推奨します。", lines, maxLines))
+}
+
+// countArchivableSessionLogEntries returns how many entries are old enough to
+// be moved out. A header whose date cannot be parsed is counted as archivable:
+// treating it as fresh would suppress the warning on malformed input.
+func countArchivableSessionLogEntries(absPath string, now time.Time) (int, error) {
+	data, err := os.ReadFile(absPath) //nolint:gosec // path comes from the hook payload
+	if err != nil {
+		return 0, err
+	}
+	cutoff := now.AddDate(0, 0, -sessionLogRetentionDays)
+
+	count := 0
+	for _, m := range sessionLogEntryPattern.FindAllStringSubmatch(string(data), -1) {
+		if len(m) < 2 {
+			continue
+		}
+		d, err := time.Parse("2006-01-02", m[1])
+		if err != nil {
+			count++
+			continue
+		}
+		if d.Before(cutoff) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // checkClaudeMd は CLAUDE.md の行数をチェックする。

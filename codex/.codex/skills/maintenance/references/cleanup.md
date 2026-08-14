@@ -17,7 +17,7 @@
 > **`SESSION_LOG_MAX_LINES` と保持期間の関係** (2026-08-08 に 500 → 600 へ引き上げ):
 > 分割で実際に動かせるのは「直近 30 日より古いエントリ」だけなので、
 > 全エントリが 30 日以内に収まっている間は、行数が上限を超えても**移動対象はゼロ**になる。
-> 上限は読みやすさの目安であって守りの強さではないため、この不一致は上限側を上げて解消する。
+> 上限は読みやすさの目安であって守りの強さではない。2026-08-14 以降、この不一致は上限ではなく発火条件の側で解消している（下記 session-log 節）。
 > 保持期間 30 日は、直近の作業履歴を本体に残すための下限として維持する。
 
 ---
@@ -79,11 +79,14 @@ grep -c '\[x\].*pm:確認済\|cursor:確認済' "$PLANS" || true
 
 対象は `.claude/memory/session-log.md`。600行超で分割推奨（`SESSION_LOG_MAX_LINES`）。
 
-> **既知の限界**: この警告は行数だけを見ており、退避条件（直近 30 日より古いこと）を満たすエントリが
-> 実際に存在するかは判定していない。したがって 600 行を超えていても、全エントリが 30 日以内なら
-> 移動対象は 0 件になりうる。上限の引き上げはこの不一致が起きる位置をずらすだけで、種類としては
-> 残る。恒久的に解消するには、警告の発火条件自体を「退避可能なエントリが 1 件以上ある」に
-> 変更する必要がある（未実施）。上限超過の警告が出たら、まず退避対象の有無を確認すること。
+> **警告は退避可能なときだけ鳴る** (2026-08-14 実装): 発火条件は「行数超過 **かつ**
+> 退避できるエントリが 1 件以上」。行数だけを見ていた頃は、全エントリが 30 日以内でも
+> 上限を超えれば鳴り、従えば保持ルール違反・従わなければ毎回警告という詰みだった
+> (実測 688 行 / 上限 600 で移動対象 0 件)。上限の引き上げは不一致が起きる位置を
+> ずらすだけだったため、発火条件そのものを変えた。判定は
+> `go/internal/hookhandler/auto_cleanup_hook.go` の `checkSessionLog`。
+> 見出しの日付が解析できない場合は「退避可能」として数える（新しい側に倒すと、
+> 解析が壊れた瞬間に警告が黙って消えて誰も気づけない）。
 
 ### 手順
 
@@ -92,7 +95,9 @@ LOG=".claude/memory/session-log.md"
 ARCHIVE_DIR=".claude/memory/archive/sessions"
 mkdir -p "$ARCHIVE_DIR"
 
-# 1. エントリは `## YYYY-MM-DD` ヘッダーで区切られている前提
+# 1. エントリの見出しは 2 形式ある。書き手 (go/internal/session/summary.go) は
+#    `## セッション: <RFC3339>` を出力し、実ファイルはこの形式。過去に
+#    `## YYYY-MM-DD` で書かれた行も混在しうるため、どちらも受け付ける
 # 2. 直近30日分を残し、それより古いものを月別に分割
 #    出力: .claude/memory/archive/sessions/YYYY-MM.md (append)
 # 3. 元ファイルからは移動分を削除
@@ -144,37 +149,60 @@ find "$LOGS_DIR" -type f -mtime +${LOGS_RETAIN_DAYS:-30} -delete
 
 ---
 
-## state — agent-trace / harness-usage のトリム
+## state — append-only jsonl のトリム
 
-`.claude/state/agent-trace.jsonl` と `.claude/state/harness-usage.json` は
-append-only / growing JSON で放置すると数十MBになりうる。
+`.claude/state/` の `*.jsonl` は追記専用で、消す仕組みが無い。放置すると
+一方向に増え続ける。
 
-### agent-trace.jsonl のトリム
+> **2026-08-14 訂正**: この節は長らく `agent-trace.jsonl` と
+> `harness-usage.json` だけを名指ししていたが、**どちらもこのリポジトリに
+> 存在しない**。一方で実際に育っていたファイルは対象外のままだった
+> (実測: `orchestration-ledger.jsonl` が 8/8 に 254KB → 8/14 に 520KB、
+> 6 日で倍)。名指しは実在ファイルに合わせる。存在しないファイルを守る
+> 規約は、守っているつもりで何も守っていない。
+
+### 対象と保持行数
+
+| ファイル | 保持 | 根拠 |
+|---|---|---|
+| `orchestration-ledger.jsonl` | 末尾 2000 行 | 実測 3,009 行 / 30 日 = 平均 約100 行/日。繁忙日は 614 行。2000 行なら平常時 約20 日分、繁忙が続いても直近 1 週間は残る |
+| `instructions-loaded.jsonl` | 末尾 2000 行 | 同上 |
+| `session-events.jsonl` | 末尾 2000 行 | 同上 |
+| `changed-files.jsonl` | 末尾 2000 行 | 同上 |
+| `agent-trace.jsonl` | 末尾 1000 行 | 存在する場合のみ (従来の記述を保持) |
+
+日数ではなく行数で切るのは、日付項目の有無がファイルごとに違うため。
+行数なら `tail` だけで済み、構造に依存しない。
+
+### 手順
 
 ```bash
-TRACE=".claude/state/agent-trace.jsonl"
-[ -f "$TRACE" ] || exit 0
+STATE_DIR=".claude/state"
+for f in orchestration-ledger instructions-loaded session-events changed-files; do
+  path="${STATE_DIR}/${f}.jsonl"
+  [ -f "$path" ] || continue
+  lines=$(wc -l < "$path")
+  [ "$lines" -le 2000 ] && continue
+  cp "$path" "${path}.bak"   # 切り詰め前の控え。次回のトリムで上書きされる
+  tail -2000 "$path" > "${path}.tmp" && mv "${path}.tmp" "$path"
+  echo "  ${f}.jsonl: ${lines} -> 2000 行 (控え: ${f}.jsonl.bak)"
+done
 
-# 末尾1000行だけ残す
-tail -1000 "$TRACE" > "$TRACE.tmp" && mv "$TRACE.tmp" "$TRACE"
+# 従来からの対象 (存在する場合のみ)
+TRACE="${STATE_DIR}/agent-trace.jsonl"
+[ -f "$TRACE" ] && tail -1000 "$TRACE" > "$TRACE.tmp" && mv "$TRACE.tmp" "$TRACE"
 ```
 
-### harness-usage.json の圧縮
-
-```bash
-USAGE=".claude/state/harness-usage.json"
-[ -f "$USAGE" ] || exit 0
-
-# 60日以上前のエントリを削除（構造依存なので jq で条件を適切に書く）
-# 実装前に現物構造を Read で確認してから処理する
-```
+`.lock` ファイルは触らない (書き込み中のプロセスがある場合に壊す)。
 
 ### 報告例
 
 ```
 ✅ state トリム完了
-- agent-trace.jsonl: 8421行 → 1000行
-- harness-usage.json: 2026-02 以前のエントリを削除
+- orchestration-ledger.jsonl: 3009行 → 2000行 (控え: orchestration-ledger.jsonl.bak)
+- instructions-loaded.jsonl: 1170行 (上限内、据え置き)
+- session-events.jsonl: 396行 (上限内、据え置き)
+- changed-files.jsonl: 353行 (上限内、据え置き)
 ```
 
 ---
@@ -197,9 +225,9 @@ plans → session-log → logs → state の順で実行。途中でエラーが
 | 対象 | Before | After | 変化 |
 |------|--------|-------|------|
 | Plans.md | 250行 | 178行 | -72 (アーカイブ 9件) |
-| session-log.md | 620行 | 180行 | -440 (2ファイル分割) |
+| session-log.md | 620行 | 180行 | -440 (2ファイル分割。退避可能なエントリがある場合のみ) |
 | logs/ | 46 files | 34 files | -12 (30日超) |
-| agent-trace.jsonl | 8421行 | 1000行 | -7421 |
+| orchestration-ledger.jsonl | 3009行 | 2000行 | -1009 |
 
 バックアップ: Plans.md.bak.1712900000
 ```
