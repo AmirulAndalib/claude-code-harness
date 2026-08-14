@@ -66,6 +66,8 @@ harness-ui/CLAUDE.md
 
 # Generated host-hook artifact (harness gen, Phase 91.3); converges on bin/harness hook pre-tool.
 /.codex/hooks.json
+# Same for grok (Phase 133.8): hook_generation writes here once it is no longer deferred.
+/.grok/hooks/
 /.cursor/commands/
 /.cursor/plans/
 /.cursor/skills/

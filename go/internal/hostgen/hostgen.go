@@ -143,7 +143,11 @@ func buildDeliveryDoc(h Host) (interface{}, bool) {
 			"version": 1,
 			"hooks":   hooks,
 		}, true
-	case "codex", "claude":
+	case "codex", "claude", "grok":
+		// grok reads the Claude document shape (133.8, verified against
+		// grok 1.0.3). It was previously dropped by the default branch even
+		// though hosts.toml declares delivery_strategy/delivery_event_turn for
+		// it, which left those keys as config that nothing consumed.
 		return map[string]interface{}{
 			"hooks": hooks,
 		}, true
@@ -177,8 +181,10 @@ func GenerateHooksJSON(h Host) ([]byte, error) {
 		doc = codexDoc(h)
 	case "claude":
 		doc = claudeDoc(h)
+	case "grok":
+		doc = grokDoc(h)
 	default:
-		return nil, fmt.Errorf("hostgen: unknown host %q (expected claude, codex, or cursor)", h.Name)
+		return nil, fmt.Errorf("hostgen: unknown host %q (expected claude, codex, cursor, or grok)", h.Name)
 	}
 	return marshalStable(doc)
 }
@@ -222,6 +228,29 @@ func claudeDoc(h Host) map[string]interface{} {
 	}
 }
 
+// grokDoc emits the Claude-shaped hooks document grok reads.
+//
+// grok 1.0.3 reports `Harness Compatibility → claude → hooks on (default)` and
+// discovers other plugins' hooks from `hooks/hooks.json` in the Claude layout,
+// so the document shape is Claude's — only the routed host differs. The command
+// carries `--host grok` so the policy engine records the calling host; the
+// decision itself is byte-identical to `--host claude` (probed 2026-08-13,
+// re-probed 2026-08-14).
+func grokDoc(h Host) map[string]interface{} {
+	return map[string]interface{}{
+		"hooks": map[string]interface{}{
+			h.HookEvent: []matcherGroup{
+				{
+					Matcher: h.Matcher,
+					Hooks: []commandEntry{
+						{Type: "command", Command: binCommand(h.Name), Timeout: 10},
+					},
+				},
+			},
+		},
+	}
+}
+
 func codexDoc(h Host) map[string]interface{} {
 	return map[string]interface{}{
 		"hooks": map[string]interface{}{
@@ -255,9 +284,16 @@ func cursorDoc(h Host) map[string]interface{} {
 // wrapper (ClaudePreToolCommand) with no flag — the codec treats the empty host
 // as the Claude default. The host string is taken verbatim from the [host] table
 // key, so a hosts.toml typo surfaces as a wrong flag in the golden diff.
+// binCommand builds the direct binary invocation used by every host except
+// Claude, which needs the ClaudePreToolCommand bootstrap wrapper instead.
+//
+// The condition excludes "claude" rather than enumerating the other hosts: an
+// allowlist silently drops `--host` for any host added later, and the decoder
+// then reads the missing flag as Claude's default. 133.8 hit exactly that when
+// grok was added.
 func binCommand(host string) string {
 	cmd := claudeBinary + " " + preToolCommand
-	if host == "codex" || host == "cursor" {
+	if host != "" && host != "claude" {
 		cmd += " --host " + host
 	}
 	return cmd

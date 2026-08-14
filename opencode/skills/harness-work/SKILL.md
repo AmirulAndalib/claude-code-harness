@@ -89,7 +89,7 @@ backend が `codex` / `cursor` の場合、Lead は Worker agent を spawn せ�
 |----------|------|----------|
 | `all` | 全未完了タスクを対象 | - |
 | `N` or `N-M` | タスク番号/範囲指定 | - |
-| `--parallel N` | 並列ワーカー数 | auto |
+| `--parallel N` | 並列ワーカー数（CC 側の同時実行キャップ 既定 20 が上限。詳細は下記） | auto |
 | `--sequential` | 直列実行強制 | - |
 | `--codex` | Codex CLI で実装委託（明示時のみ、自動選択しない） | false |
 | `--backend <claude\|codex\|cursor>` | 明示バックエンド選択（worker ロールのみ適用、precedence 最上位） | claude |
@@ -266,6 +266,13 @@ work 中の宣言済み事項起因 `AskUserQuestion` はゼロにする。TDD R
 
 `[P]` マーク付きタスクを N ワーカーで並列実行。
 `--parallel N` で明示指定した場合は、タスク数に関係なくこのモードを使用。
+
+**N は希望値で、実際の同時実行数は CC が決める**（133.9、一次ソース確証済み）。CC は同時実行中の
+subagent を既定 20 に制限し（`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`、2.1.217）、超過分は待ち行列に
+入るだけでエラーにはならない。ネストした spawn は既定で深さ 3 まで
+（`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`、2.1.219 で 1 → 3 に緩和）で、Lead（0）→ Worker（1）→
+Worker が呼ぶ advisor（2）は収まる。これを超える階層は env で上げない限り静かに拒否される。
+Harness 側はどちらの env も明示設定せず、CC の既定に従う。
 同一ファイルへの書き込みが競合する場合は git worktree で分離。
 各 task の実装 executor は Backend-resolved executor path に従う。
 `--parallel N --cursor`、`--backend cursor`、または resolver 出力が `cursor` の場合、Parallel でも native Worker spawn ではなく task ごとの Cursor companion worktree を使う。

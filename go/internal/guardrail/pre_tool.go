@@ -162,18 +162,86 @@ func BuildContext(input hookproto.HookInput) hookproto.RuleContext {
 	}
 }
 
+// resolveProjectRoot determines the project root for a hook invocation.
+//
+// The hook payload carries the tool call's cwd, which is NOT the project root
+// whenever the call was made from a subdirectory. Before 133.11 the cwd was
+// used verbatim, so a call from <repo>/go resolved the root to <repo>/go.
+// Measured consequence (2026-08-13 run, reproduced 2026-08-14): work-mode was
+// on for the session, but ResolveStatePath looked for <repo>/go/.harness/state.db,
+// found nothing, left ctx.WorkMode false and R05 asked for confirmation. The
+// same misresolution silently weakened every projectRoot-relative check —
+// protected paths, plan preapprovals, the TDD config — because they were
+// computed against a directory that holds none of those files. The stray
+// go/.claude/state/ and benchmarks/**/.claude/state/ trees are artifacts of it.
+//
+// Explicit roots (HARNESS_PROJECT_ROOT / PROJECT_ROOT) are declarations of
+// intent and are honored verbatim; only a cwd gets the upward search.
 func resolveProjectRoot(input hookproto.HookInput) string {
-	projectRoot := input.CWD
-	if projectRoot == "" {
-		projectRoot = os.Getenv("HARNESS_PROJECT_ROOT")
+	if cwd := strings.TrimSpace(input.CWD); cwd != "" {
+		return ascendToProjectRoot(cwd)
 	}
-	if projectRoot == "" {
-		projectRoot = os.Getenv("PROJECT_ROOT")
+	if root := strings.TrimSpace(os.Getenv("HARNESS_PROJECT_ROOT")); root != "" {
+		return root
 	}
-	if projectRoot == "" {
-		projectRoot, _ = os.Getwd()
+	if root := strings.TrimSpace(os.Getenv("PROJECT_ROOT")); root != "" {
+		return root
 	}
-	return projectRoot
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return ascendToProjectRoot(cwd)
+}
+
+// projectRootMarkers are the entries that identify a directory as a project
+// root. `.claude` is deliberately NOT a marker: the stray `.claude/state/`
+// trees this bug created would otherwise be self-confirming, pinning the root
+// to whichever subdirectory a tool call once ran in. `.git` is matched as
+// either a directory or a file so that linked worktrees (where `.git` is a
+// file pointing into the main repo) resolve to the worktree root.
+var projectRootMarkers = []string{".harness", ".git"}
+
+// ascendToProjectRoot walks from dir toward the filesystem root and returns the
+// nearest ancestor holding a project marker. It returns dir unchanged when no
+// marker is found, which preserves the pre-133.11 behavior for directories that
+// are not inside a project.
+//
+// The walk never ascends to or past the user's home directory. ctx.ProjectRoot
+// is what R05 treats as "deletable without confirmation", so a stray ~/.git
+// (a dotfiles repo is common) would otherwise turn the entire home directory
+// into an allow surface for `rm -rf`. Stopping short only ever yields a
+// narrower root than the caller's cwd would have implied, never a wider one.
+func ascendToProjectRoot(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return dir
+	}
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		if absHome, err := filepath.Abs(home); err == nil {
+			home = filepath.Clean(absHome)
+		}
+	}
+
+	current := filepath.Clean(abs)
+	for {
+		// Stop before the home directory itself; see the doc comment.
+		if home != "" && current == home {
+			break
+		}
+		for _, marker := range projectRootMarkers {
+			if _, err := os.Lstat(filepath.Join(current, marker)); err == nil {
+				return current
+			}
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return abs
 }
 
 // loadWorkStateFromDB は指定した DB パスから work_state を取得する。

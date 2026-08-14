@@ -407,6 +407,11 @@ build_grok() {
   fi
   copy_tree "${ROOT_DIR}/skills" "${OUT_DIR}/skills"
   copy_runtime_helpers "${OUT_DIR}"
+  # 133.8: the grok dist shipped without hooks/ entirely, so the policy engine
+  # was never reachable from grok even though `--host grok` returns a decision
+  # byte-identical to `--host claude`. grok reads the Claude hook layout
+  # (`Harness Compatibility → claude → hooks on`), which is `hooks/hooks.json`.
+  copy_tree "${ROOT_DIR}/hooks" "${OUT_DIR}/hooks"
   mkdir -p "${OUT_DIR}/.grok"
   if [ -f "${ROOT_DIR}/.grok/AGENTS.md" ]; then
     cp "${ROOT_DIR}/.grok/AGENTS.md" "${OUT_DIR}/.grok/AGENTS.md"

@@ -41,8 +41,18 @@ func TestGeneratedHooks_ContainsCodexAndCursor(t *testing.T) {
 			t.Errorf("generatedHooks missing output for %s", name)
 		}
 	}
-	if _, generated := gen["grok"]; generated {
-		t.Error("Grok native hook config must remain deferred until live schema admission")
+	// Until 133.8 this asserted the opposite: grok generation had to stay
+	// deferred "until live schema admission". That admission was measured on
+	// 2026-08-14 against grok 1.0.3 — `harness gen` writes
+	// `.grok/hooks/harness-pretool.json` and `grok inspect` loads it (Hooks
+	// 35 -> 36, new row `command matcher=*  project`). The gate has been met,
+	// so the assertion is inverted rather than removed: grok must now be
+	// generated, and must carry its own host flag.
+	if len(gen["grok"]) == 0 {
+		t.Error("grok native hook config should be generated now that live schema admission is measured")
+	}
+	if !strings.Contains(string(gen["grok"]), "--host grok") {
+		t.Errorf("grok generated hooks.json does not route --host grok:\n%s", gen["grok"])
 	}
 	for _, name := range []string{"codex", "cursor"} {
 		if !strings.Contains(string(gen[name]), "hook pre-tool") {
