@@ -12,7 +12,7 @@ pair: harness-work
 owner: harness-core
 since: "2026-05-05"
 allowed-tools: ["Read", "Grep", "Glob", "Bash", "Task", "Monitor", "AskUserQuestion"]
-argument-hint: "[code|plan|scope|--quick|--codex-closeout|--dual|--team-debate|--security|--ui-rubric]"
+argument-hint: "[code|plan|scope|--quick|--codex-closeout|--dual|--team-debate|--security|--ui-rubric|--blind-judge]"
 context: fork
 effort: high
 user-invocable: true
@@ -260,7 +260,7 @@ Scope Review は、要求・差分・テスト・docs の境界が膨らんで�
 ## Security / UI / Dual
 
 - Security: `references/security-profile.md`
-- UI rubric: `references/ui-rubric.md`
+- UI rubric: `references/ui-rubric.md`（`--blind-judge` 併用可: 既定 OFF の opt-in second opinion。rubric も prior verdict も渡さない fresh sub-agent — `context: fork` 不可。対象は外部向け UI コピー / docs / cognitive-load HTML surface のみ、コード・テスト・設定・スキーマ不可、**advisory only（verdict 不変）**。詳細と eligibility は `${CLAUDE_SKILL_DIR}/references/blind-judge.md`）
 - high-res vision flow: `references/vision-high-res-flow.md`
 - Dual review: `references/dual-review.md`
 

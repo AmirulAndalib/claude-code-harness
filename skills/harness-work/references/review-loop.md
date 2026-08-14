@@ -64,18 +64,46 @@ The `reviewer` agent is read-only (no Write/Edit/Bash) so it can review safely.
 
 ## Repair Loop
 
-```
-review_count = 0
-MAX_REVIEWS = read_contract(contract_path, ".review.max_iterations") or 3
-while verdict == "REQUEST_CHANGES" and review_count < MAX_REVIEWS:
-    1. Parse the findings (critical / major only)
-    2. Fix each finding
-    3. Re-run the review with the same threshold and priority order
-    review_count++
+Iteration state is externalized to `.claude/state/repair-loop/<task>.json`
+(schema: `templates/schemas/repair-loop.v1.json`) instead of living only in
+conversation memory. This makes the `MAX_REVIEWS` ceiling machine-judged: the
+same agent bounded by the ceiling cannot self-report an undercount, and a
+long loop that loses earlier findings to context rot can still read them
+back from the state file.
 
-if review_count >= MAX_REVIEWS and verdict != "APPROVE":
-    -> escalate to the user with the remaining critical/major findings, wait for continue/abort
 ```
+MAX_REVIEWS = read_contract(contract_path, ".review.max_iterations") or 3
+bash scripts/repair-loop-state.sh init "${PROJECT_ROOT}" "${TASK_ID}" "${MAX_REVIEWS}"
+
+while true:
+    1. Run the review (see Order above); get verdict + findings
+    2. bash scripts/repair-loop-state.sh record "${PROJECT_ROOT}" "${TASK_ID}" "${verdict}" "${findings_json}"
+    3. if verdict == "APPROVE": break
+    4. Parse the findings (critical / major only) and fix each one
+    5. bash scripts/repair-loop-state.sh check "${PROJECT_ROOT}" "${TASK_ID}"
+       - exit 0 -> below the ceiling (or already approved), loop continues
+       - exit 1 -> ceiling reached without APPROVE
+       - any other non-zero (2 = jq missing, 4 = cannot evaluate)
+                -> the loop state could not be judged; this is NOT an escalation
+    6. Re-run the review with the same threshold and priority order
+
+if `check` exited 1:
+    -> escalate to the user with the remaining critical/major findings
+       (read from the state file's iterations[], not from memory),
+       wait for continue/abort
+
+if `check` exited 2 or 4:
+    -> report the tooling failure itself (missing `init`, wrong project root,
+       corrupt state file, jq unavailable). Do NOT report it as "review limit
+       reached" — that would blame the reviewer for a broken invocation.
+```
+
+> **Why exit 1 and exit 4 are separate**: this branch is taken by an autonomous
+> agent that sees only the exit code. If "the ceiling was reached" and "the
+> state could not be read" shared a code, a forgotten `init` or a wrong path
+> would be reported to the operator as a genuine review escalation — the
+> infrastructure would misreport in exactly the place this feature exists to
+> stop the agent from misreporting.
 
 Breezing repair instructions go back to the same Worker. In Codex, resume the
 Worker and use `send_input`; in Claude Code, send the equivalent teammate

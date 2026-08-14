@@ -223,13 +223,24 @@ func RemovalContextIndeterminate(command string, targets []string) bool {
 		}
 	}
 	scannable := StripNonExecutableText(command)
-	if strings.ContainsRune(scannable, '`') || containsConcurrentShellOperator(scannable) {
+	if strings.ContainsRune(scannable, '`') || containsConcurrentShellOperator(scannable, relativeTarget) {
 		return true
 	}
 	return removalContextIndeterminate(scannable, relativeTarget, 0)
 }
 
-func containsConcurrentShellOperator(command string) bool {
+// containsConcurrentShellOperator reports whether command contains a shell
+// operator that makes execution order or the removal target set unclear.
+//
+// treatPipeAsConcurrent narrows one case. A single `|` is only a hazard for the
+// removal decision when a target is RELATIVE: pipeline stages run in subshells,
+// so a stage could change the base directory a relative target resolves
+// against. With every target absolute, the base cannot move, and each segment's
+// removal targets are extracted independently (verified: `rm A | rm B` yields
+// both A and B). Argument producers such as `xargs`, which really can add
+// targets from stdin, are detected separately by removalContextIndeterminate
+// and are unaffected by this parameter.
+func containsConcurrentShellOperator(command string, treatPipeAsConcurrent bool) bool {
 	inSingle := false
 	inDouble := false
 	escaped := false
@@ -269,7 +280,11 @@ func containsConcurrentShellOperator(command string) bool {
 				previousSyntax = 0
 				continue
 			}
-			return true
+			if treatPipeAsConcurrent {
+				return true
+			}
+			previousSyntax = char
+			continue
 		}
 		if char == '&' {
 			if previousSyntax == '<' || previousSyntax == '>' {

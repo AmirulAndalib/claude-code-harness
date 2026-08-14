@@ -186,11 +186,55 @@ fingerprint_diff_or_stop() {
   return 0
 }
 
+# ---- agent 由来検証（identity check）--------------------------------------
+# `agent` は極めて汎用的なコマンド名で、PATH 上の無関係なバイナリを拾う恐れが
+# ある（Cursor 公式ドキュメントが 2026-08-11 時点で全例を `agent` 表記に統一し、
+# `cursor-agent` を install script 内で "legacy alias" と明記したため、
+# `agent` を優先探索する必要が生じた）。実機で確認した実体レイアウト
+# （`~/.local/bin/agent` は symlink で、解決先は
+# `~/.local/share/cursor-agent/versions/<ver>/cursor-agent`）に基づき、
+# symlink を解決した実パスに "cursor-agent" が含まれるかで Cursor 由来かを
+# 判定する。ネットワーク・認証は使わない、安価でオフラインな検証。
+is_cursor_agent_binary() {
+  local bin="$1"
+  local real=""
+  if command -v realpath >/dev/null 2>&1; then
+    real="$(realpath "${bin}" 2>/dev/null || true)"
+  elif command -v readlink >/dev/null 2>&1; then
+    real="$(readlink -f "${bin}" 2>/dev/null || true)"
+  fi
+  [ -n "${real}" ] || real="${bin}"
+  # パス「成分」の完全一致で判定する。部分文字列一致だと
+  # `/x/cursor-agent-tools-but-not-really/agent` のように細工した
+  # ディレクトリ名だけで突破できる（Phase 133 Phase D レビュー指摘）。
+  # 前後をスラッシュで包むことで、成分境界での一致だけを許す。
+  case "/${real}/" in
+    */cursor-agent/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+# 限界（過信しないための明示）: この判定は「PATH 上で先に見つかった
+# cursor-agent という名前を信じる」既存の信頼モデルを狭めるものであって、
+# 置き換えるものではない。成分名が厳密に cursor-agent のファイル／
+# ディレクトリを PATH の手前に置ける相手は、変更前と同様に通せる。
+# バイナリの中身は検証しない（判定のために未知のバイナリを実行するのは
+# 本末転倒なため）。
+
 # ---- cursor-agent バイナリ解決 -------------------------------------------
 # command -v を優先（テストの PATH モックがここで拾われる）。
-# 見つからなければ $HOME/.local/bin/cursor-agent にフォールバックする。
+# 1. `agent`（新表記）を探し、identity check を通ったものだけ採用する。
+# 2. identity check に落ちた、または `agent` が見つからない場合は
+#    `cursor-agent`（legacy alias）を探す。
+# 3. それも見つからなければ $HOME/.local/bin/cursor-agent にフォールバックする。
 resolve_cursor_agent() {
   local bin
+  if bin="$(command -v agent 2>/dev/null)" && [ -n "${bin}" ]; then
+    if is_cursor_agent_binary "${bin}"; then
+      printf '%s\n' "${bin}"
+      return 0
+    fi
+    debug_log "command -v agent -> '${bin}' failed identity check (not cursor-agent); falling back to cursor-agent"
+  fi
   if bin="$(command -v cursor-agent 2>/dev/null)" && [ -n "${bin}" ]; then
     printf '%s\n' "${bin}"
     return 0

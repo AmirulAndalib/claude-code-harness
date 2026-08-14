@@ -85,9 +85,17 @@ bash -c '
   echo "==CURSOR_AGENT=="
   CURSOR_AGENT_BIN="${CURSOR_AGENT_BIN:-}"
   if [ -z "$CURSOR_AGENT_BIN" ]; then
-    if command -v cursor-agent >/dev/null 2>&1; then
-      CURSOR_AGENT_BIN="$(command -v cursor-agent)"
-    elif [ -x "$HOME/.local/bin/cursor-agent" ]; then
+    # `agent`（公式の新表記）→ `cursor-agent`（legacy alias）の順に探す。
+    # `agent` は汎用的な名前なので、symlink 解決後の実パスの「成分」に
+    # cursor-agent が完全一致で現れる場合だけ採用する（部分文字列一致だと
+    # /x/cursor-agent-not-really/agent のようなディレクトリ名で突破される）。
+    for _c in agent cursor-agent; do
+      _p="$(command -v "$_c" 2>/dev/null)" || continue
+      [ -n "$_p" ] || continue
+      _r="$(realpath "$_p" 2>/dev/null || readlink -f "$_p" 2>/dev/null || echo "$_p")"
+      case "/$_r/" in */cursor-agent/*) CURSOR_AGENT_BIN="$_p"; break ;; esac
+    done
+    if [ -z "$CURSOR_AGENT_BIN" ] && [ -x "$HOME/.local/bin/cursor-agent" ]; then
       CURSOR_AGENT_BIN="$HOME/.local/bin/cursor-agent"
     fi
   fi

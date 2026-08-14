@@ -52,6 +52,30 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
+# cursor_agent_probe — Cursor CLI の在否を検出する。2026-08-11 時点の Cursor 公式
+# ドキュメントは全例を `agent` 表記に統一し、`cursor-agent` は install script 内で
+# "legacy alias" と明記している。`agent` は汎用的な名前で PATH 上の無関係な
+# バイナリを拾う恐れがあるため、symlink を解決した実パスの「成分」に
+# cursor-agent が完全一致で含まれる場合だけ採用する（cursor-companion.sh の
+# resolve_cursor_agent と同じ identity check。オフライン・認証不要）。
+# 部分文字列一致にしないのは、`/x/cursor-agent-not-really/agent` のような
+# ディレクトリ名だけで突破できてしまうため（Phase 133 Phase D レビュー指摘）。
+cursor_agent_probe() {
+  local bin real=""
+  if bin="$(command -v agent 2>/dev/null)" && [ -n "${bin}" ]; then
+    if command -v realpath >/dev/null 2>&1; then
+      real="$(realpath "${bin}" 2>/dev/null || true)"
+    elif command -v readlink >/dev/null 2>&1; then
+      real="$(readlink -f "${bin}" 2>/dev/null || true)"
+    fi
+    [ -n "${real}" ] || real="${bin}"
+    case "/${real}/" in
+      */cursor-agent/*) return 0 ;;
+    esac
+  fi
+  command -v cursor-agent >/dev/null 2>&1
+}
+
 # backend_available <codex|cursor> — HARNESS_ORCH_FORCE_AVAIL overrides for tests.
 backend_available() {
   local b="$1"
@@ -63,7 +87,7 @@ backend_available() {
   fi
   case "$b" in
     codex) command -v codex >/dev/null 2>&1 ;;
-    cursor) command -v cursor-agent >/dev/null 2>&1 ;;
+    cursor) cursor_agent_probe ;;
     *) return 1 ;;
   esac
 }

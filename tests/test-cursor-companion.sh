@@ -41,6 +41,15 @@ trap cleanup EXIT
 #   $2 = exit code
 #   $3 = stderr に出す内容（省略可）
 # 起動時に自分の引数を ARGS_FILE に記録する（--mode ask / --force の検証用）。
+#
+# 133.1 追記: cursor-companion.sh の resolve_cursor_agent() は `agent`（新表記）
+# を優先探索するようになった。もし PATH 上に実物の `agent`（実 Cursor CLI）が
+# 既にインストールされていると、MOCK_BIN_DIR に cursor-agent しか置かない従来の
+# セットアップでは command -v agent が実物を拾ってしまい、モック隔離が破れて
+# 実際のネットワーク呼び出しが走る（実機で確認済みの事故）。
+# `${MOCK_BIN_DIR}/agent` を cursor-agent への symlink として併設し、実レイアウト
+# （`~/.local/bin/agent` → `.../cursor-agent`）を模した上で MOCK_BIN_DIR を
+# PATH 先頭に置くことで、agent 経路でも確実にモックへ隔離する。
 make_mock() {
   local stdout_body="$1"
   local exit_code="$2"
@@ -58,6 +67,8 @@ make_mock() {
     printf 'exit %s\n' "${exit_code}"
   } >"${MOCK_AGENT}"
   chmod +x "${MOCK_AGENT}"
+  # `agent` を cursor-agent モックへの symlink として併設（identity check 対策）。
+  ln -sf "${MOCK_AGENT}" "${MOCK_BIN_DIR}/agent"
 }
 
 # ラッパーをモック PATH 付きで実行するヘルパ。

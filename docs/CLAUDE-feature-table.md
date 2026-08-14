@@ -310,6 +310,17 @@ Phase 53 closeout では、Codex mirror / path drift の広い棚卸しを Phase
 **注記**:
 Phase 69 でも `B: 書いただけ` は `0` 件です。Feature Table は入口に留め、公式 URL と version-by-version の判断根拠は `docs/upstream-update-snapshot-2026-05-15.md` に集約しました。`A` は実 file 変更 (settings / hooks / rules / docs / scripts) と紐付き、`C` は本体修正の自動継承、`P` は推測実装しない将来判断として扱います。
 
+## Phase 133.6 追補テーブル (subagent depth/concurrency + sandbox credential-masking claim 検証)
+
+このセクションは、先行 research agent が報告した 2 クラスタの claim を一次情報 (raw
+`CHANGELOG.md`) で個別検証した結果のみを反映する。フルバージョン同期ではない
+(`2.1.153`-`2.1.216` は未確認)。検証記録・引用元: `docs/research/133-6-cc-cli-claim-verification.md`。
+
+| 機能 | 活用スキル / 領域 | 用途 | 付加価値 |
+|------|-------------------|------|----------|
+| **Subagent nested-spawn depth limit + 同時実行数上限 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, 2.1.217/2.1.219)** | breezing, harness-work, harness-review | `confirmed`。2.1.217 でネスト spawn を既定 OFF に + 同時実行数上限を既定 20 に設定可能化、2.1.219 で既定 depth を 1→3 に緩和 (原文 "was 1")。`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` は breezing の並列 worker 数と、`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` は sub-agent が further sub-agent を呼ぶ設計 (worker → 内部 delegation 等) と相互作用しうる | `P: Plans 化`。本 PR は検証のみで Harness 側の env 明示設定・docs 反映は未実施。既定値が Harness の想定並列度と整合するかは後続タスクで確認 |
+| **Sandbox credential-masking (`mode: "mask"`, `extract`/`onExtractNoMatch`, JWT/AWS SigV4) + `sandbox.network.strictAllowlist` (2.1.219/2.1.221/2.1.224)** | guardrails, setup | `confirmed`。`denyRead` のディレクトリ単位 deny と異なり、値単位で credential を mask できる機構。macOS はファイル masking が `deny` にフォールバックする点に注意 (raw changelog 原文) | `P: Plans 化`。`docs/sandbox-allowlist-recipe.md` と `.claude/rules/defense-layer-blast-radius.md` に採用検討の PROPOSAL セクションを追記済み (実装・live 設定変更なし。macOS 環境での実効性が未検証のため denyRead からの置き換えは未推奨) |
+
 ## 機能詳細
 
 ### Task tool メトリクス

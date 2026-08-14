@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://claude-code-harness.local/schemas/repair-loop.v1.json",
+  "title": "repair-loop.v1",
+  "description": "Externalized review->fix->re-review loop state (Task 133.4). Iteration count and per-iteration verdicts live in this file instead of conversation memory, so the MAX_REVIEWS ceiling can be judged by scripts/repair-loop-state.sh rather than self-reported by the agent it bounds.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task",
+    "max_iterations",
+    "status",
+    "created_at",
+    "updated_at",
+    "iterations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "repair-loop.v1"
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "max_iterations": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["open", "approved", "escalated"]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "iterations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["iteration", "verdict", "findings", "recorded_at"],
+        "additionalProperties": false,
+        "properties": {
+          "iteration": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["APPROVE", "REQUEST_CHANGES"]
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["severity", "issue"],
+              "additionalProperties": false,
+              "properties": {
+                "severity": {
+                  "type": "string",
+                  "enum": ["critical", "major", "minor", "recommendation"]
+                },
+                "issue": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "file": {
+                  "type": ["string", "null"]
+                }
+              }
+            }
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

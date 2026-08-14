@@ -6,6 +6,30 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Added
+
+- **Grok execution backend** (`scripts/grok-companion.sh`): headless delegation via `grok -p ... --output-format json`, modelled on `cursor-companion.sh` (same exit-code taxonomy, read-only default, worktree fingerprint gate, secret masking). Binary absent は not-configured (exit 3) で degrade する。
+- **Repair-loop state externalisation** (`scripts/repair-loop-state.sh` + `templates/schemas/repair-loop.v1.json`): review→fix→re-review ループの iteration / verdict / findings を `.claude/state/repair-loop/<task>.json` へ外部化し、`MAX_REVIEWS` 超過を `check` の終了コードで機械判定する。会話内の自己申告カウンタを置き換える。
+- **Blind judge** (`skills/harness-review/references/blind-judge.md`, opt-in `--blind-judge`): rubric を見せない第二審。外部向け UI コピー / docs / cognitive-load HTML のみが対象で、コード・テスト・設定・スキーマは対象外。rubric verdict との乖離は advisory finding として出すだけで、verdict を書き換えない。
+
+### Changed
+
+- **Grok のモデル pin を実カタログへ訂正**。`scripts/model-routing.sh` が pin していた 5 つの ID は **1 つも実在しなかった**。原因は 2 世代連続で「同名の別プロダクト」(TypeScript の `grok-cli`) を根拠にしたこと。実際に動く `grok 0.2.118` のアカウントカタログは **`grok-4.6`（既定 / 500k ctx / effort `xhigh`・`high`・`medium`・`low`）と `grok-4.5`（500k ctx / effort `high`・`medium`・`low`）の 2 つのみ**。tier 割当: `lite`/`standard` = `grok-4.5`、`deep`/`advisor`/`review` = `grok-4.6` (`xhigh`)、`release`/`long-context` = `grok-4.6` (`high`)。4 層（router / `hosts.toml` / policy doc / research doc）すべてへ降下。effort の回帰検査は平坦な許可リストから**モデル別**へ強化した（`grok-4.5` は `xhigh` を受け付けない）。
+- **削除確認 (R05) が対象で判断するようになった**。従来は「プロジェクト外の削除は一律確認」で、エージェント自身の scratchpad も対象だった (同じ場所への書き込みは R04 が無言で通すのに、削除だけ確認される非対称)。確認せず通すのは、プロジェクトルート配下、または **このセッション自身の** scratch (OS 一時領域の下で、パス成分にセッション ID を持つもの) だけを消す場合に限る。判断は対象のみで行い、サブエージェントかどうか・worktree の中かどうかでは変えない。
+  - 引き続き確認する: 一時領域のルート自体 (`rm -rf /tmp`)、**他セッションの scratch**、scratchpad 内の symlink で外へ脱出する形、glob、二重代入・コマンド置換・空白を含む値・未定義参照で対象が確定しない形、`xargs` で stdin から対象が増える形、`~/.claude/projects/<slug>/memory` の再帰削除 (R04 は書き込みを通すが、削除は蓄積した知識の喪失なので別扱い)
+  - 併せて 2 つの過剰保守を解除: 対象がすべて絶対パスならパイプ (`|`) は判定不能にしない (パイプ両側の削除対象は元々両方抽出できており、`xargs` 系は独立に検出される)。同一コマンド内で一度だけリテラル代入された変数は解決する (エージェントは `F="$S/x"` の形で対象を組み立てるため、解決しないと実質すべての削除が確認になる)
+  - 既存のガードテストは **1 行も変更していない**
+  - **この緩和自体に対する独立レビュー (refuter) で突破口が 1 件見つかり、同 PR 内で修正した**。変数解決がクォートの種類を区別せず、シェルが展開しない `$`（シングルクォート内、`\$` 退避）まで展開していた。プロジェクト内に `$VAR` という名前の symlink を置くと、実際の削除先はプロジェクト外の任意ファイルになるのに、判定器は「自分の scratch」と誤認して無言で通していた。修正は「シェルが展開しない `$` が 1 つでもあれば変数解決を一切行わない」の 1 本の規則。突破手順そのものを回帰テストに固定してある
+
+### Fixed
+
+- **Cursor CLI binary rename への追随**: 公式 docs が全例を `agent` 表記に統一し `cursor-agent` を legacy alias とした変更に合わせ、`agent` → `cursor-agent` の順で probe するようにした。`agent` は汎用名のため、symlink 解決後の実パス「成分」が厳密に `cursor-agent` である場合だけ採用する identity check を併設（判定のために未知のバイナリを実行しない）。適用箇所は `cursor-companion.sh` / `orchestration-scorecard.sh` / `release-preflight-host-smoke.sh` / `cursor-do` / `cursor-setup` の 5 系統。
+- **grok host descriptor の evidence 訂正** (`hosts.toml`): 「project 級 hook は拒否される」という記述は別系統の `grok-cli v1.1.7` (TypeScript) を根拠にしていた。実機の grok 0.2.118 は claude 互換で hook を読み、`bin/harness hook pre-tool --host grok` は `--host claude` と byte 一致の判定を返す。実際に欠けていたのは CCH 側の配布（`build_grok()` が `hooks/` を同梱しない）だったことを記録した。`hook_generation = "deferred"` は据え置き。
+
+### Documentation
+
+- **CC CLI 新機能の一次ソース検証** (`docs/CLAUDE-feature-table.md`): raw CHANGELOG からの逐語引用で 4 件を確証。subagent 同時実行キャップ (既定 20 / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, 2.1.217)、nested spawn 深さ (既定 3 / `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`, 2.1.219)、`sandbox.network.strictAllowlist` (2.1.219)、sandbox credential-masking (2.1.224)。credential-masking は **macOS では `deny` にフォールバック**するため、`denyRead` 回避策の置き換えは提案に留め未採用。
+
 ## [5.7.0] - 2026-08-12
 
 ### Fixed

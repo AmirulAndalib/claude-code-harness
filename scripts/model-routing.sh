@@ -118,33 +118,37 @@ elif [ "$HOST" = "cursor" ]; then
     *) echo "ERROR: unknown cursor tier: $TIER" >&2; exit 2 ;;
   esac
 elif [ "$HOST" = "grok" ]; then
-  # Grok catalog — verified 2026-08-12 by reading grok-cli v1.1.7
-  # src/grok/models.ts (MODELS[] + DEFAULT_MODEL) directly, not from docs.
+  # Grok catalog — verified 2026-08-13 against the CLI that is actually
+  # installed (`grok 0.2.118`, "Grok Build TUI"), reading the account catalog
+  # it fetched from cli-chat-proxy.grok.com/v1/models. Operator-ratified.
   #
-  #   grok-4.3                     1M ctx, reasoning, "Recommended flagship
-  #                                reasoning model", DEFAULT_MODEL
-  #   grok-4.20-0309-reasoning     2M ctx, reasoning
-  #   grok-4.20-non-reasoning      2M ctx, "Recommended non-reasoning model"
-  #   grok-4.20-multi-agent-0309   2M ctx, responsesOnly + supportsClientTools:false
-  #                                → unusable for tool-driven harness roles
-  #   grok-3-mini                  131k ctx, budget, the ONLY model with
-  #                                supportsReasoningEffort (values: low|high)
+  #   grok-4.6   500k ctx, DEFAULT, "SpaceXAI's latest frontier model",
+  #              reasoning effort: xhigh (default) | high | medium | low
+  #   grok-4.5   500k ctx, reasoning effort: high (default) | medium | low
   #
-  # The previous table pinned grok-4.5 and grok-composer-2.5-fast; NEITHER id
-  # exists in the catalog (the latter looks like a copy of the cursor block's
-  # composer-2.5-fast). Both would have failed at call time.
+  # That is the WHOLE catalog for this account — there is no third id.
   #
-  # EFFORT here stays within grok's own vocabulary (low|high) because only
-  # grok-3-mini accepts reasoning_effort at all; `--format args` deliberately
-  # omits --effort for this host, so the value is advisory for the rest.
+  # Two earlier tables were wrong for the same reason. Both were derived from
+  # `grok-cli` (the TypeScript project at LocalWork/Code/grok-cli), which is a
+  # DIFFERENT PRODUCT from the installed Rust `grok`. The v1.1.7 table
+  # (grok-4.3 / grok-4.20-* / grok-3-mini) and the table before it
+  # (grok-composer-2.5-fast) both pinned ids that do not exist here, so every
+  # call would have failed. Ironically the pre-2026-08-12 `grok-4.5` WAS real —
+  # its comment said "observed on CLI 0.2.93", i.e. measured against the
+  # installed binary rather than a lookalike repo.
+  #
+  # Rule this cost us twice: verify capability and catalogue against the binary
+  # that actually runs (CLAUDE.md FACT-4), not against a same-named source tree.
+  #
+  # EFFORT values below stay inside each model's own advertised vocabulary.
   # Keep model IDs only here — skills must not hardcode them.
   case "$TIER" in
-    lite) MODEL="grok-3-mini"; EFFORT="low" ;;
-    standard) MODEL="grok-4.20-non-reasoning"; EFFORT="low" ;;
-    deep|advisor) MODEL="grok-4.3"; EFFORT="high" ;;
-    review) MODEL="grok-4.3"; EFFORT="high" ;;
-    release) MODEL="grok-4.3"; EFFORT="high" ;;
-    long-context) MODEL="grok-4.20-0309-reasoning"; EFFORT="high" ;;
+    lite) MODEL="grok-4.5"; EFFORT="low" ;;
+    standard) MODEL="grok-4.5"; EFFORT="medium" ;;
+    deep|advisor) MODEL="grok-4.6"; EFFORT="xhigh" ;;
+    review) MODEL="grok-4.6"; EFFORT="xhigh" ;;
+    release) MODEL="grok-4.6"; EFFORT="high" ;;
+    long-context) MODEL="grok-4.6"; EFFORT="high" ;;
     spark) echo "ERROR: spark tier is codex-only" >&2; exit 2 ;;
     *) echo "ERROR: unknown grok tier: $TIER" >&2; exit 2 ;;
   esac

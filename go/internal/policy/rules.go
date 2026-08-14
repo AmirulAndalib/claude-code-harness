@@ -261,7 +261,10 @@ var Rules = []GuardRule{
 			if ctx.WorkMode {
 				return nil
 			}
-			if dangerousRemovalTargetsWithinProject(command, targets, ctx.ProjectRoot) {
+			// 対象で判断する。エージェント自身が所有する領域 (作業ツリー /
+			// OS の一時領域) の中だけを消すなら確認しない。エージェントの
+			// 種別や worktree にいるかどうかでは判断しない。
+			if dangerousRemovalTargetsAreAgentOwned(command, targets, ctx.ProjectRoot, ctx.Input.SessionID) {
 				return nil
 			}
 			return &hookproto.HookResult{

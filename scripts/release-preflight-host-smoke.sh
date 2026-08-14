@@ -32,18 +32,29 @@ any_failed=0
 
 host_cli_for() {
   case "$1" in
-    cursor) echo "cursor-agent" ;;
+    # Cursor 公式 docs (2026-08-11) は全例を `agent` 表記に統一し、`cursor-agent`
+    # は install script 内で "legacy alias" と明記された。どちらの名前でも
+    # presence を検出しないと、alias 廃止後に runner を「CLI 不在」と誤判定して
+    # 全 cursor smoke が無言 SKIP になる (Task 133.1)。空白区切りの候補列。
+    cursor) echo "agent cursor-agent" ;;
     *) echo "$1" ;;
   esac
 }
 
+# 候補列のうち 1 つでも見つかれば present とみなす。
 host_cli_present() {
-  local cli="$1"
-  if [ -n "${HARNESS_PREFLIGHT_HOST_CLI_PROBE_CMD:-}" ]; then
-    "${HARNESS_PREFLIGHT_HOST_CLI_PROBE_CMD}" "$cli" >/dev/null 2>&1
-  else
-    command -v "$cli" >/dev/null 2>&1
-  fi
+  local cli
+  # shellcheck disable=SC2086  # 空白区切りの候補列を意図的に分割する
+  for cli in $1; do
+    if [ -n "${HARNESS_PREFLIGHT_HOST_CLI_PROBE_CMD:-}" ]; then
+      if "${HARNESS_PREFLIGHT_HOST_CLI_PROBE_CMD}" "$cli" >/dev/null 2>&1; then
+        return 0
+      fi
+    elif command -v "$cli" >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 while IFS= read -r h; do
