@@ -111,8 +111,8 @@ func TestCountArchivableSessionLogEntries_CountsOnlyEntriesPastTheWindow(t *test
 	dir := t.TempDir()
 	now := time.Now()
 
-	body := sessionHeader(now.AddDate(0, 0, -(sessionLogRetentionDays + 1))) +
-		sessionHeader(now.AddDate(0, 0, -(sessionLogRetentionDays + 100))) +
+	body := sessionHeader(now.AddDate(0, 0, -(sessionLogRetentionDays+1))) +
+		sessionHeader(now.AddDate(0, 0, -(sessionLogRetentionDays+100))) +
 		sessionHeader(now.AddDate(0, 0, -1)) +
 		sessionHeader(now)
 	path := writeSessionLog(t, dir, body)
