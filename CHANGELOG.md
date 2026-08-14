@@ -6,6 +6,15 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Changed
+
+依存関係を更新しました。Go 側の 2 件は、同梱バイナリがソースと依存から byte 単位で再現できることを検証する drift gate があるため、bump と同じ変更で 4 プラットフォームのバイナリを再生成しています。
+
+| 依存 | 変更 |
+|---|---|
+| `modernc.org/sqlite` | 1.55.0 → 1.56.0 (`modernc.org/libc` 1.74.1 → 1.74.4、`github.com/mattn/go-isatty` 0.0.20 → 0.0.24 を伴う) |
+| `github.com/santhosh-tekuri/jsonschema/v6` | 6.0.2 → 6.0.3 |
+
 ### Fixed
 
 #### サブディレクトリから呼ばれた tool は、プロジェクトの保護設定が丸ごと効かない場所で判定されていた問題 (Phase 133.11)
