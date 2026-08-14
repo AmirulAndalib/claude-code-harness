@@ -125,3 +125,37 @@ func TestCountArchivableSessionLogEntries_CountsOnlyEntriesPastTheWindow(t *test
 		t.Fatalf("got %d archivable entries, want 2", n)
 	}
 }
+
+// Both header spellings must be recognized. The writer emits
+// `## セッション: <RFC3339>`; the maintenance reference documents
+// `## YYYY-MM-DD`. Matching only one would count zero on the other and silence
+// the warning permanently — worse than the over-firing this change replaces.
+func TestCountArchivableSessionLogEntries_AcceptsBothHeaderSpellings(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().AddDate(0, 0, -(sessionLogRetentionDays + 1)).Format("2006-01-02")
+
+	body := fmt.Sprintf("## セッション: %sT01:02:03Z\nbody\n## %s\nbody\n", old, old)
+	path := writeSessionLog(t, dir, body)
+
+	n, err := countArchivableSessionLogEntries(path, time.Now())
+	if err != nil {
+		t.Fatalf("countArchivableSessionLogEntries: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("got %d archivable entries, want 2 (both header spellings must count)", n)
+	}
+}
+
+// A non-date `## ...` heading (e.g. `## Index`) is not an entry.
+func TestCountArchivableSessionLogEntries_IgnoresNonDateHeadings(t *testing.T) {
+	dir := t.TempDir()
+	path := writeSessionLog(t, dir, "## Index\n\n## Session Log\nbody\n")
+
+	n, err := countArchivableSessionLogEntries(path, time.Now())
+	if err != nil {
+		t.Fatalf("countArchivableSessionLogEntries: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("got %d archivable entries, want 0", n)
+	}
+}

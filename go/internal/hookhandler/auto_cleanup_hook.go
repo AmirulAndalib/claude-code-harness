@@ -171,9 +171,16 @@ func (h *AutoCleanupHandler) checkPlans(absPath string, maxLines int, cwd, local
 // only entries older than this may be moved out of session-log.md.
 const sessionLogRetentionDays = 30
 
-// sessionLogEntryPattern matches the `## セッション: <RFC3339>` headers that
-// delimit entries. Only the date part is needed.
-var sessionLogEntryPattern = regexp.MustCompile(`(?m)^##\s+セッション:\s*(\d{4}-\d{2}-\d{2})`)
+// sessionLogEntryPattern matches the headers that delimit entries.
+//
+// Two spellings are accepted on purpose. The writer emits
+// `## セッション: <RFC3339>` (go/internal/session/summary.go), which is what
+// the live file contains, while the maintenance reference documents
+// `## YYYY-MM-DD`. Matching only one of them would make this count zero on the
+// other and silence the warning permanently — a worse failure than the
+// over-firing it replaces. The optional time suffix is tolerated but not
+// captured: the cutoff is 30 days, so sub-day ordering cannot change the answer.
+var sessionLogEntryPattern = regexp.MustCompile(`(?m)^##\s+(?:セッション:\s*)?(\d{4}-\d{2}-\d{2})(?:[T\s]\S*)?\s*$`)
 
 // checkSessionLog は session-log.md の行数をチェックする。
 //
