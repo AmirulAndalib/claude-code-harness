@@ -199,8 +199,10 @@ TRACE="${STATE_DIR}/agent-trace.jsonl"
 
 ```
 ✅ state トリム完了
-- agent-trace.jsonl: 8421行 → 1000行
-- harness-usage.json: 2026-02 以前のエントリを削除
+- orchestration-ledger.jsonl: 3009行 → 2000行 (控え: orchestration-ledger.jsonl.bak)
+- instructions-loaded.jsonl: 1170行 (上限内、据え置き)
+- session-events.jsonl: 396行 (上限内、据え置き)
+- changed-files.jsonl: 353行 (上限内、据え置き)
 ```
 
 ---
@@ -223,9 +225,9 @@ plans → session-log → logs → state の順で実行。途中でエラーが
 | 対象 | Before | After | 変化 |
 |------|--------|-------|------|
 | Plans.md | 250行 | 178行 | -72 (アーカイブ 9件) |
-| session-log.md | 620行 | 180行 | -440 (2ファイル分割) |
+| session-log.md | 620行 | 180行 | -440 (2ファイル分割。退避可能なエントリがある場合のみ) |
 | logs/ | 46 files | 34 files | -12 (30日超) |
-| agent-trace.jsonl | 8421行 | 1000行 | -7421 |
+| orchestration-ledger.jsonl | 3009行 | 2000行 | -1009 |
 
 バックアップ: Plans.md.bak.1712900000
 ```

@@ -179,7 +179,13 @@ const sessionLogRetentionDays = 30
 // `## YYYY-MM-DD`. Matching only one of them would make this count zero on the
 // other and silence the warning permanently — a worse failure than the
 // over-firing it replaces. The optional time suffix is tolerated but not
-// captured: the cutoff is 30 days, so sub-day ordering cannot change the answer.
+// captured, and dropping it is deliberate rather than a shortcut. A date-only
+// parse lands at 00:00 UTC, so an entry on the boundary day compares as older
+// than a mid-day cutoff and is counted as archivable. That errs toward counting
+// MORE entries, which makes the warning fire more readily. Keeping the time
+// would push borderline entries to "still fresh" and silence it — and a warning
+// that goes quiet is the failure mode this whole change exists to avoid
+// (measured: three boundary-day entries all count as archivable).
 var sessionLogEntryPattern = regexp.MustCompile(`(?m)^##\s+(?:セッション:\s*)?(\d{4}-\d{2}-\d{2})(?:[T\s]\S*)?\s*$`)
 
 // checkSessionLog は session-log.md の行数をチェックする。
