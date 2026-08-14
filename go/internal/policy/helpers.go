@@ -283,9 +283,23 @@ func bashDestinationOperands(command string) []string {
 			continue
 		}
 		var operands []string
-		for _, token := range strings.Fields(m[1]) {
-			token = stripShellTokenQuotes(token)
+		explicitDestination := ""
+		fields := strings.Fields(m[1])
+		for i := 0; i < len(fields); i++ {
+			token := stripShellTokenQuotes(fields[i])
 			if token == "" || token == "--" {
+				continue
+			}
+			// `-t DIR` / `--target-directory DIR` / `--target-directory=DIR`
+			// put the destination FIRST, which is the one form where "the last
+			// operand is the destination" does not hold. Dropping the flag as
+			// an ordinary option hid the destination completely: measured
+			// 2026-08-14, `cp -t <protected> /tmp/src` and the mv/ln/install
+			// equivalents were all allowed while `cp /tmp/src <protected>` was
+			// denied.
+			if dest, consumed, ok := destinationFlag(fields, i); ok {
+				explicitDestination = dest
+				i += consumed
 				continue
 			}
 			if strings.HasPrefix(token, "-") {
@@ -298,12 +312,35 @@ func bashDestinationOperands(command string) []string {
 			}
 			operands = append(operands, token)
 		}
+		if explicitDestination != "" {
+			targets = append(targets, explicitDestination)
+			continue
+		}
 		if len(operands) < 2 {
 			continue
 		}
 		targets = append(targets, operands[len(operands)-1])
 	}
 	return targets
+}
+
+// destinationFlag reports the directory named by a -t/--target-directory option
+// starting at fields[i], plus how many extra fields it consumed.
+func destinationFlag(fields []string, i int) (dest string, consumed int, ok bool) {
+	token := stripShellTokenQuotes(fields[i])
+
+	for _, prefix := range []string{"--target-directory=", "-t="} {
+		if strings.HasPrefix(token, prefix) {
+			return stripShellTokenQuotes(strings.TrimPrefix(token, prefix)), 0, true
+		}
+	}
+	if token == "-t" || token == "--target-directory" {
+		if i+1 >= len(fields) {
+			return "", 0, false
+		}
+		return stripShellTokenQuotes(fields[i+1]), 1, true
+	}
+	return "", 0, false
 }
 
 func classifyBashProtectedWrite(command, projectRoot string) protectedPathMatch {

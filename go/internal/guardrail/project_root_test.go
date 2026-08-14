@@ -4,7 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/Chachamaru127/claude-code-harness/go/internal/state"
 	"github.com/Chachamaru127/claude-code-harness/go/pkg/hookproto"
 )
 
@@ -137,20 +139,57 @@ func TestResolveProjectRoot_CWDFromSubdirectoryResolvesToRoot(t *testing.T) {
 	}
 }
 
-// The end-to-end symptom of 133.11: with work-mode on for the session, a call
-// made from a subdirectory used to lose the work state entirely.
+// The end-to-end symptom of 133.11: work-mode was recorded for the session, but
+// a call made from a subdirectory lost it entirely.
+//
+// The work state MUST come from the state DB, not from HARNESS_WORK_MODE. The
+// env var short-circuits BuildContext before it ever calls ResolveStatePath and
+// loadWorkStateFromDB, which is precisely the code path this bug lived in — a
+// test that sets it would pass just as well against the broken resolver.
 func TestBuildContext_WorkModeSurvivesSubdirectoryCWD(t *testing.T) {
+	const sessionID = "s-133-11"
+
 	root := t.TempDir()
 	mkdirAll(t, root, ".git")
 	sub := mkdirAll(t, root, "go")
 
-	t.Setenv("HARNESS_WORK_MODE", "1")
-	ctx := BuildContext(hookproto.HookInput{CWD: sub, SessionID: "s-133-11"})
+	// CLAUDE_PLUGIN_DATA would make ResolveStatePath ignore projectRoot, hiding
+	// the very misresolution under test.
+	t.Setenv("CLAUDE_PLUGIN_DATA", "")
+	t.Setenv("HARNESS_WORK_MODE", "")
+	t.Setenv("ULTRAWORK_MODE", "")
+
+	dbPath := state.ResolveStatePath(root)
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatalf("mkdir state dir: %v", err)
+	}
+	store, err := state.NewHarnessStore(dbPath)
+	if err != nil {
+		t.Fatalf("open state db: %v", err)
+	}
+	// work_states carries a foreign key into sessions, so the session row has
+	// to exist first.
+	if err := store.UpsertSession(state.SessionState{
+		SessionID:   sessionID,
+		Mode:        state.SessionModeWork,
+		ProjectRoot: root,
+		StartedAt:   time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		store.Close()
+		t.Fatalf("upsert session: %v", err)
+	}
+	err = store.SetWorkState(sessionID, state.WorkStateOptions{WorkMode: true})
+	store.Close()
+	if err != nil {
+		t.Fatalf("write work state: %v", err)
+	}
+
+	ctx := BuildContext(hookproto.HookInput{CWD: sub, SessionID: sessionID})
 
 	if ctx.ProjectRoot != root {
 		t.Fatalf("ctx.ProjectRoot = %s, want %s", ctx.ProjectRoot, root)
 	}
 	if !ctx.WorkMode {
-		t.Fatal("ctx.WorkMode = false, want true")
+		t.Fatal("ctx.WorkMode = false: the work state recorded at the project root was not found from a subdirectory")
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Phase 133.12 (i): R03 extracted only redirections and `tee`, so ln / cp / mv /
+// Phase 133.12 (i): R03 (Bash write to protected paths) extracted only redirections and `tee`, so ln / cp / mv /
 // install put a file at a protected path without the rule ever seeing it.
 // Measured before the fix (target = a protected path):
 //
@@ -51,6 +51,56 @@ func TestExtractBashWriteTargets_DestinationOperandCommands(t *testing.T) {
 				t.Fatalf("extractBashWriteTargets(%q) = %v, want it to contain %q", tc.command, got, dest)
 			}
 		})
+	}
+}
+
+// `-t DIR` puts the destination FIRST — the one form where "the last operand is
+// the destination" does not hold. Before this was handled, the flag was dropped
+// as an ordinary option and the destination vanished entirely: measured
+// 2026-08-14, all five spellings below were allowed while the positional form
+// was denied.
+func TestExtractBashWriteTargets_TargetDirectoryFlag(t *testing.T) {
+	dest := protectedDir
+
+	cases := []struct {
+		name    string
+		command string
+	}{
+		{"cp -t", "cp -t " + dest + " /tmp/source"},
+		{"mv -t", "mv -t " + dest + " /tmp/source"},
+		{"ln -t", "ln -t " + dest + " /tmp/source"},
+		{"install -t", "install -t " + dest + " /tmp/source"},
+		{"long form", "cp --target-directory " + dest + " /tmp/source"},
+		{"long form with equals", "cp --target-directory=" + dest + " /tmp/source"},
+		{"multiple sources", "cp -t " + dest + " /tmp/a /tmp/b"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractBashWriteTargets(tc.command)
+			if !hasTarget(got, dest) {
+				t.Fatalf("extractBashWriteTargets(%q) = %v, want it to contain %q", tc.command, got, dest)
+			}
+			for _, target := range got {
+				if target == "/tmp/source" || target == "/tmp/b" {
+					t.Fatalf("extractBashWriteTargets(%q) reported the source %q as a write target", tc.command, target)
+				}
+			}
+		})
+	}
+}
+
+// A -t destination outside any protected path must stay unremarkable.
+func TestClassifyBashProtectedWrite_OrdinaryTargetDirectoryIsNotFlagged(t *testing.T) {
+	root := t.TempDir()
+
+	for _, command := range []string{
+		"cp -t dist build/out.txt",
+		"install --target-directory=dist build/out.txt",
+	} {
+		if got := classifyBashProtectedWrite(command, root); got.Level != protectedPathNone {
+			t.Fatalf("classifyBashProtectedWrite(%q).Level = %v, want none", command, got.Level)
+		}
 	}
 }
 
