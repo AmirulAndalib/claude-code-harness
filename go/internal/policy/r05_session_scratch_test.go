@@ -168,6 +168,32 @@ func TestR05_JudgesByTargetNotByActor(t *testing.T) {
 			want:    hookproto.DecisionAsk,
 			why:     "argv に現れない対象が増える。パイプ緩和で絶対に壊してはいけない一線",
 		},
+		// --- Phase D refuter が実証した突破口の再発防止 -----------------------
+		// bash はシングルクォートの中を展開しない。解析器がここを展開すると、
+		// 実際には「$S/x」という名前の相対パスを消すコマンドを「自分の scratch
+		// を消している」と誤認する。プロジェクト内に `$S` という名前の symlink
+		// を置くだけで (作成自体はどのルールにも触れない)、実際の削除先は
+		// プロジェクト外の任意のファイルになり、無言で通っていた。
+		{
+			name: "single-quoted value must not be expanded",
+			command: fmt.Sprintf("S=%s\nF='$S/fake_secret_data.txt'\nrm -rf \"$F\"",
+				scratch),
+			want: hookproto.DecisionAsk,
+			why:  "bash はここを展開しない。解析器が展開すると実際の削除先と食い違う (refuter 実証の突破口)",
+		},
+		{
+			name:    "single-quoted removal target itself",
+			command: fmt.Sprintf("S=%s\nrm -rf '$S/mine'", scratch),
+			want:    hookproto.DecisionAsk,
+			why:     "対象トークン側がシングルクォートされている形。代入の右辺だけ見ていると取りこぼす",
+		},
+		{
+			name: "backslash-escaped dollar inside a double-quoted value",
+			command: fmt.Sprintf("S=%s\nF=\"%s/leaf\\$S\"\nrm -rf \"$F\"",
+				scratch, scratch),
+			want: hookproto.DecisionAsk,
+			why:  "退避された $ も shell は展開しない。同じ乖離の別表現",
+		},
 		{
 			name:    "assignment prefix on the removal statement itself",
 			command: fmt.Sprintf("FOO=bar rm -rf %s", filepath.Join(os.TempDir(), "cch-r05-test", "not-ours")),

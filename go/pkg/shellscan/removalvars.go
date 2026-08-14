@@ -60,6 +60,9 @@ func ExpandLiteralAssignments(command string, targets []string) []string {
 		return targets
 	}
 
+	if commandHasSuppressedExpansion(command) {
+		return targets
+	}
 	values := resolveLiteralAssignments(StripNonExecutableText(command))
 	if len(values) == 0 {
 		return targets
@@ -95,6 +98,9 @@ func ExpandLiteralAssignments(command string, targets []string) []string {
 func ResolveCommandForAnalysis(command string) (string, bool) {
 	if !strings.Contains(command, "$") {
 		return command, true
+	}
+	if commandHasSuppressedExpansion(command) {
+		return command, false
 	}
 	values := resolveLiteralAssignments(StripNonExecutableText(command))
 	if len(values) == 0 {
@@ -205,9 +211,56 @@ func assignmentTokens(command string) []string {
 	return tokens
 }
 
-// unquoteValue strips one layer of surrounding quotes. Single quotes suppress
-// expansion in the shell, so a single-quoted value keeps any `$` literally and
-// will simply fail to resolve later.
+// commandHasSuppressedExpansion reports whether the command contains a `$`
+// that the SHELL would keep literal — inside single quotes, or escaped with a
+// backslash. When it does, this file refuses to resolve anything at all.
+//
+// なぜ全面的に降りるのか (Phase D refuter が実証した突破口の再発防止):
+//
+//	F='$S/mine'
+//	rm -rf "$F"
+//
+// bash はシングルクォートの中を展開しないので、消えるのは「$S/mine」という
+// 名前の相対パスである。ところが unquoteValue はクォートの種類を区別せずに
+// 剥がしていたため、解析器は `$S` を展開し「自分の scratch を消している」と
+// 誤認した。プロジェクト内に `$S` という名前の symlink を置くだけで
+// (その作成自体はどのルールにも触れない)、実際の削除先はプロジェクト外の
+// 任意のファイルになり、**無言で通っていた**。
+//
+// 同じ乖離は `"...\$S..."` (バックスラッシュ退避) にもあり、削除対象の
+// トークン自体が `rm -rf '$F'` のようにシングルクォートされている場合にも
+// 起きる。個別に潰すのではなく、「シェルが展開しない `$` が 1 つでもあれば
+// 解決しない」という 1 本の規則にする。解決しなければ対象に `$` が残り、
+// 呼び出し側の既存チェックが従来どおり確認へ落とす。
+func commandHasSuppressedExpansion(command string) bool {
+	inSingle := false
+	inDouble := false
+	for i := 0; i < len(command); i++ {
+		char := command[i]
+		switch {
+		case char == '\\' && !inSingle:
+			// バックスラッシュ退避された `$` は literal のまま残る。
+			if i+1 < len(command) && command[i+1] == '$' {
+				return true
+			}
+			i++
+		case char == '\'' && !inDouble:
+			inSingle = !inSingle
+		case char == '"' && !inSingle:
+			inDouble = !inDouble
+		case char == '$' && inSingle:
+			return true
+		}
+	}
+	return false
+}
+
+// unquoteValue strips one layer of surrounding quotes.
+//
+// クォートの種類による展開の違いは、この関数ではなく
+// commandHasSuppressedExpansion がコマンド全体で判定する。ここで種類を
+// 見分けようとすると、代入の右辺だけを見て「対象トークン自体が
+// シングルクォートされている」形を取りこぼす。
 func unquoteValue(value string) string {
 	if len(value) >= 2 {
 		if (value[0] == '"' && value[len(value)-1] == '"') ||
