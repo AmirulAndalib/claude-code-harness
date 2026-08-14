@@ -42,12 +42,25 @@ delivery_event_turn = "stop"
 # measured on 2026-08-13, so capability was re-measured rather than assumed):
 #   - `GenerateHooksJSON` now has a `case "grok"` (grokDoc, Claude document
 #     shape, command carries `--host grok`), so hook_generation is "generate".
-#   - `harness gen` writes `.grok/hooks/harness-pretool.json` (261 bytes).
-#   - `grok inspect` picks it up: the Hooks count went 35 -> 36 and the new
-#     row is `command matcher=*  project`. **This refutes the 2026-08-11 claim
+#   - `harness gen` writes `.grok/hooks/harness-pretool.json` (493 bytes:
+#     PreToolUse + the Stop delivery entry).
+#   - `grok inspect` picks it up: the Hooks count went 35 -> 36 (PreToolUse
+#     alone) -> 37 (after the Stop delivery entry was added), with two
+#     `command matcher=*  project` rows. **This refutes the 2026-08-11 claim
 #     below that project-level hooks are rejected** — that claim came from
 #     grok-cli (TypeScript), a different product from the Rust "Grok Build
 #     TUI" actually installed. Project-level hooks ARE read by 1.0.3.
+#   - Side finding: grok accepted `Stop` too, so the loader does not reject a
+#     whole file on the first event it does not recognize — which WEAKENS the
+#     27-event hypothesis recorded below as the cause of the plugin-level gap.
+#     Keep it as a candidate, not a conclusion.
+#
+# UNTESTED LINK (discovery != firing): the generated command is the RELATIVE
+# path `bin/harness hook pre-tool --host grok`. Whether grok's hook executor
+# resolves it — and with which working directory — has not been observed.
+# Claude needs the valid_root bootstrap wrapper for exactly this class of
+# problem. If firing turns out to fail, that wrapper (or an absolute path) is
+# the first thing to try; the discovery evidence above says nothing about it.
 #   - Folder trust is already granted (`grok inspect` → "Project trusted: yes"),
 #     so the one-time `--trust` step listed below is done.
 #   - `build_grok()` now copies `hooks/` into the dist (verified by
