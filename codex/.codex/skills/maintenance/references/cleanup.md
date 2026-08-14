@@ -144,30 +144,50 @@ find "$LOGS_DIR" -type f -mtime +${LOGS_RETAIN_DAYS:-30} -delete
 
 ---
 
-## state — agent-trace / harness-usage のトリム
+## state — append-only jsonl のトリム
 
-`.claude/state/agent-trace.jsonl` と `.claude/state/harness-usage.json` は
-append-only / growing JSON で放置すると数十MBになりうる。
+`.claude/state/` の `*.jsonl` は追記専用で、消す仕組みが無い。放置すると
+一方向に増え続ける。
 
-### agent-trace.jsonl のトリム
+> **2026-08-14 訂正**: この節は長らく `agent-trace.jsonl` と
+> `harness-usage.json` だけを名指ししていたが、**どちらもこのリポジトリに
+> 存在しない**。一方で実際に育っていたファイルは対象外のままだった
+> (実測: `orchestration-ledger.jsonl` が 8/8 に 254KB → 8/14 に 520KB、
+> 6 日で倍)。名指しは実在ファイルに合わせる。存在しないファイルを守る
+> 規約は、守っているつもりで何も守っていない。
+
+### 対象と保持行数
+
+| ファイル | 保持 | 根拠 |
+|---|---|---|
+| `orchestration-ledger.jsonl` | 末尾 2000 行 | 実測 3,009 行 / 30 日 = 平均 約100 行/日。繁忙日は 614 行。2000 行なら平常時 約20 日分、繁忙が続いても直近 1 週間は残る |
+| `instructions-loaded.jsonl` | 末尾 2000 行 | 同上 |
+| `session-events.jsonl` | 末尾 2000 行 | 同上 |
+| `changed-files.jsonl` | 末尾 2000 行 | 同上 |
+| `agent-trace.jsonl` | 末尾 1000 行 | 存在する場合のみ (従来の記述を保持) |
+
+日数ではなく行数で切るのは、日付項目の有無がファイルごとに違うため。
+行数なら `tail` だけで済み、構造に依存しない。
+
+### 手順
 
 ```bash
-TRACE=".claude/state/agent-trace.jsonl"
-[ -f "$TRACE" ] || exit 0
+STATE_DIR=".claude/state"
+for f in orchestration-ledger instructions-loaded session-events changed-files; do
+  path="${STATE_DIR}/${f}.jsonl"
+  [ -f "$path" ] || continue
+  lines=$(wc -l < "$path")
+  [ "$lines" -le 2000 ] && continue
+  tail -2000 "$path" > "${path}.tmp" && mv "${path}.tmp" "$path"
+  echo "  ${f}.jsonl: ${lines} -> 2000 行"
+done
 
-# 末尾1000行だけ残す
-tail -1000 "$TRACE" > "$TRACE.tmp" && mv "$TRACE.tmp" "$TRACE"
+# 従来からの対象 (存在する場合のみ)
+TRACE="${STATE_DIR}/agent-trace.jsonl"
+[ -f "$TRACE" ] && tail -1000 "$TRACE" > "$TRACE.tmp" && mv "$TRACE.tmp" "$TRACE"
 ```
 
-### harness-usage.json の圧縮
-
-```bash
-USAGE=".claude/state/harness-usage.json"
-[ -f "$USAGE" ] || exit 0
-
-# 60日以上前のエントリを削除（構造依存なので jq で条件を適切に書く）
-# 実装前に現物構造を Read で確認してから処理する
-```
+`.lock` ファイルは触らない (書き込み中のプロセスがある場合に壊す)。
 
 ### 報告例
 

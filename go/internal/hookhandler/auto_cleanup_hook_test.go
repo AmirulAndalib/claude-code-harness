@@ -124,7 +124,10 @@ func TestAutoCleanupHandler_LocaleDefaultEnglish(t *testing.T) {
 	h := &AutoCleanupHandler{ProjectRoot: dir, PlansMaxLines: 2}
 
 	fpath := filepath.Join(dir, "Plans.md")
-	_ = os.WriteFile(fpath, []byte("one\ntwo\nthree\n"), 0600)
+	// 退避可能なエントリ (30 日より古い) を 1 件持たせる。retention-aware 化により
+	// 行数超過だけでは警告しなくなったため、行数だけの fixture では
+	// 「移動対象ゼロ」に該当して警告が出ないのが正しい挙動になる。
+	_ = os.WriteFile(fpath, []byte("## セッション: 2020-01-01T00:00:00Z\ntwo\nthree\n"), 0600)
 
 	input := `{"tool_name":"Write","tool_input":{"file_path":"` + fpath + `"},"cwd":"` + dir + `"}`
 	var out bytes.Buffer
@@ -147,7 +150,10 @@ func TestAutoCleanupHandler_LocaleJapaneseEnv(t *testing.T) {
 	h := &AutoCleanupHandler{ProjectRoot: dir, PlansMaxLines: 2}
 
 	fpath := filepath.Join(dir, "Plans.md")
-	_ = os.WriteFile(fpath, []byte("one\ntwo\nthree\n"), 0600)
+	// 退避可能なエントリ (30 日より古い) を 1 件持たせる。retention-aware 化により
+	// 行数超過だけでは警告しなくなったため、行数だけの fixture では
+	// 「移動対象ゼロ」に該当して警告が出ないのが正しい挙動になる。
+	_ = os.WriteFile(fpath, []byte("## セッション: 2020-01-01T00:00:00Z\ntwo\nthree\n"), 0600)
 
 	input := `{"tool_name":"Write","tool_input":{"file_path":"` + fpath + `"},"cwd":"` + dir + `"}`
 	var out bytes.Buffer
@@ -170,7 +176,10 @@ func TestAutoCleanupHandler_LocaleJapaneseConfig(t *testing.T) {
 	h := &AutoCleanupHandler{ProjectRoot: dir, SessionLogMaxLines: 2}
 
 	fpath := filepath.Join(dir, "session-log.md")
-	_ = os.WriteFile(fpath, []byte("one\ntwo\nthree\n"), 0600)
+	// 退避可能なエントリ (30 日より古い) を 1 件持たせる。retention-aware 化により
+	// 行数超過だけでは警告しなくなったため、行数だけの fixture では
+	// 「移動対象ゼロ」に該当して警告が出ないのが正しい挙動になる。
+	_ = os.WriteFile(fpath, []byte("## セッション: 2020-01-01T00:00:00Z\ntwo\nthree\n"), 0600)
 
 	input := `{"tool_name":"Write","tool_input":{"file_path":"` + fpath + `"},"cwd":"` + dir + `"}`
 	var out bytes.Buffer
@@ -209,7 +218,9 @@ func TestAutoCleanupHandler_SessionLog_OverThreshold(t *testing.T) {
 	h := &AutoCleanupHandler{ProjectRoot: dir, SessionLogMaxLines: 500}
 
 	fpath := filepath.Join(dir, "session-log.md")
-	content := strings.Repeat("line\n", 600) // 600 行 > 500
+	// 先頭に退避可能なエントリ (30 日より古い) を置く。これにより本来の意図
+	// (行数超過 かつ 退避可能あり -> 警告) を検査し続ける形になる。
+	content := "## セッション: 2020-01-01T00:00:00Z\n" + strings.Repeat("line\n", 599) // 600 行 > 500
 	_ = os.WriteFile(fpath, []byte(content), 0600)
 
 	input := `{"tool_name":"Write","tool_input":{"file_path":"` + fpath + `"},"cwd":"` + dir + `"}`
