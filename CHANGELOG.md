@@ -6,6 +6,10 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Changed
+
+- **release: plugin tag (`{plugin-name}--v{version}`) を廃止し semver tag `vX.Y.Z` に一本化** (D69)。`marketplace.json` の `source` が相対パスで install は tag を参照しないため実効性が無く、v5.6.0 以降 3 リリース連続で欠番のまま実害が無かった。harness-release の手順・test pin を実態に合わせた。既存の `claude-code-harness--v5.5.0` 以前の tag は履歴として残す
+
 ## [5.9.0] - 2026-08-17
 
 ### Added
