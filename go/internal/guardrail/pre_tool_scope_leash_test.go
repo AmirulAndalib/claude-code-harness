@@ -186,3 +186,44 @@ func TestEvaluatePreTool_ScopeLeashNoActiveTaskNeverFires(t *testing.T) {
 		t.Fatalf("no active task must never block, got %s (reason=%q)", result.Decision, result.Reason)
 	}
 }
+
+// TestEvaluatePreTool_ScopeLeashEnforceExemptsClaudeStateWrite proves the
+// regression this test file was added for (code review major finding,
+// 2026-08-16): declared_scope is auto-inferred from Plans.md Title/DoD text
+// and never contains .claude/ paths, so with enforce_level=enforce a write to
+// harness's own internal state (e.g. .claude/state/active-task.json) must not
+// be denied just because the task's declared scope doesn't mention it.
+func TestEvaluatePreTool_ScopeLeashEnforceExemptsClaudeStateWrite(t *testing.T) {
+	clearGuardrailKnobEnv(t)
+	dir := scopeLeashFixture(t, "134.5", []string{"go/internal/guardrail/pre_tool.go"}, "enforce")
+
+	result := EvaluatePreTool(writeInput(dir, filepath.Join(dir, ".claude/state/some-internal-file.json")))
+
+	if result.Decision != hookproto.DecisionApprove {
+		t.Fatalf(".claude/ write must be exempt from scope leash, got %s (reason=%q)", result.Decision, result.Reason)
+	}
+	if result.SystemMessage != "" {
+		t.Fatalf(".claude/ write must not carry a scope warning either, got %q", result.SystemMessage)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".claude", "state", "scope-leash.jsonl")); !os.IsNotExist(err) {
+		t.Fatalf(".claude/ write must not record a scope-leash warning")
+	}
+}
+
+// TestEvaluatePreTool_ScopeLeashEnforceStillDeniesNonClaudeOutOfScopeWrite is
+// the companion negative case for the fix above: the .claude/ exemption must
+// not widen into a general bypass — a normal out-of-scope write under the
+// same enforce-level contract must still be denied.
+func TestEvaluatePreTool_ScopeLeashEnforceStillDeniesNonClaudeOutOfScopeWrite(t *testing.T) {
+	clearGuardrailKnobEnv(t)
+	dir := scopeLeashFixture(t, "134.5", []string{"go/internal/guardrail/pre_tool.go"}, "enforce")
+
+	result := EvaluatePreTool(writeInput(dir, filepath.Join(dir, "other/bar.go")))
+
+	if result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("non-.claude out-of-scope write must still be denied, got %s", result.Decision)
+	}
+	if !strings.Contains(result.Reason, "SCOPE_LEASH") {
+		t.Fatalf("expected SCOPE_LEASH in deny reason, got %q", result.Reason)
+	}
+}

@@ -115,6 +115,38 @@ else
   pass "reject: rejected proposal is not written to rules.jsonl"
 fi
 
+## (d) regression: an RE2-uncompilable pattern is rejected at approval time
+## (silent-disable finding: schema validation alone never compile-checked
+## `pattern`; without the fail-closed `harness writing-rule-vet` gate this
+## proposal would reach rules.jsonl and later silently disable writing-lint
+## scanning for every rule sharing the dictionary) -------------------------
+
+cat >>"$PROPOSALS" <<'JSON'
+{"id": "bad-lookahead-fixture", "pattern": "(?=foo)bar", "good": "g", "status": "pending"}
+JSON
+
+set +e
+bad_out="$(bash "$APPROVE" --id bad-lookahead-fixture 2>&1)"
+bad_rc=$?
+set -e
+if [[ "$bad_rc" -ne 0 ]]; then
+  pass "approve: an RE2-uncompilable pattern is rejected (exit != 0)"
+else
+  fail "approve: an RE2-uncompilable pattern is rejected (exit != 0) (got: $bad_out)"
+fi
+
+if grep -q "writing-rule-vet" <<<"$bad_out"; then
+  pass "approve: rejection message names writing-rule-vet"
+else
+  fail "approve: rejection message names writing-rule-vet (got: $bad_out)"
+fi
+
+if grep -q '"id": "bad-lookahead-fixture"' "$RULES" 2>/dev/null; then
+  fail "approve: RE2-uncompilable pattern must NOT reach rules.jsonl"
+else
+  pass "approve: RE2-uncompilable pattern is not written to rules.jsonl"
+fi
+
 ## writing-rule-list.sh -----------------------------------------------------
 
 cat >>"$PROPOSALS" <<'JSON'

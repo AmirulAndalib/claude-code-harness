@@ -34,14 +34,15 @@ func writeStopWritingLintConfig(t *testing.T, dir string) {
 }
 
 // writeChangedFilesEntry appends one changed-files.jsonl entry for file under
-// dir/.claude/state/changed-files.jsonl, mirroring track_changes.go's format.
-func writeChangedFilesEntry(t *testing.T, dir, file string) {
+// dir/.claude/state/changed-files.jsonl, mirroring track_changes.go's format,
+// tagged with sessionID (pass "" to write a pre-session-scoping legacy entry).
+func writeChangedFilesEntry(t *testing.T, dir, file, sessionID string) {
 	t.Helper()
 	stateDir := filepath.Join(dir, ".claude", "state")
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	entry := changedFileEntry{File: file, Action: "Write", Timestamp: "2026-08-15T00:00:00Z"}
+	entry := changedFileEntry{File: file, Action: "Write", Timestamp: "2026-08-15T00:00:00Z", SessionID: sessionID}
 	line, err := json.Marshal(entry)
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +75,7 @@ func TestStopWritingLint_DisabledByDefaultSkipsScan(t *testing.T) {
 	dir := t.TempDir()
 	dictPath := writeStopWritingLintDictFixture(t, dir)
 	t.Setenv(writinglint.EnvDictPath, dictPath)
-	writeChangedFilesEntry(t, dir, "notes.md")
+	writeChangedFilesEntry(t, dir, "notes.md", "s1")
 	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte("以下に示します。"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +83,7 @@ func TestStopWritingLint_DisabledByDefaultSkipsScan(t *testing.T) {
 
 	h := &StopWritingLintHandler{ProjectRoot: dir}
 	var out bytes.Buffer
-	if err := h.Handle(strings.NewReader(""), &out); err != nil {
+	if err := h.Handle(strings.NewReader(`{"session_id":"s1"}`), &out); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertStopOK(t, out.String(), true)
@@ -95,7 +96,7 @@ func TestStopWritingLint_ReentryAllowsStopWithWarning(t *testing.T) {
 	dictPath := writeStopWritingLintDictFixture(t, dir)
 	t.Setenv(writinglint.EnvDictPath, dictPath)
 
-	writeChangedFilesEntry(t, dir, "notes.md")
+	writeChangedFilesEntry(t, dir, "notes.md", "s1")
 	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte("以下に示します。ここから本題です。"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -103,14 +104,14 @@ func TestStopWritingLint_ReentryAllowsStopWithWarning(t *testing.T) {
 	// 初回 Stop: major が残っているので block
 	h := &StopWritingLintHandler{ProjectRoot: dir}
 	var first bytes.Buffer
-	if err := h.Handle(strings.NewReader(`{"stop_hook_active":false}`), &first); err != nil {
+	if err := h.Handle(strings.NewReader(`{"stop_hook_active":false,"session_id":"s1"}`), &first); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertStopBlocked(t, first.String(), "notes.md")
 
 	// 再入 (stop_hook_active:true): 同じ major が残っていても停止を許可し、警告のみ
 	var second bytes.Buffer
-	if err := h.Handle(strings.NewReader(`{"stop_hook_active":true}`), &second); err != nil {
+	if err := h.Handle(strings.NewReader(`{"stop_hook_active":true,"session_id":"s1"}`), &second); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var resp map[string]interface{}
@@ -139,14 +140,14 @@ func TestStopWritingLint_MinorOnlyDoesNotBlock(t *testing.T) {
 	dictPath := writeStopWritingLintDictFixture(t, dir)
 	t.Setenv(writinglint.EnvDictPath, dictPath)
 
-	writeChangedFilesEntry(t, dir, "notes.md")
+	writeChangedFilesEntry(t, dir, "notes.md", "s1")
 	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte("重要なのはこの点である。"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	h := &StopWritingLintHandler{ProjectRoot: dir}
 	var out bytes.Buffer
-	if err := h.Handle(strings.NewReader(`{"stop_hook_active":false}`), &out); err != nil {
+	if err := h.Handle(strings.NewReader(`{"stop_hook_active":false,"session_id":"s1"}`), &out); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertStopOK(t, out.String(), true)
@@ -158,14 +159,14 @@ func TestStopWritingLint_NonMDFileIgnored(t *testing.T) {
 	dictPath := writeStopWritingLintDictFixture(t, dir)
 	t.Setenv(writinglint.EnvDictPath, dictPath)
 
-	writeChangedFilesEntry(t, dir, "notes.txt")
+	writeChangedFilesEntry(t, dir, "notes.txt", "s1")
 	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("以下に示します。"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	h := &StopWritingLintHandler{ProjectRoot: dir}
 	var out bytes.Buffer
-	if err := h.Handle(strings.NewReader(""), &out); err != nil {
+	if err := h.Handle(strings.NewReader(`{"session_id":"s1"}`), &out); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertStopOK(t, out.String(), true)
@@ -177,14 +178,103 @@ func TestStopWritingLint_CleanFileNoBlock(t *testing.T) {
 	dictPath := writeStopWritingLintDictFixture(t, dir)
 	t.Setenv(writinglint.EnvDictPath, dictPath)
 
-	writeChangedFilesEntry(t, dir, "notes.md")
+	writeChangedFilesEntry(t, dir, "notes.md", "s1")
 	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte("これは問題のない文章です。"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	h := &StopWritingLintHandler{ProjectRoot: dir}
 	var out bytes.Buffer
-	if err := h.Handle(strings.NewReader(""), &out); err != nil {
+	if err := h.Handle(strings.NewReader(`{"session_id":"s1"}`), &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertStopOK(t, out.String(), true)
+}
+
+// Regression (Phase 134 finding): changed-files.jsonl is a cross-session
+// append-only log. A major hit recorded by a DIFFERENT session must not
+// block THIS session's Stop.
+func TestStopWritingLint_OtherSessionMajorHitDoesNotBlock(t *testing.T) {
+	dir := t.TempDir()
+	writeStopWritingLintConfig(t, dir)
+	dictPath := writeStopWritingLintDictFixture(t, dir)
+	t.Setenv(writinglint.EnvDictPath, dictPath)
+
+	// A different session ("s-other") touched notes.md and left a major hit.
+	writeChangedFilesEntry(t, dir, "notes.md", "s-other")
+	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte("以下に示します。ここから本題です。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// This Stop belongs to session "s1", which never touched notes.md.
+	h := &StopWritingLintHandler{ProjectRoot: dir}
+	var out bytes.Buffer
+	if err := h.Handle(strings.NewReader(`{"stop_hook_active":false,"session_id":"s1"}`), &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertStopOK(t, out.String(), true)
+}
+
+// Regression: the same file, touched by the CURRENT session, still blocks
+// (proves the session filter narrows rather than disabling the gate).
+func TestStopWritingLint_SameSessionMajorHitStillBlocks(t *testing.T) {
+	dir := t.TempDir()
+	writeStopWritingLintConfig(t, dir)
+	dictPath := writeStopWritingLintDictFixture(t, dir)
+	t.Setenv(writinglint.EnvDictPath, dictPath)
+
+	writeChangedFilesEntry(t, dir, "notes.md", "s1")
+	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte("以下に示します。ここから本題です。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	h := &StopWritingLintHandler{ProjectRoot: dir}
+	var out bytes.Buffer
+	if err := h.Handle(strings.NewReader(`{"stop_hook_active":false,"session_id":"s1"}`), &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertStopBlocked(t, out.String(), "notes.md")
+}
+
+// Regression: an entry written before session_id existed (legacy log line,
+// empty SessionID) must not be attributed to the current session either.
+func TestStopWritingLint_LegacyEntryWithoutSessionIDDoesNotBlock(t *testing.T) {
+	dir := t.TempDir()
+	writeStopWritingLintConfig(t, dir)
+	dictPath := writeStopWritingLintDictFixture(t, dir)
+	t.Setenv(writinglint.EnvDictPath, dictPath)
+
+	writeChangedFilesEntry(t, dir, "notes.md", "")
+	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte("以下に示します。ここから本題です。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	h := &StopWritingLintHandler{ProjectRoot: dir}
+	var out bytes.Buffer
+	if err := h.Handle(strings.NewReader(`{"stop_hook_active":false,"session_id":"s1"}`), &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertStopOK(t, out.String(), true)
+}
+
+// Regression: when the Stop payload itself carries no session_id, this
+// handler cannot safely determine ownership of any changed-files.jsonl
+// entry, so it must not block even if a major hit is on disk (conservative
+// direction: never false-positive block over a session it cannot verify).
+func TestStopWritingLint_EmptyPayloadSessionIDDoesNotBlock(t *testing.T) {
+	dir := t.TempDir()
+	writeStopWritingLintConfig(t, dir)
+	dictPath := writeStopWritingLintDictFixture(t, dir)
+	t.Setenv(writinglint.EnvDictPath, dictPath)
+
+	writeChangedFilesEntry(t, dir, "notes.md", "s1")
+	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte("以下に示します。ここから本題です。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	h := &StopWritingLintHandler{ProjectRoot: dir}
+	var out bytes.Buffer
+	if err := h.Handle(strings.NewReader(`{"stop_hook_active":false}`), &out); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertStopOK(t, out.String(), true)

@@ -1,7 +1,5 @@
 package writinglint
 
-import "fmt"
-
 // Match is one writing-lint hit against a scanned text.
 type Match struct {
 	RuleID   string
@@ -21,15 +19,23 @@ type ScanOpts struct {
 
 // ScanText narrows rules to Enabled + AppliesToScene(opts.Scene), then runs
 // each rule's compiled regexp against text and returns every match.
-func ScanText(text string, rules []Rule, opts ScanOpts) ([]Match, error) {
-	var matches []Match
+//
+// A rule whose Pattern fails to compile as RE2 (lookahead/lookbehind,
+// backreferences, …) is skipped rather than aborting the whole scan: one
+// broken rule must never silently take every other rule down with it. Its ID
+// is appended to invalidRuleIDs so callers can surface the skip instead of
+// swallowing it (this is the engine-level fallback; the primary defense is
+// the `harness writing-rule-vet` compile check run at proposal-approval
+// time, before a rule ever reaches the dictionary).
+func ScanText(text string, rules []Rule, opts ScanOpts) (matches []Match, invalidRuleIDs []string, err error) {
 	for _, rule := range rules {
 		if !rule.Enabled || !rule.AppliesToScene(opts.Scene) {
 			continue
 		}
-		compiled, err := rule.Compile()
-		if err != nil {
-			return nil, fmt.Errorf("rule %q: %w", rule.ID, err)
+		compiled, compileErr := rule.Compile()
+		if compileErr != nil {
+			invalidRuleIDs = append(invalidRuleIDs, rule.ID)
+			continue
 		}
 		for _, loc := range compiled.Regexp.FindAllStringIndex(text, -1) {
 			matches = append(matches, Match{
@@ -42,5 +48,5 @@ func ScanText(text string, rules []Rule, opts ScanOpts) ([]Match, error) {
 			})
 		}
 	}
-	return matches, nil
+	return matches, invalidRuleIDs, nil
 }

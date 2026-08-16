@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Chachamaru127/claude-code-harness/go/internal/gitport"
 	"github.com/Chachamaru127/claude-code-harness/go/internal/writinglint"
 )
 
@@ -296,6 +297,72 @@ func TestHandlePostToolUseWritingLint_MissingDictDiagnostics(t *testing.T) {
 	ctx := result.HookSpecificOutput.AdditionalContext
 	if !strings.Contains(ctx, "辞書") && !strings.Contains(ctx, "dictionary") {
 		t.Errorf("expected dictionary diagnostics message, got %q", ctx)
+	}
+}
+
+// TestHandlePostToolUseWritingLint_ConfigFoundFromRepoSubdirectory is the
+// regression for the CWD-dependent silent-disable finding: before this fix,
+// the config was read from a literal relative path
+// (".claude-code-harness.config.yaml"), resolved against the process's raw
+// working directory. When the process actually runs from a subdirectory of
+// the project (monorepo subdir invocation), that literal path misses the
+// repo-root config and writing_lint.enabled silently reads as false. Aligning
+// with stop_writing_lint.go's resolveProjectRoot() join (git rev-parse
+// --show-toplevel fallback) fixes this: the config at the repo root must
+// still be found and enabled:true honored from a subdirectory.
+func TestHandlePostToolUseWritingLint_ConfigFoundFromRepoSubdirectory(t *testing.T) {
+	repoRoot := t.TempDir()
+	if real, err := filepath.EvalSymlinks(repoRoot); err == nil {
+		repoRoot = real
+	}
+	if err := gitport.Run(repoRoot, "init"); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+
+	subDir := filepath.Join(repoRoot, "sub")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(subDir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(origDir)
+
+	dictPath := writeWritingLintDictFixture(t, repoRoot)
+	t.Setenv(writinglint.EnvDictPath, dictPath)
+
+	// config は repo ルートにだけ置く。sub/ には置かない。
+	config := "writing_lint:\n  enabled: true\n  structural: false\n"
+	if err := os.WriteFile(filepath.Join(repoRoot, harnessConfigFileName), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mdFile := filepath.Join(subDir, "notes.md")
+	if err := os.WriteFile(mdFile, []byte("以下に示します。ここから本題です。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	input := `{"tool_name":"Write","tool_input":{"file_path":"notes.md"}}`
+	var out bytes.Buffer
+	if err := HandlePostToolUseWritingLint(strings.NewReader(input), &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Len() == 0 {
+		t.Fatal("expected a dictionary-hit warning: repo-root config (enabled:true) should be found from a subdirectory")
+	}
+
+	var result postToolOutput
+	if jsonErr := json.Unmarshal(out.Bytes(), &result); jsonErr != nil {
+		t.Fatalf("invalid JSON output: %v, raw: %s", jsonErr, out.String())
+	}
+	ctx := result.HookSpecificOutput.AdditionalContext
+	if !strings.Contains(ctx, "以下に示します") {
+		t.Errorf("expected matched text in additionalContext (proves repo-root config was honored), got %q", ctx)
 	}
 }
 

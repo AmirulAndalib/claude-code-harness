@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Chachamaru127/claude-code-harness/go/internal/writinglint"
@@ -87,8 +88,12 @@ func HandlePostToolUseWritingLint(in io.Reader, out io.Writer) error {
 		return nil
 	}
 
-	// 設定を読み込む
-	cfg := readWritingLintConfig(".claude-code-harness.config.yaml")
+	// 設定を読み込む。プロジェクトルート起点で解決する（stop_writing_lint.go の
+	// resolveProjectRoot() join と揃える）。プロセスの実 CWD がリポジトリの
+	// サブディレクトリの場合、素の相対パスだとルート直下の config を見つけられず
+	// enabled:false 相当に silent disable してしまうため。
+	projectRoot := resolveProjectRoot()
+	cfg := readWritingLintConfig(filepath.Join(projectRoot, harnessConfigFileName))
 	if !cfg.Enabled {
 		return nil
 	}
@@ -110,7 +115,7 @@ func HandlePostToolUseWritingLint(in io.Reader, out io.Writer) error {
 		feedbacks = append(feedbacks, structuralFeedback(text, locale)...)
 	}
 
-	dictPath := writinglint.ResolveDictPath(resolveProjectRoot())
+	dictPath := writinglint.ResolveDictPath(projectRoot)
 	rules, dictErr := writinglint.LoadDict(dictPath)
 	if dictErr != nil {
 		// 辞書未検出時は一度だけ diagnostics を返す（ブロックはしない）。
@@ -118,9 +123,14 @@ func HandlePostToolUseWritingLint(in io.Reader, out io.Writer) error {
 			fmt.Sprintf("writing-lint dictionary unavailable (%s); pattern checks skipped", dictPath),
 			fmt.Sprintf("writing-lint 辞書が見つかりません（%s）。パターン照合はスキップしました", dictPath)))
 	} else {
-		matches, scanErr := writinglint.ScanText(text, rules, writinglint.ScanOpts{Scene: cfg.Scene})
-		if scanErr == nil && len(matches) > 0 {
-			feedbacks = append(feedbacks, matchFeedback(matches, locale)...)
+		matches, invalidRuleIDs, scanErr := writinglint.ScanText(text, rules, writinglint.ScanOpts{Scene: cfg.Scene})
+		if scanErr == nil {
+			if len(matches) > 0 {
+				feedbacks = append(feedbacks, matchFeedback(matches, locale)...)
+			}
+			if len(invalidRuleIDs) > 0 {
+				feedbacks = append(feedbacks, invalidRuleFeedback(invalidRuleIDs, locale)...)
+			}
 		}
 	}
 
@@ -191,6 +201,19 @@ func matchFeedback(matches []writinglint.Match, locale string) []string {
 			fmt.Sprintf("…ほか %d 件は省略しました", excess)))
 	}
 
+	return lines
+}
+
+// invalidRuleFeedback は RE2 として compile できず skip した dictionary rule
+// ID を advisory メッセージへ変換する（silent disable の regression 対策。
+// writinglint.ScanText 参照）。
+func invalidRuleFeedback(invalidRuleIDs []string, locale string) []string {
+	lines := make([]string, 0, len(invalidRuleIDs))
+	for _, id := range invalidRuleIDs {
+		lines = append(lines, localizedHarnessMessage(locale,
+			fmt.Sprintf("- invalid rule: %s (pattern failed to compile as RE2; skipped)", id),
+			fmt.Sprintf("- invalid rule: %s（pattern が RE2 として compile できず skip しました）", id)))
+	}
 	return lines
 }
 

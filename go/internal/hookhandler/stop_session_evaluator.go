@@ -21,6 +21,7 @@ type stopSessionInput struct {
 	StopHookActive       bool   `json:"stop_hook_active"`
 	TranscriptPath       string `json:"transcript_path"`
 	LastAssistantMessage string `json:"last_assistant_message"`
+	SessionID            string `json:"session_id"`
 }
 
 // stopSessionResponse は Stop フックのレスポンス。
@@ -101,7 +102,7 @@ func (h *StopSessionEvaluatorHandler) Handle(in io.Reader, out io.Writer) error 
 		})
 	}
 
-	if notice := h.droppedScopeAdvisory(projectRoot); notice != "" {
+	if notice := h.droppedScopeAdvisory(projectRoot, input.SessionID); notice != "" {
 		return writeJSON(out, stopSessionResponse{OK: true, SystemMessage: notice})
 	}
 
@@ -115,7 +116,7 @@ func (h *StopSessionEvaluatorHandler) Handle(in io.Reader, out io.Writer) error 
 // only decorates the ok:true response's systemMessage — and it registers no
 // new hook (hooks.json is unchanged); it is purely an extension of the
 // existing Stop handler.
-func (h *StopSessionEvaluatorHandler) droppedScopeAdvisory(projectRoot string) string {
+func (h *StopSessionEvaluatorHandler) droppedScopeAdvisory(projectRoot, sessionID string) string {
 	taskID, ok := resolveActiveTaskForStop(projectRoot)
 	if !ok {
 		return ""
@@ -124,7 +125,7 @@ func (h *StopSessionEvaluatorHandler) droppedScopeAdvisory(projectRoot string) s
 	if len(declared) == 0 {
 		return ""
 	}
-	touched := loadTouchedFilesForStop(projectRoot)
+	touched := loadTouchedFilesForStop(projectRoot, sessionID)
 	dropped := scopeleash.DroppedScope(declared, touched)
 	if len(dropped) == 0 {
 		return ""
@@ -181,10 +182,24 @@ func loadDeclaredScopeForStop(projectRoot, taskID string) []string {
 	return doc.Task.DeclaredScope
 }
 
-// loadTouchedFilesForStop reads the de-duplicated set of files this run wrote
-// to from .claude/state/changed-files.jsonl (track_changes.go's PostToolUse
-// record). Order is first-seen; malformed lines are skipped.
-func loadTouchedFilesForStop(projectRoot string) []string {
+// loadTouchedFilesForStop reads the de-duplicated set of files the current
+// session wrote to from .claude/state/changed-files.jsonl (track_changes.go's
+// PostToolUse record). Order is first-seen; malformed lines are skipped.
+//
+// changed-files.jsonl is a cross-session append-only log: entries from other
+// sessions (including entries written before session_id was recorded) remain
+// on disk indefinitely. This narrows results to entries whose session_id
+// matches sessionID, so a stale entry from a different session's writes
+// cannot be misread as "this session touched this file". Both an empty
+// sessionID (Stop payload lacked session_id) and an empty entry.SessionID
+// (pre-existing log line, or an entry genuinely missing session_id) fail the
+// match and are skipped — the conservative direction, since callers use this
+// to decide whether to block/advise the current Stop.
+func loadTouchedFilesForStop(projectRoot, sessionID string) []string {
+	if sessionID == "" {
+		return nil
+	}
+
 	f, err := os.Open(filepath.Join(projectRoot, changedFilesPath))
 	if err != nil {
 		return nil
@@ -204,6 +219,9 @@ func loadTouchedFilesForStop(projectRoot string) []string {
 			continue
 		}
 		if entry.File == "" {
+			continue
+		}
+		if entry.SessionID != sessionID {
 			continue
 		}
 		if _, dup := seen[entry.File]; dup {

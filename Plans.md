@@ -138,22 +138,6 @@ Phase 119-124 (2026-07-19 〜 2026-07-25、全 task `cc:done`) は
 | 137.2 | `[lane:fast]` blind 受け手検査 (run-goal-loop 型): harness-accept に optional step — ship 判定直前に「採点基準・合格ライン・途中経過を渡さない fresh fork 評価者」へ依頼文 + 成果物 + 読者像のみを渡し「信じられるか / 役に立つか」を返させる。説得系/文書系成果物のみ、機能系スキップ。結果は Accept surface に「内側スコアとの乖離」表示 (乖離大なら wait 側へ)。accept.html.template / acceptance-context schema の受け口追加を含む。`blind-judge.md` は流用検討、合わなければ新規 reference | (a) 内側高得点 + blind 低評価 fixture で乖離表示 + recommendation が wait 側へ, (b) 機能系タスクでステップがスキップされる, (c) schema additive のみ | 134.4, 136.1 | cc:done [c771707d; blind-evaluator reference 新設 (blind-judge.md は review 文脈専用のため流用せず)。説得系のみ発動、乖離で wait 側へ。fixture: case-blind-divergence / case-functional-skip] |
 | 137.3 | `[lane:fast]` `[tdd:skip:docs-only]` 評価者 4 契約の明文化: `agents/reviewer.md` に「①fresh context で採点 ②採点基準を書き換えない ③絶対評価 (前回比でなく) ④報告でなく実物を自分で開く」を 4 契約として一覧化 (①②④は既存実装の明文化、③は新規)。test-quality.md / test-wiring-auditor との相互参照を張る。ミラー同期 | (a) reviewer.md に 4 契約一覧, (b) 相互参照リンクが有効, (c) `bash scripts/ci/check-consistency.sh` PASS | - | cc:done [c771707d; reviewer.md に評価者 4 契約 (③絶対評価が新規)。test-quality / workflow-test-wiring へ相互参照] |
 
-## Phase 138: 汎用 feedback ルール + count 段階付け (2026-08-15 起票)
-
-**Purpose**: zenn.dev/nozomi720 の feedback 管理システム (指摘をルール化して永続化し、指摘回数 count で強制力を段階付け、UserPromptSubmit 注入 / PreToolUse 検査 / Stop 検査で機械強制) の CCH 変形吸収。「operator が同じ指摘を二度しない」を writing (Phase 135) 以外の全行動へ一般化する。実例: 「rm は単独コマンドで」という指摘は prompt では worker に守られなかった (2026-08-15 実測 2 回) — feedback rule なら PreToolUse で機械警告になる。
-
-**変形の統治判断 (D67)**: count による強制力の**自動**昇格はしない。count は昇格を「提案」するだけで、warn→ask の昇格も承認 CLI 経由、deny への昇格は operator 手動のみ (deny-baseline / self-audit の「deny 面は人間 only」原則を維持)。データ駆動ルールの強制力上限は ask (deny は Go compiled rules のみ)。ルールファイルは AI も編集できるため、deny をデータに持たせると改ざんで deny 回避の攻撃面が開く。
-
-**Depends**: Phase 135.4 (writing-rule proposal loop) の完成。writing 専用機構を汎用 feedback へ一般化する形で実装し、二重実装を避ける。
-
-| Task | 内容 | DoD | Depends | Status |
-|------|------|-----|---------|--------|
-| 138.1 | `[lane:gate]` feedback-rule.v1 schema + 基盤: `templates/schemas/feedback-rule.v1.json` (id / pattern [regex] / check_type [command-regex \| file-adjacency] / good / count / severity [warn\|ask] / enabled / scope)。ルール置き場は個人層 `~/.claude/feedback/rules.jsonl` (writing lint と同じ config > env > 既定パス解決)。違反 log `.claude/state/feedback-violations.jsonl` (append-only、count 自動更新なし)。proposal → 承認 CLI は 135.4 の writing-rule-approve.sh を一般化して共用 | (a) schema + パス解決 + 違反 log の Go fixture テスト green, (b) 135.4 との共用部の回帰テスト PASS, (c) `cd go && go test ./...` PASS | 135.4 | cc:todo |
-| 138.2 | `[lane:gate]` データ駆動 PreToolUse guard: 承認済み feedback rules を読み Bash command regex / file-adjacency を検査する handler (quality_pack / writing-lint 型)。判定は severity どおり warn (additionalContext) または ask。**deny は返さない** (実装レベルで上限を固定し、テストで pin する)。違反時は violations.jsonl へ記録 | (a) warn rule で additionalContext + 記録, (b) ask rule で ask 判定, (c) severity: deny がルールに書かれていても ask に clamp される負性テスト, (d) ルール 0 件・辞書欠損で完全素通り | 138.1 | cc:todo |
-| 138.3 | `[lane:fast]` count 昇格の提案機構: violations.jsonl から rule 別 count を集計し、閾値 (3 回 = ask 提案、5 回 = operator へ deny 検討通知) 到達で昇格 proposal を生成。適用は承認 CLI のみ。progress surface の承認待ちキュー (136.2) に統合表示 | (a) count 3 fixture で ask 昇格 proposal が生成される, (b) 自動適用経路が存在しない (承認 CLI のみ), (c) deny は proposal でなく「operator 検討通知」で止まる | 138.1, 136.2 | cc:todo |
-| 138.4 | `[lane:fast]` UserPromptSubmit 注入: count ≥ 3 の確定ルールを budget (3000 字) 内で UserPromptSubmit hook から注入 (count 降順、超過分は件数だけ通知)。D66 (context を汚さない節度) とのトレードオフを budget で固定 | (a) 確定ルール fixture で注入内容が budget 内, (b) 対象ルール 0 件で注入なし, (c) hooks.json 2 ファイル同期 + test-hooks-sync PASS | 138.1 | cc:todo |
-| 138.5 | `[lane:gate]` 検証の検証: `scripts/ci/check-feedback-rule-wiring.sh` + 実効性契約テスト (warn/ask/clamp の 3 系を実バイナリ probe で実測)。validate-plugin.sh へ配線 | (a) 配線前 RED / 配線後 GREEN の実測記録, (b) `bash tests/validate-plugin.sh` PASS | 138.1-138.4 | cc:todo |
-
 ## Phase 138: 汎用 feedback ルール + count 段階付け + PR evidence pack (2026-08-15 起票)
 
 **Purpose**: 外部 2 ソースの変形吸収。(1) zenn.dev/nozomi720 の feedback 管理システム — 指摘をルール化して永続化し、指摘回数 count で強制力を段階付け、UserPromptSubmit 注入 / PreToolUse 検査で機械強制。「operator が同じ指摘を二度しない」を writing (Phase 135) 以外の全行動へ一般化する。実例: 「rm は単独コマンドで」という指摘は prompt では worker に守られなかった (2026-08-15 実測 2 回) — feedback rule なら PreToolUse で機械警告になる。(2) builders.ramp.com "integrations that write themselves" — LLM はビルド時 (ルール起草・ドキュメント解釈)、実行時は決定論的 (regex / スクリプト) という分離原則と、「コードではなく実行記録 (artifact) を信頼する」= PR への実行記録添付。

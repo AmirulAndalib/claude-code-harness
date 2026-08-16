@@ -15,6 +15,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROPOSAL_SCHEMA="${ROOT}/templates/schemas/writing-rule-proposal.v1.json"
 RULE_SCHEMA="${ROOT}/templates/schemas/writing-rule.v1.json"
+HARNESS_BIN="${ROOT}/bin/harness"
 
 DEFAULT_PROPOSALS="${HOME}/.claude/writing-lint/proposals.jsonl"
 DEFAULT_RULES="${HOME}/.claude/writing-lint/rules.jsonl"
@@ -55,13 +56,14 @@ if [[ ! -f "$proposals_path" ]]; then
   exit 1
 fi
 
-python3 - "$PROPOSAL_SCHEMA" "$RULE_SCHEMA" "$proposals_path" "$rules_path" "$id" "$action" <<'PY'
+python3 - "$PROPOSAL_SCHEMA" "$RULE_SCHEMA" "$proposals_path" "$rules_path" "$id" "$action" "$HARNESS_BIN" <<'PY'
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timezone
 
-proposal_schema_path, rule_schema_path, proposals_path, rules_path, target_id, action = sys.argv[1:7]
+proposal_schema_path, rule_schema_path, proposals_path, rules_path, target_id, action, harness_bin_path = sys.argv[1:8]
 
 with open(proposal_schema_path, encoding="utf-8") as f:
     proposal_schema = json.load(f)
@@ -79,6 +81,38 @@ def validate(data, schema):
     for key in required:
         if key not in data:
             raise ValueError(f"missing required property: {key}")
+
+
+def vet_rule_pattern(rule, harness_bin_path):
+    """Fail-closed RE2 compile + type/enum check via `harness writing-rule-vet`.
+
+    validate() above only checks required keys / additionalProperties against
+    the JSON schema — it never compiles `pattern`. Python's `re` accepts
+    syntax (lookahead/lookbehind, backreferences) that Go's RE2 rejects, so a
+    proposal could pass schema validation here yet break every writing-lint
+    rule sharing the dictionary once writinglint.ScanText tries to compile it
+    at scan time. This is the primary defense against that; the scan-time
+    skip-on-compile-failure in ScanText is the fallback.
+
+    The bin/harness shim exits 0 with EMPTY stdout when its platform binary
+    is missing (hooks fail-open contract) — so success requires stdout ==
+    "ok" exactly, not just returncode == 0, to stay fail-closed when the
+    binary cannot be found or run.
+    """
+    try:
+        proc = subprocess.run(
+            [harness_bin_path, "writing-rule-vet"],
+            input=json.dumps(rule, ensure_ascii=False).encode("utf-8"),
+            capture_output=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"writing-rule-vet could not run ({exc}); refusing to promote (fail-closed)")
+    stdout = proc.stdout.decode("utf-8", "replace").strip()
+    stderr = proc.stderr.decode("utf-8", "replace").strip()
+    if proc.returncode != 0 or stdout != "ok":
+        detail = stderr or stdout or "no output (missing platform binary?)"
+        raise ValueError(f"writing-rule-vet rejected pattern ({detail})")
 
 
 records = []
@@ -145,6 +179,12 @@ if action == "approve":
         validate(rule, rule_schema)
     except ValueError as exc:
         print(f"writing-rule-approve.sh: derived rule failed schema validation ({exc})", file=sys.stderr)
+        raise SystemExit(1)
+
+    try:
+        vet_rule_pattern(rule, harness_bin_path)
+    except ValueError as exc:
+        print(f"writing-rule-approve.sh: {exc}", file=sys.stderr)
         raise SystemExit(1)
 
     os.makedirs(os.path.dirname(rules_path) or ".", exist_ok=True)

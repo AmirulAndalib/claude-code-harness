@@ -29,7 +29,8 @@ const writingLintMajorSeverity = "error"
 
 // stopWritingLintInput is the Stop hook stdin JSON payload this handler reads.
 type stopWritingLintInput struct {
-	StopHookActive bool `json:"stop_hook_active"`
+	StopHookActive bool   `json:"stop_hook_active"`
+	SessionID      string `json:"session_id"`
 }
 
 // StopWritingLintHandler は scripts 側に対応物のない新規 Go ネイティブハンドラ。
@@ -58,12 +59,17 @@ func (h *StopWritingLintHandler) Handle(in io.Reader, out io.Writer) error {
 		return writeJSON(out, stopSessionResponse{OK: true})
 	}
 
-	majorHits := scanTouchedMarkdownForMajorHits(projectRoot, cfg)
+	majorHits, invalidRuleIDs := scanTouchedMarkdownForMajorHits(projectRoot, cfg, input.SessionID)
+	locale := resolveHarnessLocale(projectRoot)
+	invalidSuffix := invalidRuleDiagnosticSuffix(invalidRuleIDs, locale)
+
 	if len(majorHits) == 0 {
-		return writeJSON(out, stopSessionResponse{OK: true})
+		if invalidSuffix == "" {
+			return writeJSON(out, stopSessionResponse{OK: true})
+		}
+		return writeJSON(out, stopSessionResponse{OK: true, SystemMessage: invalidSuffix})
 	}
 
-	locale := resolveHarnessLocale(projectRoot)
 	summary := strings.Join(majorHits, "; ")
 
 	if input.StopHookActive {
@@ -72,7 +78,7 @@ func (h *StopWritingLintHandler) Handle(in io.Reader, out io.Writer) error {
 				"[WritingLint] Stopping with %d major writing-lint issue(s) remaining: %s",
 				"[WritingLint] major の writing-lint 指摘が %d 件残ったまま停止します: %s"),
 			len(majorHits), summary,
-		)
+		) + invalidSuffix
 		return writeJSON(out, stopSessionResponse{OK: true, SystemMessage: msg})
 	}
 
@@ -81,28 +87,48 @@ func (h *StopWritingLintHandler) Handle(in io.Reader, out io.Writer) error {
 			"[WritingLint] %d major writing-lint issue(s) remain: %s",
 			"[WritingLint] major の writing-lint 指摘が %d 件残っています: %s"),
 		len(majorHits), summary,
-	)
+	) + invalidSuffix
 	return writeJSON(out, stopSessionResponse{Decision: "block", Reason: msg})
 }
 
+// invalidRuleDiagnosticSuffix は RE2 として compile できず skip した
+// dictionary rule ID を、既存メッセージへ追記する診断サフィックスへ変換する
+// （silent disable の regression 対策。writinglint.ScanText 参照）。
+// invalidRuleIDs が空なら空文字を返す。
+func invalidRuleDiagnosticSuffix(invalidRuleIDs []string, locale string) string {
+	if len(invalidRuleIDs) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(
+		localizedHarnessMessage(locale,
+			" [WritingLint] invalid rule(s) skipped (pattern failed to compile as RE2): %s",
+			" [WritingLint] RE2 として compile できず skip した rule: %s"),
+		strings.Join(invalidRuleIDs, ", "),
+	)
+}
+
 // scanTouchedMarkdownForMajorHits reads the de-duplicated list of files this
-// run touched (track_changes.go's changed-files.jsonl, via
-// loadTouchedFilesForStop), narrows to .md paths not covered by the
-// writing-lint exclude list, and returns one summary string per severity:
-// error dictionary hit found in their current on-disk content.
-func scanTouchedMarkdownForMajorHits(projectRoot string, cfg writingLintConfig) []string {
-	touched := loadTouchedFilesForStop(projectRoot)
+// session touched (track_changes.go's changed-files.jsonl, via
+// loadTouchedFilesForStop, narrowed to entries whose session_id matches
+// sessionID so another session's stale major hit cannot block this Stop),
+// narrows to .md paths not covered by the writing-lint exclude list, and
+// returns one summary string per severity: error dictionary hit found in
+// their current on-disk content, plus the de-duplicated set of rule IDs (if
+// any) skipped because their pattern failed to compile as RE2 (see
+// writinglint.ScanText).
+func scanTouchedMarkdownForMajorHits(projectRoot string, cfg writingLintConfig, sessionID string) (hits []string, invalidRuleIDs []string) {
+	touched := loadTouchedFilesForStop(projectRoot, sessionID)
 	if len(touched) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	dictPath := writinglint.ResolveDictPath(projectRoot)
 	rules, err := writinglint.LoadDict(dictPath)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 
-	var hits []string
+	seenInvalid := map[string]bool{}
 	for _, rel := range touched {
 		if !strings.HasSuffix(strings.ToLower(rel), ".md") {
 			continue
@@ -114,9 +140,15 @@ func scanTouchedMarkdownForMajorHits(projectRoot string, cfg writingLintConfig) 
 		if readErr != nil {
 			continue
 		}
-		matches, scanErr := writinglint.ScanText(string(content), rules, writinglint.ScanOpts{Scene: cfg.Scene})
+		matches, invalid, scanErr := writinglint.ScanText(string(content), rules, writinglint.ScanOpts{Scene: cfg.Scene})
 		if scanErr != nil {
 			continue
+		}
+		for _, id := range invalid {
+			if !seenInvalid[id] {
+				seenInvalid[id] = true
+				invalidRuleIDs = append(invalidRuleIDs, id)
+			}
 		}
 		for _, m := range matches {
 			if m.Severity != writingLintMajorSeverity {
@@ -125,5 +157,5 @@ func scanTouchedMarkdownForMajorHits(projectRoot string, cfg writingLintConfig) 
 			hits = append(hits, fmt.Sprintf("%s [%s] %q", rel, m.RuleID, m.Text))
 		}
 	}
-	return hits
+	return hits, invalidRuleIDs
 }

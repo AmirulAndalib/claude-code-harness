@@ -105,10 +105,11 @@ func resolveTddRuntimeConfig(input hookproto.HookInput, projectRoot string) tddR
 // ---------------------------------------------------------------------------
 // Scope leash (134.5): advisory (warn, default) / enforce check on
 // Write/Edit/MultiEdit against the active task's auto-inferred declared
-// scope. Placed directly after the runtime floor block below, but unlike the
-// floor this is a soft check by default and does not modify the live
-// guardrail rule table (spec invariant 6) — see go/internal/scopeleash's
-// package doc.
+// scope. Evaluated in evaluatePreTool after the runtime floor block AND after
+// tryRegisterBreezingRole (breezing_state.go), so harness's own self-registration
+// write is always decided by its own dedicated logic first. Unlike the floor
+// this is a soft check by default and does not modify the live guardrail
+// rule table (spec invariant 6) — see go/internal/scopeleash's package doc.
 // ---------------------------------------------------------------------------
 
 const (
@@ -213,6 +214,32 @@ func recordScopeLeashWarning(projectRoot, taskID, targetPath string) {
 	fmt.Fprintf(f, "%s\n", data)
 }
 
+// scopeLeashExemptDir is the repo-relative directory the scope leash never
+// evaluates against declared scope. declared_scope is auto-inferred from
+// Plans.md Title/DoD path tokens (go/internal/scopeleash.InferScopeFromPlan)
+// and never contains .claude/ paths — that's the harness's own runtime state
+// (active-task.json, sprint contracts, breezing role registration, ...), not
+// task-declared product scope. Without this exemption, enforce_level=enforce
+// would deny the harness's own internal writes the moment a task's inferred
+// scope doesn't happen to mention .claude/ (code review major finding,
+// 2026-08-16). No warning is recorded for an exempt write either — this is
+// not "out of scope for the task", it's out of the check's domain entirely.
+const scopeLeashExemptDir = ".claude"
+
+// isScopeLeashExempt reports whether targetPath, made project-root-relative,
+// falls under scopeLeashExemptDir.
+func isScopeLeashExempt(targetPath, projectRoot string) bool {
+	rel := targetPath
+	if projectRoot != "" {
+		if r, err := filepath.Rel(projectRoot, targetPath); err == nil && !strings.HasPrefix(r, "..") {
+			rel = r
+		}
+	}
+	rel = filepath.ToSlash(rel)
+	rel = strings.TrimPrefix(rel, "./")
+	return rel == scopeLeashExemptDir || strings.HasPrefix(rel, scopeLeashExemptDir+"/")
+}
+
 // evaluateScopeLeash returns nil when there is nothing to say (off level,
 // non-write tool, no active task, empty declared scope, or in-scope write).
 // A non-nil Deny short-circuits the caller like the runtime floor; a non-nil
@@ -241,6 +268,10 @@ func evaluateScopeLeash(input hookproto.HookInput, projectRoot string) *hookprot
 
 	targetPath, ok := input.ToolInput["file_path"].(string)
 	if !ok || strings.TrimSpace(targetPath) == "" {
+		return nil
+	}
+
+	if isScopeLeashExempt(targetPath, projectRoot) {
 		return nil
 	}
 
@@ -480,6 +511,22 @@ func evaluatePreTool(input hookproto.HookInput) hookproto.HookResult {
 		}
 	}
 
+	// Breezing role 自己登録 (shell 版 try_register_breezing_role の移植)。
+	// teammate の最初の Write (.claude/state/breezing-role-*.json) を捕捉し、
+	// hook payload の agent_id / session_id キーで roles ファイルへ登録する。
+	// 登録キーは payload 由来のみ (書かれた内容の ID は使わない = 他セッション
+	// への role 付与を防ぐ)。登録 Write 自体は approve する。
+	//
+	// This must run BEFORE the scope-leash check below: registration is the
+	// harness's own internal bookkeeping, not subject to any task's declared
+	// scope, and should be decided by its own dedicated logic regardless of
+	// what evaluateScopeLeash would otherwise conclude (code review major
+	// finding, 2026-08-16 — see also the .claude/ exemption in
+	// isScopeLeashExempt, which is the other half of that fix).
+	if result := tryRegisterBreezingRole(input); result != nil {
+		return *result
+	}
+
 	// Scope leash (134.5): off/warn/enforce advisory check, see the block
 	// above evaluateScopeLeash. warn does not block — its SystemMessage is
 	// merged into the final result below.
@@ -490,15 +537,6 @@ func evaluatePreTool(input hookproto.HookInput) hookproto.HookResult {
 			return *scopeResult
 		}
 		scopeWarning = scopeResult.SystemMessage
-	}
-
-	// Breezing role 自己登録 (shell 版 try_register_breezing_role の移植)。
-	// teammate の最初の Write (.claude/state/breezing-role-*.json) を捕捉し、
-	// hook payload の agent_id / session_id キーで roles ファイルへ登録する。
-	// 登録キーは payload 由来のみ (書かれた内容の ID は使わない = 他セッション
-	// への role 付与を防ぐ)。登録 Write 自体は approve する。
-	if result := tryRegisterBreezingRole(input); result != nil {
-		return *result
 	}
 
 	ctx := BuildContext(input)
