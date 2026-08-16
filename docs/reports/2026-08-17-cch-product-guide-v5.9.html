@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code Harness v5.9 — はじめて読む人のための説明書</title>
+<style>
+:root{
+  --bg:#F5F4F1; --surface:#FCFBF9; --surface-2:#F0EFEA;
+  --ink:#1B1B22; --ink-soft:#5A5A64; --ink-faint:#8C8C92;
+  --line:#E4E2DB; --line-strong:#D2CFC6;
+  --primary:#313A7E; --primary-soft:#E9EAF4; --primary-ink:#262E66;
+  --kernel:#191B2C; --kernel-2:#23263c; --kernel-line:#343750; --kernel-ink:#C9CBE0;
+  --done:#2F8F5B; --done-soft:#E4F2EA; --done-line:#B7DCC7;
+  --wip:#B8821C; --wip-soft:#F6EDD8;
+  --risk:#B5462F; --risk-soft:#F6E7E2; --risk-line:#E5C0B4;
+  --info:#2C5A7A; --info-soft:#E3ECF1;
+  --plain:#1f7a6d; --plain-soft:#E1F1EE; --plain-line:#BBE0D9;
+  --radius:10px;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.9;word-break:keep-all;overflow-wrap:break-word;font-size:15px}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px 80px}
+.hero{background:linear-gradient(135deg,var(--kernel),var(--kernel-2));color:#fff;padding:44px 24px 36px;margin:0 -20px 32px;border-radius:0 0 14px 14px}
+.hero .inner{max-width:1040px;margin:0 auto}
+.badge{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#DFE1F0;font-size:12px;letter-spacing:.08em;padding:3px 12px;border-radius:999px;margin-bottom:14px}
+.hero h1{font-size:26px;line-height:1.5;margin-bottom:10px}
+.hero .tag{color:var(--kernel-ink);font-size:14px;margin-bottom:18px}
+.thesis{border-left:4px solid #8FA0FF;background:rgba(255,255,255,.07);padding:12px 16px;border-radius:6px;font-size:15px;line-height:1.9}
+.hero-meta{display:flex;flex-wrap:wrap;gap:14px;margin-top:16px;font-size:12px;color:#9FA3C0}
+section{margin-bottom:44px}
+.kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--primary);font-weight:700;margin-bottom:6px}
+h2{font-size:21px;margin-bottom:14px}
+h3{font-size:16px;margin:20px 0 8px;color:var(--primary-ink)}
+p{margin-bottom:10px}
+ul,ol{margin:6px 0 12px 1.4em}
+li{margin-bottom:5px}
+.plainbox{background:var(--plain-soft);border:1px solid var(--plain-line);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px}
+.plainbox .lbl{font-size:12px;font-weight:700;color:var(--plain);margin-bottom:6px}
+.tlgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tlcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+.tlcard .q{font-size:13.5px;font-weight:700;color:var(--primary-ink);margin-bottom:6px}
+.tlcard .a{font-size:13.5px;color:var(--ink-soft)}
+table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;font-size:13.5px;margin:12px 0}
+th{background:var(--surface-2);text-align:left;padding:9px 12px;font-size:12.5px;border-bottom:1px solid var(--line-strong)}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr.hit td{background:var(--done-soft)}
+tr.gap td{background:var(--risk-soft)}
+code{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+.figure{background:var(--kernel);border-radius:var(--radius);padding:20px;margin:14px 0;color:var(--kernel-ink)}
+.figure .cap{font-size:12px;color:#8B8FB0;margin-bottom:14px;letter-spacing:.04em}
+.chain{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.step{background:var(--kernel-2);border:1px solid var(--kernel-line);border-radius:8px;padding:12px}
+.step .n{display:inline-block;width:22px;height:22px;border-radius:50%;background:#8FA0FF;color:#191B2C;font-weight:700;font-size:12px;text-align:center;line-height:22px;margin-bottom:6px}
+.step .t{font-weight:700;color:#fff;font-size:13.5px;margin-bottom:4px}
+.step .d{font-size:12px;color:#B0B4D0}
+.step .who{display:block;margin-top:6px;font-size:11px;color:#8FA0FF}
+.term{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--info);border-radius:8px;padding:12px 16px;margin:10px 0;font-size:13.5px}
+.term b{color:var(--info)}
+.term .sub{color:var(--ink-soft);font-size:12.5px;margin-top:4px}
+.verdict{background:var(--done-soft);border:1px solid var(--done-line);border-radius:var(--radius);padding:18px 20px;margin:24px 0}
+.verdict .lbl{font-weight:700;color:var(--done);font-size:13px;margin-bottom:6px}
+.openbox{background:var(--wip-soft);border:1px solid #E8D9AE;border-radius:var(--radius);padding:18px 20px;margin:24px 0}
+.openbox .lbl{font-weight:700;color:var(--wip);font-size:13px;margin-bottom:6px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:12px 0}
+.split .box{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;font-size:13.5px}
+.split .box .t{font-weight:700;margin-bottom:6px}
+.split .box.a{border-top:4px solid var(--primary)}
+.split .box.b{border-top:4px solid var(--info)}
+pre.codeblock{background:var(--kernel);color:#DCE0F5;font-family:var(--mono);font-size:12.5px;padding:14px 16px;border-radius:8px;overflow-x:auto;margin:10px 0;line-height:1.7}
+details{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;font-size:13.5px}
+summary{cursor:pointer;font-weight:600;color:var(--primary-ink)}
+footer{border-top:1px solid var(--line-strong);padding-top:18px;font-size:12px;color:var(--ink-faint)}
+footer h4{font-size:12.5px;color:var(--ink-soft);margin:10px 0 4px}
+@media(max-width:700px){.tlgrid,.split{grid-template-columns:1fr}.chain{grid-template-columns:1fr 1fr}}
+@media print{body{background:#fff}.hero,.figure,.verdict,.openbox,.plainbox,.term,tr.hit td,tr.gap td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<div class="hero"><div class="inner">
+<span class="badge">Claude Code Harness / プロダクト説明書 (v5.9.0)</span>
+<h1>Claude Code Harness とは何か — AI に仕事を任せて、人は最後に判断するための道具</h1>
+<div class="tag">はじめて触る人、エンジニアではない人向け。専門用語は出た瞬間に言い換えます。</div>
+<div class="thesis">ひとことで: Claude Code Harness (略称 CCH) は、AI コーディングツール (Claude Code など) に「計画 → 実装 → 検証 → レビュー → リリース」を決まった手順で回させ、危ない操作は実行前に止め、最後に人が Yes/No を言うだけで済むようにする追加パーツ (プラグイン) です。AI を賢くするのではなく、AI の周りに手順と柵を作ります。</div>
+<div class="hero-meta"><span>作成: 2026-08-17</span><span>対象: 初見の非専門家</span><span>本書は説明用の派生物であり正本ではない (正本: README.md / spec.md)</span></div>
+</div></div>
+<div class="wrap">
+
+<section>
+<div class="plainbox"><div class="lbl">やさしく言うと</div>
+AI にプログラムを書かせるのは、もう普通にできます。問題は「任せっぱなしにすると、途中で話がずれる・テストを飛ばす・危ないコマンドを打つ・できてないのに『できました』と言う」ことです。CCH はこの 4 つを仕組みで防ぎます。人は途中で見張らなくてよくなり、最後に「これで出していいか」を判断するだけになります。
+</div>
+<div class="tlgrid">
+<div class="tlcard"><div class="q">Q. 何をするもの？</div><div class="a">AI コーディングツールの「追加パーツ」。入れると 5 つのコマンド (計画 / 実装 / レビュー / 同期 / リリース) が使えるようになり、AI が勝手に危ないことをしないよう実行前チェックが常時動きます。</div></div>
+<div class="tlcard"><div class="q">Q. 誰のため？</div><div class="a">一人で開発する人、AI に実装を任せたい人、コードを全部は読めないけど「本当にできたか」は判断したい人。エンジニアでなくても使えるように設計されています。</div></div>
+<div class="tlcard"><div class="q">Q. どこで動く？</div><div class="a">Claude Code を中心に、Codex CLI / Cursor / Grok でも同じ手順と柵が効きます (ツールが変わっても CCH は変わらない)。</div></div>
+<div class="tlcard"><div class="q">Q. v5.9 で何が新しい？</div><div class="a">「AI の自己申告」ではなく「実際に実行された記録」で検証する仕組みが完成しました。加えて AI の変な日本語をその場で直させる機能と、指摘を辞書に育てる機能が入りました。</div></div>
+</div>
+</section>
+
+<section>
+<div class="kicker">01 — 何を使うのか</div>
+<h2>使うもの: 5 つのコマンドと 2 つの柵</h2>
+<p>CCH を入れると、AI ツールの中で次の 5 つの「合言葉 (スラッシュコマンド)」が使えます。全部 <code>/harness-</code> で始まります。</p>
+<table>
+<tr><th style="width:12em">コマンド</th><th>何が起きるか</th><th style="width:14em">人がやること</th></tr>
+<tr><td><code>/harness-plan</code></td><td>やりたいことを伝えると、AI が「仕様書 (spec.md)」と「作業一覧 (Plans.md)」を書きます。範囲、合格条件、順番、わからない点、止まる条件が全部入ります</td><td>書かれた計画を承認するか直す。<b>自分で計画を書く必要はない</b></td></tr>
+<tr><td><code>/harness-work</code></td><td>承認された作業を 1 つ、または全部、AI が実装します。テストが必要と書いてあれば先にテストを書きます</td><td>待つ (途中確認は原則なし)</td></tr>
+<tr><td><code>/harness-review</code></td><td>実装した AI とは<b>別の頭</b>が結果を審査します。大きな問題があれば完了扱いにしません。別会社の AI (Codex) の第二意見も並走できます</td><td>待つ</td></tr>
+<tr><td><code>/harness-sync</code></td><td>計画と実際にできたものを突き合わせ、ずれを報告します</td><td>ずれの報告を読む</td></tr>
+<tr><td><code>/harness-release</code></td><td>検証済みの証拠だけを使って、変更履歴・タグ・公開までを一括で行います</td><td>1 回だけ「出していいか」に Yes/No</td></tr>
+</table>
+
+<h3>2 つの柵 (安全装置)</h3>
+<p>コマンドとは別に、AI が何か操作をするたびに<b>実行前に</b>チェックが走ります。ファイルの差分を後から見ても「ネットに何か送った」「ファイルを消した」は分からないので、実行前に止めるしかない、という考えです。</p>
+<div class="split">
+<div class="box a"><div class="t">柵 1: 床 (runtime floor) — 絶対に越えられない 5 つ</div>
+課金 / 外部へのデータ送信 / 秘密情報 (パスワード等) の読み取り / 本番環境への配置 / 作業場所の外のファイル削除。<b>設定や許可モードでは外せません。</b>AI が自律で走っている最中に「まあいいか」で突破できないようにするためです。</div>
+<div class="box b"><div class="t">柵 2: ガードレール (R01〜R15) — 調整できる 15 本</div>
+main への直接 push、保護されたファイルへの書き込み、履歴の書き換え、危険な削除コマンドなど。それぞれ「止める / 確認する / 警告だけ」が決まっていて、プロジェクトごとに調整できます。</div>
+</div>
+<p>確認は<b>計画のときにまとめて</b>取ります。走っている最中に何度も「いいですか？」と聞かれない設計です。1 回の承認には期限・対象作業・使用回数の上限が付くので、一度 Yes と言ったら永久に穴が開く、ということもありません。止めた記録は全部ログに残ります。</p>
+</section>
+
+<section>
+<div class="kicker">02 — どう回るのか</div>
+<h2>つながるとこう動く: 1 つの依頼が完了するまで</h2>
+<div class="figure"><div class="cap">例: 「ログイン画面のエラー表示を直して」と頼んだとき (左から右へ時間が流れる)</div>
+<div class="chain">
+<div class="step"><span class="n">1</span><div class="t">計画する</div><div class="d">仕様書と作業一覧を AI が起草。合格条件を「テストが通る」「画面にエラー文が出る」のように<b>機械で○×が付く形</b>に翻訳</div><span class="who">人: 承認 or 修正 (ここが唯一の事前判断)</span></div>
+<div class="step"><span class="n">2</span><div class="t">実装する</div><div class="d">AI が実装。触っていいファイルの範囲を計画から読み取り、範囲外に手を出したら記録・警告 (scope leash)。危ない操作は柵が止める</div><span class="who">人: 何もしない</span></div>
+<div class="step"><span class="n">3</span><div class="t">検証・審査する</div><div class="d">テストを実行、ブラウザ操作を録画、変更ファイルを台帳に記録。<b>別の AI</b> がその記録を見て審査。検証できなかった項目は「未検証」と明記される</div><span class="who">人: 何もしない</span></div>
+<div class="step"><span class="n">4</span><div class="t">判断する</div><div class="d">スマホでも見られる判断画面に、実行記録から引用した証拠が並ぶ。未検証があれば「出荷推奨」にならない。人はそれを見て Yes/No</div><span class="who">人: Yes / No (ここが最後の判断)</span></div>
+</div></div>
+<p><b>押さえる本質</b>: 人が判断するのは ①計画の承認 と ④最後の Yes/No の 2 回だけ。間の ②③ は AI と柵に任せます。<b>AI に任せてよい詳細</b>: どのテストを書くか、どのファイルを触るか、レビューの観点、変更履歴の文面。</p>
+</section>
+
+<section>
+<div class="kicker">03 — 通常との違い</div>
+<h2>比較: 素の AI ツール vs CCH を入れたとき</h2>
+<table>
+<tr><th style="width:11em">場面</th><th>素の AI ツールだけ</th><th>CCH を入れたとき</th></tr>
+<tr class="gap"><td>計画</td><td>チャットの中に流れて消える。あとで「何を頼んだっけ」になる</td><td>spec.md と Plans.md にファイルとして残る。作業ごとに todo / 進行中 / 完了 の印が付く</td></tr>
+<tr class="gap"><td>テスト</td><td>締切が近いと省略されがち。「テストは後で」が常態化</td><td>作業に「テスト必須」と書いてあれば、テストを先に書かないと実装ファイルへの書き込みが止まる</td></tr>
+<tr class="gap"><td>危ない操作</td><td>実行されてから気づく (消えたファイルは戻らない)</td><td>実行前に判定。5 つの床は絶対に止まる。それ以外は「止める / 確認 / 警告」を事前に決められる</td></tr>
+<tr class="gap"><td>「できました」の信頼性</td><td>AI の自己申告。数えると抜けていることがある</td><td><b>v5.9 の本丸。</b>実行記録 (テストログ・録画・変更台帳) から機械が引用。検証できなかった項目は隠されず「未検証」表示になり、出荷推奨にならない</td></tr>
+<tr class="gap"><td>レビュー</td><td>書いた本人 (同じ AI) が「問題ありません」と言いがち</td><td>別の頭 (別セッションの AI、任意で Codex も) が実物を自分で開いて審査。基準を勝手に緩めるのは禁止</td></tr>
+<tr class="gap"><td>日本語の品質</td><td>「効く」「A ではなく B」のような癖のある日本語がそのまま出る</td><td>書いた直後に検出し「その文を丸ごと書き直し + 良い例」を返す (v5.9 新機能、既定は off で opt-in)</td></tr>
+<tr class="hit"><td>人の役割</td><td>途中で何度も見張って口を出す (HITL: human in the loop)</td><td>計画承認と最後の Yes/No だけ (HOTL: human on the loop)</td></tr>
+</table>
+<p>数字で言うと: 今回 v5.9 の開発自体を CCH で回した実績では、24 件の作業を AI が実装し、レビュー 3 往復 (1 回目で本物の問題 4 件、2 回目で 1 件を検出) を経て合格、その間に人が判断したのは「計画の承認」「4 つの設計判断」「リリースしていいか」の合計 6 回でした。</p>
+</section>
+
+<section>
+<div class="kicker">04 — 用語</div>
+<h2>この説明書に出てくる言葉</h2>
+<div class="term"><b>プラグイン</b> = アプリに後から足す追加パーツ。<div class="sub">CCH は Claude Code のプラグインとして入れます。入れ方は下の「使いはじめる」参照。</div></div>
+<div class="term"><b>spec.md / Plans.md</b> = 仕様書と作業一覧の 2 つのファイル。<div class="sub">AI が書き、人が承認します。作業一覧の各行に「未着手 / 進行中 / 完了」の印が付き、AI が勝手に「完了」に書き換えることは禁止されています。</div></div>
+<div class="term"><b>柵 (床とガードレール)</b> = AI の操作を実行前に判定する仕組み。<div class="sub">床 = 絶対に越えられない 5 つ。ガードレール = 調整できる 15 本。判定は Go 言語で書かれた小さなプログラムが行い、AI の気分では変わりません。</div></div>
+<div class="term"><b>証拠 (evidence)</b> = 実際に実行された記録。<div class="sub">テストの実行ログ、ブラウザ操作の録画、触ったファイルの台帳など。「AI がそう言った」は証拠に数えません。</div></div>
+<div class="term"><b>fail-visible (未検証の可視化)</b> = 検証できなかったことを隠さず表示する方針。<div class="sub">止めはしないが、緑にもしない。判断画面に「未検証」と出て、出荷推奨になりません。</div></div>
+<div class="term"><b>HOTL</b> = human on the loop。人は上から眺めて最後に判断する。<div class="sub">対義語は HITL (human in the loop、途中で何度も人が確認する)。CCH は HOTL を目指しています。</div></div>
+</section>
+
+<section>
+<div class="kicker">05 — 使いはじめる</div>
+<h2>最初の 3 分</h2>
+<p>Claude Code を開いて、次を順に打ちます (1 行ずつ)。</p>
+<pre class="codeblock">/plugin marketplace add Chachamaru127/claude-code-harness
+/plugin install claude-code-harness@claude-code-harness-marketplace
+/harness-setup</pre>
+<p>次に、小さな頼みごとを 1 つ渡します。</p>
+<pre class="codeblock">/harness-plan README の導入部分を読みやすくして</pre>
+<p>AI が仕様書と作業一覧を出してきます。読んで「これでいい」なら承認、違えば直してもらいます。<b>ここが人の仕事です。</b>あとは <code>/harness-work</code> で実装、<code>/harness-review</code> で審査、判断画面で Yes/No です。</p>
+<details><summary>Claude Code 以外 (Codex CLI / Cursor / Grok) で使う</summary>
+同じ手順・同じ柵が効きます。入れ方はツールごとに少し違うので、README の「install by tool」を見てください。CCH 側は 1 つのエンジンが 3 つのツールに同じ判定を返す作りです (コピーではなく振り分け)。</details>
+</section>
+
+<div class="verdict"><div class="lbl">この説明書のまとめ</div>
+CCH は「AI を賢くする道具」ではなく「AI の周りに手順と柵を作る道具」です。人の仕事は 2 か所 (計画の承認、最後の Yes/No) に絞られ、その Yes/No は AI の自己申告ではなく実行された証拠に基づきます。v5.9 でその「証拠で判断する」部分が完成しました。
+</div>
+
+<div class="openbox"><div class="lbl">正直な但し書き</div>
+<ul>
+<li>CCH を入れても AI が間違えなくなるわけではありません。間違いを「実行前に止める」「実行後に証拠で見つける」ようになるだけです。</li>
+<li>日本語の品質チェックは既定 off です。辞書も空から始まり、使う人が指摘 → 承認して育てます。</li>
+<li>「範囲外ファイルの見張り (scope leash)」は今は警告のみです。強制的に止めるモードは、実績を見てから使う人が切り替えます。</li>
+<li>Claude Code 本体のバージョンが上がると挙動が変わることがあります。CCH は追従を続けていますが、常に最新と一致する保証はありません。</li>
+</ul>
+</div>
+
+<footer>
+<h4>出典</h4>
+<ul>
+<li>README.md (v5.9.0) — The loop / The safety layer / Install</li>
+<li>spec.md — Purpose / Execution Backend Contract / North Star (L1 判断専念 / L2 ツール非依存 / L3 協調)</li>
+<li>CHANGELOG.md [5.9.0] — Phase 134-137 (検証チェーン / writing lint / surface / ループ施策)</li>
+<li>.claude/memory/decisions.md — D62 (fail-visible) / D63 (scope leash warn 既定) / D64 (辞書の個人層分離) / D68 (実行記録を信頼)</li>
+<li>docs/reports/2026-08-17-phase134-137-completion.html — v5.9 開発時の実績数値 (24 task / レビュー 3 往復)</li>
+</ul>
+<h4>作り方と制約</h4>
+<ul>
+<li>初見の非専門家向けの説明用文書 (B-type)。実仕様の名称・数値は README / spec / CHANGELOG から転記し、判断に不要な内部構造は省いています。</li>
+<li>本書は派生物であり正本ではありません。仕様の正本は spec.md、変更の正本は CHANGELOG.md です。</li>
+</ul>
+</footer>
+</div>
+</body>
+</html>
