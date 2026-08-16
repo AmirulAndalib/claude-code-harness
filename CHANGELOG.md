@@ -6,6 +6,8 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [5.9.0] - 2026-08-17
+
 ### Added
 
 #### 検証チェーン配線修理 — HOTL 本実装 (Phase 134)
@@ -111,6 +113,10 @@ Change history for claude-code-harness.
 | `install src <保護パス>` | **素通り** | 拒否 |
 
 **今後**: 宛先を最後の引数に取るコマンド (`ln` / `cp` / `mv` / `install`) をまとめて検査対象にしました。指摘は `ln -s` だけを挙げていましたが、それだけ塞いでも同じことができる経路が 3 つ残ります。取るのは最後の引数だけで、これにより `install -m 755` の `755` を誤ってパスと読む事故も同時に防げます。引数が 1 つだけの形は、生成先がシェルの作業ディレクトリになり確実に特定できないため対象外です。
+
+#### release preflight の host plugin dist gate が grok 配布物の意図した中身を FAIL と誤判定していた問題
+
+grok 配布物には guardrail を動かすための `.claude-plugin/plugin.json` / `hooks/hooks.json` / `bin/harness` が意図的に同梱されています (Phase 133.8)。テスト側の期待値がこの変更に追随しておらず、`release-preflight.sh` の host plugin dist gate が同梱以降ずっと FAIL していました。期待値を実装済みの契約 (3 ファイルの存在確認) に合わせました。
 
 ### Changed
 
@@ -6061,7 +6067,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.8.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.9.0...HEAD
+[5.9.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.8.0...v5.9.0
 [5.8.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.7.0...v5.8.0
 [5.7.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.6.0...v5.7.0
 [5.6.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.5.0...v5.6.0
