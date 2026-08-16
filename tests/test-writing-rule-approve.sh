@@ -147,6 +147,44 @@ else
   pass "approve: RE2-uncompilable pattern is not written to rules.jsonl"
 fi
 
+## (d2) regression: a vet-rejected proposal stays pending and can be
+## re-approved after the pattern is fixed (stuck-approved finding: status
+## was persisted before the vet gate, so a rejected proposal was frozen at
+## approved and the same id could never be retried) -------------------------
+
+bad_status="$(python3 -c "
+import json
+for line in open('$PROPOSALS', encoding='utf-8'):
+    rec = json.loads(line)
+    if rec.get('id') == 'bad-lookahead-fixture':
+        print(rec.get('status'))
+")"
+if [[ "$bad_status" == "pending" ]]; then
+  pass "approve: vet-rejected proposal stays pending (not stuck at approved)"
+else
+  fail "approve: vet-rejected proposal stays pending (got status=$bad_status)"
+fi
+
+python3 -c "
+import json
+lines = []
+for line in open('$PROPOSALS', encoding='utf-8'):
+    rec = json.loads(line)
+    if rec.get('id') == 'bad-lookahead-fixture':
+        rec['pattern'] = 'foobar'
+    lines.append(json.dumps(rec, ensure_ascii=False))
+open('$PROPOSALS', 'w', encoding='utf-8').write('\n'.join(lines) + '\n')
+"
+set +e
+retry_out="$(bash "$APPROVE" --id bad-lookahead-fixture 2>&1)"
+retry_rc=$?
+set -e
+if [[ "$retry_rc" -eq 0 ]] && grep -q '"id": "bad-lookahead-fixture"' "$RULES"; then
+  pass "approve: same id can be re-approved after fixing the pattern"
+else
+  fail "approve: same id can be re-approved after fixing the pattern (rc=$retry_rc, got: $retry_out)"
+fi
+
 ## writing-rule-list.sh -----------------------------------------------------
 
 cat >>"$PROPOSALS" <<'JSON'

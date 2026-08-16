@@ -144,25 +144,10 @@ if target.get("status") != "pending":
     )
     raise SystemExit(1)
 
-new_status = "approved" if action == "approve" else "rejected"
-target["status"] = new_status
-target["decided_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-try:
-    validate(target, proposal_schema)
-except ValueError as exc:
-    print(f"writing-rule-approve.sh: updated proposal failed schema validation ({exc})", file=sys.stderr)
-    raise SystemExit(1)
-
-records[target_idx] = target
-
-with open(proposals_path, "w", encoding="utf-8") as f:
-    for rec in records:
-        if isinstance(rec, dict):
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        else:
-            f.write(rec + "\n")
-
+# rule の導出・検証・vet は proposals.jsonl の status 更新より先に行う。
+# vet reject 後に status=approved で固まると同一 id を再承認できなくなるため、
+# 失敗時は status を pending のまま残す (レビュー指摘 2026-08-17)。
+rule = None
 if action == "approve":
     rule = {
         "id": target["id"],
@@ -187,6 +172,26 @@ if action == "approve":
         print(f"writing-rule-approve.sh: {exc}", file=sys.stderr)
         raise SystemExit(1)
 
+new_status = "approved" if action == "approve" else "rejected"
+target["status"] = new_status
+target["decided_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+try:
+    validate(target, proposal_schema)
+except ValueError as exc:
+    print(f"writing-rule-approve.sh: updated proposal failed schema validation ({exc})", file=sys.stderr)
+    raise SystemExit(1)
+
+records[target_idx] = target
+
+with open(proposals_path, "w", encoding="utf-8") as f:
+    for rec in records:
+        if isinstance(rec, dict):
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        else:
+            f.write(rec + "\n")
+
+if action == "approve":
     os.makedirs(os.path.dirname(rules_path) or ".", exist_ok=True)
     with open(rules_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(rule, ensure_ascii=False) + "\n")
