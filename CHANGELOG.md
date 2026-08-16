@@ -6,6 +6,42 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Added
+
+#### 検証チェーン配線修理 — HOTL 本実装 (Phase 134)
+
+検証機構の継ぎ目 3 箇所を接続し、「やった体」の緑を潰しました。
+
+| 継ぎ目 | 変更前 | 変更後 |
+|---|---|---|
+| 入口 | `reviewer_profile` は常に既定 `static` (LLM 読解のみ) | `risk_flags` から自動昇格 (security-sensitive→runtime / ux-regression→browser)。`--approve` 時の ratchet が無言降格を exit 5 で拒否 |
+| 中間 | browser 検証が環境不足で `PENDING_BROWSER` に無言縮退し緑のまま | `pending_validations` として review-result に記録 (fail-visible) |
+| 出口 | Accept の evidence は LLM の再申告 | `scripts/accept-collect-evidence.sh` が実行 artifact (worker-report / review-result / runtime-review / browser-result) を機械読みし引用。pending 該当 criteria は `passed: false` になり recommendation は ship にならない |
+
+- scope leash (Phase 101 U0 spike) を本配線: sprint-contract に `declared_scope` を焼き込み、PreToolUse で圏外 Write を検査 (`[scope_leash] enforce_level = off|warn|enforce`、既定 warn)。DroppedScope は Stop で advisory 通知
+- Playwright Screencast を browser evidence として収集し (`artifacts[].kind: video`)、Accept HTML に埋め込み。録画なしは縮退規則つき (`kind: text` + note)
+- `worker-report.v1` を `.claude/state/review/<task-id>.worker-report.json` へ永続化 (従来はプロンプト内報告のみでファイル不在)
+- harness-plan / harness-review に再調査ステップ 1 回 (圏外の別系統案も 1 つ検討) を追加
+- 検証の検証: `scripts/ci/check-verification-chain-wiring.sh` + 実効性契約テスト 3 本を `tests/validate-plugin.sh` に配線 (配線前 RED 実測済み)
+
+#### 日本語 writing lint (Phase 135)
+
+- `go/internal/writinglint/`: NG パターン辞書 (JSONL、個人層 `~/.claude/writing-lint/rules.jsonl`) + 文書集計検査 (文末 3 連続 / 敬体常体混在)。エンジンは repo、辞書は個人層 (D64)
+- PostToolUse `writing-lint`: `.md`/`.txt` 書き込み直後に照合し「該当文を丸ごと書き直し + グッドパターン」を advisory 返却 (既定 off、`writing_lint.enabled` で opt-in)
+- Stop `writing-lint-stop`: セッション終了時に変更 `.md` を全体再検査、severity: major 残存で 1 回だけ block (再入は警告のみ)
+- 指摘→ルール登録ループ: `skills/japanese-writing-drafter` が proposal を自動ドラフト、昇格は `scripts/writing-rule-approve.sh` (人間 CLI のみ、自動昇格経路なし)
+- `claude-code-harness.config.schema.json` に `writing_lint` と既存非公式 `quality_pack` を正式収録
+
+#### surface チェリーピック (Phase 136) / ループエンジニアリング施策 (Phase 137)
+
+- accept / plan-brief / progress の 3 surface にスマホ viewport + レスポンシブ CSS
+- progress surface に writing lint 承認待ちキュー表示 (コピペ用 approve コマンド)
+- diagram-design plugin の接続点 1 文 (インストール済みなら図描画に使う)
+- 採点設計規律 (`skills/harness-plan/references/criteria-design.md`): DoD を「機械○×の床 / LLM 観点 / 本質 doc」の 3 層に翻訳
+- blind 受け手検査: Accept 直前に採点基準を渡さない fresh 評価者で乖離を測る optional step (説得系/文書系のみ)
+- 評価者 4 契約を `agents/reviewer.md` に明文化 (fresh context / 基準書き換え禁止 / 絶対評価 / 実物を開く)
+- Worker 契約に NG-4 (一時領域の掃除で operator を停止させない) を追加
+
 ### Fixed
 
 #### session-log の分割警告が、移動できるエントリが 1 件も無い状態でも出続けていた問題

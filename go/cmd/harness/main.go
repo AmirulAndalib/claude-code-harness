@@ -468,6 +468,11 @@ func runHook(hookType string, args []string) {
 		if err := h.Handle(os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "stop-failure handler error: %v\n", err)
 		}
+	case "writing-lint-stop":
+		h := &hookhandler.StopWritingLintHandler{}
+		if err := h.Handle(os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "writing-lint-stop handler error: %v\n", err)
+		}
 	case "notification-ext":
 		if err := hookhandler.HandleNotification(os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "notification-ext handler error: %v\n", err)
@@ -479,6 +484,10 @@ func runHook(hookType string, args []string) {
 	case "quality-pack":
 		if err := hookhandler.HandlePostToolUseQualityPack(os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "quality-pack handler error: %v\n", err)
+		}
+	case "writing-lint":
+		if err := hookhandler.HandlePostToolUseWritingLint(os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "writing-lint handler error: %v\n", err)
 		}
 	case "inject-policy":
 		h := &hookhandler.UserPromptInjectPolicyHandler{}

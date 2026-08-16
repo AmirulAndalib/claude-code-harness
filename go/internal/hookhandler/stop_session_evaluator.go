@@ -1,14 +1,18 @@
 package hookhandler
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Chachamaru127/claude-code-harness/go/internal/plans"
+	"github.com/Chachamaru127/claude-code-harness/go/internal/scopeleash"
 )
 
 // stopSessionInput は Stop フックの stdin JSON ペイロード。
@@ -97,7 +101,118 @@ func (h *StopSessionEvaluatorHandler) Handle(in io.Reader, out io.Writer) error 
 		})
 	}
 
+	if notice := h.droppedScopeAdvisory(projectRoot); notice != "" {
+		return writeJSON(out, stopSessionResponse{OK: true, SystemMessage: notice})
+	}
+
 	return writeJSON(out, stopSessionResponse{OK: true})
+}
+
+// droppedScopeAdvisory (134.5) is the DroppedScope extension of this Stop
+// handler: when the active task declared a scope (via the sprint-contract's
+// declared_scope, baked in at generation time) and this run never touched
+// some of it, surface an advisory notice. This never blocks the stop — it
+// only decorates the ok:true response's systemMessage — and it registers no
+// new hook (hooks.json is unchanged); it is purely an extension of the
+// existing Stop handler.
+func (h *StopSessionEvaluatorHandler) droppedScopeAdvisory(projectRoot string) string {
+	taskID, ok := resolveActiveTaskForStop(projectRoot)
+	if !ok {
+		return ""
+	}
+	declared := loadDeclaredScopeForStop(projectRoot, taskID)
+	if len(declared) == 0 {
+		return ""
+	}
+	touched := loadTouchedFilesForStop(projectRoot)
+	dropped := scopeleash.DroppedScope(declared, touched)
+	if len(dropped) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(
+		localizedHarnessMessage("ja",
+			"[ScopeLeash] Task %s declared scope not touched this run: %s",
+			"[ScopeLeash] タスク %s の declared_scope のうち今回未着手のもの: %s"),
+		taskID, strings.Join(dropped, ", "),
+	)
+}
+
+// resolveActiveTaskForStop resolves the task ID .claude/state/active-task.json
+// declares, falling back to HARNESS_ACTIVE_TASK when the file is absent.
+// Mirrors go/internal/guardrail's resolveActiveTaskScope (task field only;
+// that function lives in a different package with no import path back here).
+func resolveActiveTaskForStop(projectRoot string) (string, bool) {
+	activeTaskPath := filepath.Join(projectRoot, ".claude", "state", "active-task.json")
+	data, err := os.ReadFile(activeTaskPath)
+	switch {
+	case err == nil:
+		var scope struct {
+			Task string `json:"task"`
+		}
+		if jsonErr := json.Unmarshal(data, &scope); jsonErr != nil {
+			return "", false
+		}
+		task := strings.TrimSpace(scope.Task)
+		return task, task != ""
+	case !errors.Is(err, os.ErrNotExist):
+		return "", false
+	}
+
+	task := strings.TrimSpace(os.Getenv("HARNESS_ACTIVE_TASK"))
+	return task, task != ""
+}
+
+// loadDeclaredScopeForStop reads the declared_scope baked into taskID's
+// sprint-contract.json at generation time (Generate() in sprint_contract.go).
+func loadDeclaredScopeForStop(projectRoot, taskID string) []string {
+	path := filepath.Join(projectRoot, ".claude", "state", "contracts", taskID+".sprint-contract.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var doc struct {
+		Task struct {
+			DeclaredScope []string `json:"declared_scope"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil
+	}
+	return doc.Task.DeclaredScope
+}
+
+// loadTouchedFilesForStop reads the de-duplicated set of files this run wrote
+// to from .claude/state/changed-files.jsonl (track_changes.go's PostToolUse
+// record). Order is first-seen; malformed lines are skipped.
+func loadTouchedFilesForStop(projectRoot string) []string {
+	f, err := os.Open(filepath.Join(projectRoot, changedFilesPath))
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	seen := map[string]struct{}{}
+	var touched []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry changedFileEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if entry.File == "" {
+			continue
+		}
+		if _, dup := seen[entry.File]; dup {
+			continue
+		}
+		seen[entry.File] = struct{}{}
+		touched = append(touched, entry.File)
+	}
+	return touched
 }
 
 // recordLastMessage は session.json に last_message_length と last_message_hash を記録する。

@@ -217,13 +217,33 @@ if [ -z "$NOTE" ]; then
   NOTE="$(unavailable_note_for_route)"
 fi
 
+# Screencast evidence (Phase 134.6): playwright route の実行後に
+# test-results/**/*.webm を探索し、見つかれば artifacts: [{kind:"video", path}] を積む。
+# 縮退規則: 録画なし → kind:"text" + note「use.video 未設定の可能性」/
+#           playwright 以外の route → artifacts: [] (探索自体を行わない)
+ARTIFACTS_JSON='[]'
+if [ "$ROUTE" = "playwright" ]; then
+  WEBM_LIST=""
+  if [ -d test-results ]; then
+    WEBM_LIST="$(find test-results -type f -name '*.webm' 2>/dev/null | sort || true)"
+  fi
+  if [ -n "$WEBM_LIST" ]; then
+    ARTIFACTS_JSON="$(printf '%s\n' "$WEBM_LIST" | jq -R -s -c '
+      split("\n") | map(select(length > 0)) | map({kind: "video", path: .})
+    ')"
+  else
+    ARTIFACTS_JSON='[{"kind":"text","note":"use.video 未設定の可能性"}]'
+  fi
+fi
+
 jq -n \
   --slurpfile artifact "$ARTIFACT_FILE" \
   --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg browser_verdict "$BROWSER_VERDICT" \
   --arg runner_status "$RUNNER_STATUS" \
   --arg note "$NOTE" \
-  --arg command_output "$COMMAND_OUTPUT" '
+  --arg command_output "$COMMAND_OUTPUT" \
+  --argjson artifacts "$ARTIFACTS_JSON" '
   ($artifact[0] // {}) as $in
   | $in
   | .schema_version = "browser-review-result.v1"
@@ -233,6 +253,7 @@ jq -n \
   | .verdict = $browser_verdict
   | .note = $note
   | .command_output = (if $command_output == "" then null else $command_output end)
+  | .artifacts = $artifacts
   ' > "$OUTPUT_FILE"
 
 echo "$OUTPUT_FILE"
