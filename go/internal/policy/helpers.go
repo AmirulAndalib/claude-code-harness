@@ -1048,3 +1048,51 @@ func secretFileStaging(command, projectRoot string) (string, bool) {
 	}
 	return "", false
 }
+
+// dangerousRemovalTargetsAreLexicallyLocal is the destructive_delete=warn
+// counterpart of dangerousRemovalTargetsAreAgentOwned. It judges by the
+// SPELLING of each target only: no symlink resolution, and no refusal because a
+// preceding shell segment or directory change makes the real location
+// unprovable. Relative targets are accepted as-is (the agent issued the
+// command from the worktree); absolute targets must sit lexically under the
+// project root or inside this session's scratch. Anything that could widen the
+// target set at runtime — shell expansion, globs, `..`, the bare `.` / `/` —
+// still returns false so the rule keeps asking.
+func dangerousRemovalTargetsAreLexicallyLocal(command string, targets []string, projectRoot, sessionID string) bool {
+	if len(targets) == 0 {
+		return false
+	}
+	targets = shellscan.ExpandLiteralAssignments(command, targets)
+
+	cleanRoot := ""
+	if projectRoot != "" && filepath.IsAbs(projectRoot) {
+		cleanRoot = filepath.Clean(projectRoot)
+	}
+	// Without a usable project root there is no worktree to anchor a relative
+	// spelling to (and the guardrail layer could not write the review record
+	// either) — approving here would be a silent allow, so keep asking.
+	if cleanRoot == "" {
+		return false
+	}
+
+	for _, target := range targets {
+		if target == "" || strings.ContainsAny(target, "$`*?[]{}~") || hasParentTraversalComponent(target) {
+			return false
+		}
+		cleaned := filepath.Clean(target)
+		if cleaned == "." || cleaned == string(filepath.Separator) {
+			return false
+		}
+		if !filepath.IsAbs(cleaned) {
+			continue
+		}
+		if pathWithinRoot(cleaned, cleanRoot) {
+			continue
+		}
+		if shellscan.IsWithinSessionScratch(cleaned, sessionID) {
+			continue
+		}
+		return false
+	}
+	return true
+}

@@ -6,6 +6,10 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Added
+
+- **guardrail R05: `destructive_delete = ask | warn` (HOTL opt-in)**。`rm -rf` / `find -delete` の対象を静的に「agent 所有」と証明できないとき (cd 後の相対パス、前置コマンドあり) は従来どおり既定 `ask`。`warn` を選ぶと、綴りが project root 配下 / 自セッション scratch / 相対の削除は確認なしで通し、`R05_WARN` 警告を注入して `.claude/state/destructive-delete.jsonl` に記録する (事後レビュー用)。root 外の綴り・`..`・未解決 `$VAR`・glob・素の `.` / `/` は warn でも `ask` のまま (HOTL 契約 invariant 3 の blast-radius backstop)。warn の approve は advisory 扱いで、同一 compound command が後続 deny/ask ルール (R06 force-push / R08 reviewer no-write / R10 / R11 / R12) にも該当する場合はそちらが常に勝つ (bot review 指摘の precedence 欠陥を修正)。設定は `.claude-code-harness.config.yaml` `safety.destructive_delete` / `harness.toml` `[safety.permissions] destructiveDelete` / env `HARNESS_DESTRUCTIVE_DELETE_POLICY`。133.10 の symlink 残余リスクは warn 下で意図的に受容 (既定は不変)。契約テスト `tests/test-r05-destructive-delete-policy.sh` (実バイナリ probe) を `validate-plugin.sh` に配線
+
 ### Changed
 
 - **release: plugin tag (`{plugin-name}--v{version}`) を廃止し semver tag `vX.Y.Z` に一本化** (D69)。`marketplace.json` の `source` が相対パスで install は tag を参照しないため実効性が無く、v5.6.0 以降 3 リリース連続で欠番のまま実害が無かった。harness-release の手順・test pin を実態に合わせた。既存の `claude-code-harness--v5.5.0` 以前の tag は履歴として残す

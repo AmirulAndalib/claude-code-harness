@@ -40,8 +40,10 @@ func TestCoverage_MatrixCountsMatchExpected(t *testing.T) {
 	if c.Total != 15 {
 		t.Fatalf("expected 15 defined rules, got %d", c.Total)
 	}
-	if c.ShellGate != 4 {
-		t.Fatalf("expected 4 shell-gated rules (R10-R13), got %d", c.ShellGate)
+	if c.ShellGate != 5 {
+		// R10-R13 + R05 (destructive_delete policy contract test wired into
+		// validate-plugin.sh — tests/test-r05-destructive-delete-policy.sh).
+		t.Fatalf("expected 5 shell-gated rules (R05, R10-R13), got %d", c.ShellGate)
 	}
 	if c.SelfauditPin != 10 {
 		t.Fatalf("expected 10 selfaudit-pinned rules, got %d", c.SelfauditPin)

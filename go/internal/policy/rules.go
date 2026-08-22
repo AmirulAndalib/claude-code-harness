@@ -267,6 +267,29 @@ var Rules = []GuardRule{
 			if dangerousRemovalTargetsAreAgentOwned(command, targets, ctx.ProjectRoot, ctx.Input.SessionID) {
 				return nil
 			}
+			// destructive_delete=warn (operator opt-in, HOTL). When the static
+			// analysis cannot PROVE the target is agent-owned — a relative
+			// target after `cd`, any preceding shell segment (133.10: a prior
+			// segment can plant a symlink so the same spelling resolves outside
+			// the worktree) — the default answer is "ask the human". Under warn
+			// the human is replaced by the agent's own judgement: the command is
+			// approved, a warning is injected, and the guardrail layer records
+			// the deletion for after-the-fact review. The 133.10 symlink
+			// residual is accepted knowingly under this mode; do not "simplify"
+			// warn into the default path. Out-of-root spellings, `..`, unresolved
+			// `$VAR`, globs and bare `.` still ask even under warn — that keeps
+			// the blast-radius backstop of spec.md HOTL invariant 3.
+			if NormalizeDestructiveDeletePolicy(ctx.DestructiveDeletePolicy) == DestructiveDeletePolicyWarn &&
+				dangerousRemovalTargetsAreLexicallyLocal(command, targets, ctx.ProjectRoot, ctx.Input.SessionID) {
+				// Advisory: this approval must not preempt later deny/ask
+				// rules (R06, R08 reviewer no-write, R10, R11, R12) when the
+				// same compound command also matches them — see EvaluateRules.
+				return &hookproto.HookResult{
+					Decision:      hookproto.DecisionApprove,
+					SystemMessage: fmt.Sprintf("R05_WARN: destructive delete allowed without confirmation (destructive_delete=warn; target not statically verifiable, recorded in .claude/state/destructive-delete.jsonl):\n%s", command),
+					Advisory:      true,
+				}
+			}
 			return &hookproto.HookResult{
 				Decision: hookproto.DecisionAsk,
 				Reason:   fmt.Sprintf("Detected a destructive delete command:\n%s\nRun it?", command),
@@ -531,14 +554,30 @@ func pathContainedIn(base, target string) bool {
 // If no rule matches, it returns approve.
 func EvaluateRules(ctx hookproto.RuleContext) hookproto.HookResult {
 	toolName := ctx.Input.ToolName
+	// An advisory approve (see HookResult.Advisory) is held back instead of
+	// returned: every later rule still runs, and any decisive result (deny,
+	// ask, or a non-advisory approve) wins over it. Only when the full slice
+	// produced nothing decisive does the advisory approval become the answer.
+	var advisory *hookproto.HookResult
 	for _, rule := range Rules {
 		if !rule.ToolPattern.MatchString(toolName) {
 			continue
 		}
-		if result := rule.Evaluate(ctx); result != nil {
-			result.RuleID = rule.ID
-			return *result
+		result := rule.Evaluate(ctx)
+		if result == nil {
+			continue
 		}
+		result.RuleID = rule.ID
+		if result.Advisory && result.Decision == hookproto.DecisionApprove {
+			if advisory == nil {
+				advisory = result
+			}
+			continue
+		}
+		return *result
+	}
+	if advisory != nil {
+		return *advisory
 	}
 	return hookproto.HookResult{Decision: hookproto.DecisionApprove}
 }

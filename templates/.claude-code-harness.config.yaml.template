@@ -57,6 +57,14 @@ safety:
   # deny: block direct pushes
   # allow: allow direct pushes without Harness confirmation
   protected_branch_push: ask
+  # R05 (rm -rf / find -delete) when the target cannot be proven agent-owned
+  # (relative target after cd, any preceding shell segment):
+  # ask:  confirm with the user (default)
+  # warn: HOTL — allow, inject a warning, and append the command to
+  #       .claude/state/destructive-delete.jsonl for after-the-fact review.
+  #       Targets spelled outside the project root, `..`, unresolved $VAR,
+  #       globs and bare `.` / `/` still ask.
+  destructive_delete: ask
   # R03 protected path break-glass ask-list is supported only in harness.toml:
   # [[safety.guardrail.protectedPathAskList]]
   # path = ".env"

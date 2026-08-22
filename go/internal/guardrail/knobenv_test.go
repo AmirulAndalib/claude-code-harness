@@ -30,6 +30,7 @@ func clearGuardrailKnobEnv(t *testing.T) {
 		"HARNESS_ACTIVE_TASK",
 		"HARNESS_RUNTIME_FLOOR_EGRESS",
 		"HARNESS_RUNTIME_FLOOR_SECRET_ALLOW",
+		"HARNESS_DESTRUCTIVE_DELETE_POLICY",
 	} {
 		t.Setenv(key, "")
 	}

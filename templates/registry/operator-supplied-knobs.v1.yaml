@@ -99,3 +99,9 @@ entries:
     primary_producer: "harness.toml [scope_leash] enforce_level (resolveScopeLeashLevel reads it first; default warn)"
     reason: "operator sets this as a manual override for the in-run scope leash (Plans.md 134.5), same override-over-file shape as the TDD enforce knobs above"
     registered: "2026-08-15"
+
+  - key: "HARNESS_DESTRUCTIVE_DELETE_POLICY"
+    consumer: "go/internal/guardrail/destructive_delete_policy.go:27"
+    primary_producer: ".claude-code-harness.config.yaml safety.destructive_delete / harness.toml [safety.permissions] destructiveDelete (resolveDestructiveDeletePolicy reads them after the env override)"
+    reason: "operator sets this as a manual override for R05 HOTL mode (ask|warn). The configuration files are the primary producer, env is an override layered on top"
+    registered: "2026-08-22"

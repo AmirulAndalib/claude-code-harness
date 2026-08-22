@@ -146,6 +146,22 @@ var wiringCases = []wiringCase{
 		},
 	},
 	{
+		field: "DestructiveDeletePolicy",
+		prepare: func(t *testing.T, root string) hookproto.HookInput {
+			// live producer: harness.toml [safety.permissions] destructiveDelete
+			if err := os.WriteFile(filepath.Join(root, "harness.toml"),
+				[]byte("[safety.permissions]\ndestructiveDelete = \"warn\"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return wiringInput(root)
+		},
+		check: func(t *testing.T, ctx hookproto.RuleContext) {
+			if ctx.DestructiveDeletePolicy != "warn" {
+				t.Fatalf("DestructiveDeletePolicy = %q, want warn (from harness.toml)", ctx.DestructiveDeletePolicy)
+			}
+		},
+	},
+	{
 		field: "ConsumePlanPreapproval",
 		prepare: func(t *testing.T, root string) hookproto.HookInput {
 			// live producer: harness-plan writes .claude/state/plan-preapprovals.json

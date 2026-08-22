@@ -22,6 +22,12 @@ CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = "1"
 # main/master への直接 push の扱い。
 # ask: 実行前にユーザー確認（既定） / deny: 禁止 / allow: 確認なしで許可
 protectedBranchPush = "ask"
+# R05 (rm -rf / find -delete) で削除対象が agent 所有と静的に証明できないとき
+# (cd 後の相対パス、前置コマンドあり) の扱い。
+# ask: 実行前にユーザー確認（既定） / warn: HOTL。通して警告を出し、
+# .claude/state/destructive-delete.jsonl に記録する。root 外の綴り・`..`・
+# 未解決 $VAR・glob・素の `.` / `/` は warn でも ask のまま
+destructiveDelete = "ask"
 allow = [
   # Low-risk local development commands. Keep install, arbitrary npx/npm exec,
   # merge/rebase, destructive git, secrets, and external sends behind ask/deny.
