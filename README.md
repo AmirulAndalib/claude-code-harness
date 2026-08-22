@@ -68,26 +68,17 @@ Using a different tool? See [install by tool](#install-by-tool) below.
 ## The loop
 
 The 5 verb skills keep that surface small: plan, work, review, sync, release.
-(`/harness-setup` runs once at install time, above.)
+(`/harness-setup` runs once at install time, above.) Each stage leaves the
+material the next stage needs, and each has its own gate.
 
-| Command | What happens |
-|---|---|
-| `/harness-plan` | Turns intent into `spec.md` + `Plans.md`: scope, acceptance criteria, dependencies, unknowns, stop conditions. |
-| `/harness-work` | Implements one approved task or the whole plan. Adds tests when the task requires them. |
-| `/harness-work all` | Runs the whole approved plan. Use once the plan is clear and the repo baseline is known. |
-| `/harness-review` | Reviews the result **separately from implementation**. Major findings block completion. |
-| `/harness-sync` | Compares the plan against what is actually implemented and reports drift. |
-| `/harness-release` | Packages only verified evidence into CHANGELOG, tag, and release. |
-
-Each stage leaves the material the next stage needs.
-
-| Stage | Output | Gate |
+| Command | What happens | Gate |
 |---|---|---|
-| Plan | `spec.md` + `Plans.md` | You approve or correct the generated contract. |
-| Work | Code and tests | TDD required when the task says so. |
-| Review | Independent verdict | Major findings block completion. |
-| PR | Evidence pack | PR-ready is not release-ready. |
-| Release | Tag and artifacts | Release preflight must pass. |
+| `/harness-plan` | Turns intent into `spec.md` + `Plans.md`: scope, acceptance criteria, dependencies, unknowns, stop conditions. | You approve or correct the generated contract. |
+| `/harness-work` | Implements one approved task. Adds tests when the task requires them. | TDD required when the task says so. |
+| `/harness-work all` | Runs the whole approved plan. Use once the plan is clear and the repo baseline is known. | Same TDD gate, applied task by task. |
+| `/harness-review` | Reviews the result **separately from implementation**. | Major findings block completion. PR-ready is not release-ready. |
+| `/harness-sync` | Compares the plan against what is actually implemented and reports drift. | — |
+| `/harness-release` | Packages only verified evidence into CHANGELOG, tag, and release. | Release preflight must pass. |
 
 Data the agent has not seen stays `unknown` instead of being quietly invented.
 
@@ -224,8 +215,6 @@ Reach for these after the basic path is working.
 | [Migration check](docs/onboarding/migration.md) | Existing-user impact and rollback |
 | [Skill trigger gate](docs/onboarding/skill-trigger-acceptance.md) | How install success is verified |
 | [Capability matrix](docs/tool-capability-matrix.md) | Full host claim table |
-| [Claude Code compatibility](docs/CLAUDE_CODE_COMPATIBILITY.md) | Version requirements and notes |
-| [Cursor integration](docs/CURSOR_INTEGRATION.md) | Handoff boundary and containment |
 | [Distribution scope](docs/distribution-scope.md) | Included vs compatibility vs dev-only |
 | [Hardening parity](docs/hardening-parity.md) | Safety differences between hosts |
 | [Work All evidence pack](docs/evidence/work-all.md) | Verification contract for full-plan runs |

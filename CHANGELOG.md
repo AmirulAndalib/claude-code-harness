@@ -9,6 +9,7 @@ Change history for claude-code-harness.
 ### Changed
 
 - **release: plugin tag (`{plugin-name}--v{version}`) を廃止し semver tag `vX.Y.Z` に一本化** (D69)。`marketplace.json` の `source` が相対パスで install は tag を参照しないため実効性が無く、v5.6.0 以降 3 リリース連続で欠番のまま実害が無かった。harness-release の手順・test pin を実態に合わせた。既存の `claude-code-harness--v5.5.0` 以前の tag は履歴として残す
+- **README.md / README_ja.md を再構成し重複を削減**: 「The loop」のコマンド表とステージ表を 1 表に統合、Documentation 表からバッジ / Install by tool 表にすでに張ってあるリンク (Claude Code compatibility、Cursor integration) を除去。ピン済みの tier 表記・見出し・文言はすべて維持 (`tests/test-readme-product-surface.sh` 等 144/144 green)
 
 ## [5.9.0] - 2026-08-17
 
