@@ -63,7 +63,7 @@ safety:
   # warn: HOTL — allow, inject a warning, and append the command to
   #       .claude/state/destructive-delete.jsonl for after-the-fact review.
   #       Targets spelled outside the project root, `..`, unresolved $VAR,
-  #       globs and bare `.` still ask.
+  #       globs and bare `.` / `/` still ask.
   destructive_delete: ask
   # R03 protected path break-glass ask-list is supported only in harness.toml:
   # [[safety.guardrail.protectedPathAskList]]

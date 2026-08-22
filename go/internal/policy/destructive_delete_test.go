@@ -143,3 +143,72 @@ func TestR05_WarnDoesNotLeakIntoOtherRules(t *testing.T) {
 		t.Fatalf("R01 must still deny sudo, got %s", result.Decision)
 	}
 }
+
+// The warn approval is advisory: it must never preempt a hard deny declared
+// later in the rule slice for the same compound command (CodeRabbit finding on
+// PR #325 — the first R05 warn implementation returned before R08 ever ran).
+func TestR05_WarnDoesNotPreemptLaterDenyRules(t *testing.T) {
+	cases := []struct {
+		name       string
+		command    string
+		mutate     func(*hookproto.RuleContext)
+		wantRuleID string
+	}{
+		{
+			name:       "R08 breezing reviewer no-write",
+			command:    "echo hi && rm -rf ./dist",
+			mutate:     func(ctx *hookproto.RuleContext) { ctx.BreezingRole = "reviewer" },
+			wantRuleID: "R08:breezing-reviewer-no-write",
+		},
+		{
+			name:       "R06 force push deny",
+			command:    "echo hi && rm -rf ./dist && git push --force origin feature",
+			mutate:     func(ctx *hookproto.RuleContext) {},
+			wantRuleID: "R06:no-force-push",
+		},
+		{
+			name:       "R10 git bypass flags deny",
+			command:    "echo hi && rm -rf ./dist && git commit --no-verify -m x",
+			mutate:     func(ctx *hookproto.RuleContext) {},
+			wantRuleID: "R10:no-git-bypass-flags",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := warnCtx(t, tc.command)
+			tc.mutate(&ctx)
+			result := EvaluateRules(ctx)
+			if result.Decision != hookproto.DecisionDeny {
+				t.Fatalf("expected deny from %s, got %s: %s", tc.wantRuleID, result.Decision, result.SystemMessage)
+			}
+			if result.RuleID != tc.wantRuleID {
+				t.Fatalf("expected %s to win over the advisory warn approve, got %s", tc.wantRuleID, result.RuleID)
+			}
+		})
+	}
+}
+
+// Push to a protected branch keeps its ask even when the same compound command
+// contains a warn-approved deletion (the operator's main-branch exception).
+func TestR05_WarnDoesNotPreemptProtectedBranchPushAsk(t *testing.T) {
+	ctx := warnCtx(t, "rm -rf ./dist && git push origin main")
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("expected R12 ask to win over the advisory warn approve, got %s", result.Decision)
+	}
+	if result.RuleID != "R12:confirm-direct-push-protected-branch" {
+		t.Fatalf("expected R12 to win, got %s", result.RuleID)
+	}
+}
+
+// Without a usable project root a relative spelling has no worktree to anchor
+// to and the record file has nowhere to go — warn must keep asking.
+func TestR05_WarnEmptyProjectRootStillAsks(t *testing.T) {
+	ctx := makeCtx("Bash", map[string]interface{}{"command": "cd /anywhere && rm -rf tmp/x"})
+	ctx.ProjectRoot = ""
+	ctx.DestructiveDeletePolicy = DestructiveDeletePolicyWarn
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("expected ask with empty project root under warn, got %s", result.Decision)
+	}
+}

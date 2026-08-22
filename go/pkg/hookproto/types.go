@@ -56,6 +56,12 @@ type HookResult struct {
 	Reason        string       `json:"reason,omitempty"`
 	SystemMessage string       `json:"systemMessage,omitempty"`
 	RuleID        string       `json:"-"`
+	// Advisory marks an Approve that must NOT short-circuit rule evaluation:
+	// later deny/ask rules still run and win. It exists for opt-in relaxations
+	// (R05 destructive_delete=warn) so that a convenience approval can never
+	// preempt a hard prohibition declared later in the rule slice (e.g. R08
+	// breezing-reviewer no-write). Engine-internal.
+	Advisory bool `json:"-"`
 }
 
 // ---------------------------------------------------------------------------

@@ -281,9 +281,13 @@ var Rules = []GuardRule{
 			// the blast-radius backstop of spec.md HOTL invariant 3.
 			if NormalizeDestructiveDeletePolicy(ctx.DestructiveDeletePolicy) == DestructiveDeletePolicyWarn &&
 				dangerousRemovalTargetsAreLexicallyLocal(command, targets, ctx.ProjectRoot, ctx.Input.SessionID) {
+				// Advisory: this approval must not preempt later deny/ask
+				// rules (R06, R08 reviewer no-write, R10, R11, R12) when the
+				// same compound command also matches them — see EvaluateRules.
 				return &hookproto.HookResult{
 					Decision:      hookproto.DecisionApprove,
 					SystemMessage: fmt.Sprintf("R05_WARN: destructive delete allowed without confirmation (destructive_delete=warn; target not statically verifiable, recorded in .claude/state/destructive-delete.jsonl):\n%s", command),
+					Advisory:      true,
 				}
 			}
 			return &hookproto.HookResult{
@@ -550,14 +554,30 @@ func pathContainedIn(base, target string) bool {
 // If no rule matches, it returns approve.
 func EvaluateRules(ctx hookproto.RuleContext) hookproto.HookResult {
 	toolName := ctx.Input.ToolName
+	// An advisory approve (see HookResult.Advisory) is held back instead of
+	// returned: every later rule still runs, and any decisive result (deny,
+	// ask, or a non-advisory approve) wins over it. Only when the full slice
+	// produced nothing decisive does the advisory approval become the answer.
+	var advisory *hookproto.HookResult
 	for _, rule := range Rules {
 		if !rule.ToolPattern.MatchString(toolName) {
 			continue
 		}
-		if result := rule.Evaluate(ctx); result != nil {
-			result.RuleID = rule.ID
-			return *result
+		result := rule.Evaluate(ctx)
+		if result == nil {
+			continue
 		}
+		result.RuleID = rule.ID
+		if result.Advisory && result.Decision == hookproto.DecisionApprove {
+			if advisory == nil {
+				advisory = result
+			}
+			continue
+		}
+		return *result
+	}
+	if advisory != nil {
+		return *advisory
 	}
 	return hookproto.HookResult{Decision: hookproto.DecisionApprove}
 }

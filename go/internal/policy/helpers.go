@@ -1068,6 +1068,12 @@ func dangerousRemovalTargetsAreLexicallyLocal(command string, targets []string, 
 	if projectRoot != "" && filepath.IsAbs(projectRoot) {
 		cleanRoot = filepath.Clean(projectRoot)
 	}
+	// Without a usable project root there is no worktree to anchor a relative
+	// spelling to (and the guardrail layer could not write the review record
+	// either) — approving here would be a silent allow, so keep asking.
+	if cleanRoot == "" {
+		return false
+	}
 
 	for _, target := range targets {
 		if target == "" || strings.ContainsAny(target, "$`*?[]{}~") || hasParentTraversalComponent(target) {
@@ -1080,7 +1086,7 @@ func dangerousRemovalTargetsAreLexicallyLocal(command string, targets []string, 
 		if !filepath.IsAbs(cleaned) {
 			continue
 		}
-		if cleanRoot != "" && pathWithinRoot(cleaned, cleanRoot) {
+		if pathWithinRoot(cleaned, cleanRoot) {
 			continue
 		}
 		if shellscan.IsWithinSessionScratch(cleaned, sessionID) {
