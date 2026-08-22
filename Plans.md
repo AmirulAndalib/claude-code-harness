@@ -160,3 +160,15 @@ Phase 119-124 (2026-07-19 〜 2026-07-25、全 task `cc:done`) は
 **共有ファイル lane (Invariant 1)**: `tests/validate-plugin.sh` の owner は 134.8 / 135.5 (この順で直列)。`Plans.md` / `CHANGELOG.md` は worker 編集禁止 (Lead が統合時に編集)。hooks.json 2 ファイルの owner は 135.2 → 135.3 (直列)。`skills/harness-accept/` は 134.4 → 134.6 → 137.2 の順で直列。prose lane (skills/agents md) は 134.3 → 134.7 → 136.3 → 137.1 → 137.3 で直列可 (異なるファイルなら並列も可)。生成物 (binary / mirror) は統合後に trunk で 1 回再生成 (Invariant 3)。
 
 ---
+
+## Phase 140: guardrail defer 方式 — ask の「停止」を「保留キュー + 続行」に置き換える (2026-08-22 起票)
+
+**Purpose**: operator 裁定 (2026-08-22): 無人 run が確認プロンプトで序盤停止するのが最悪の結果。ask は「人間がその場にいる対話ターン」専用に格下げし、無人時は (a) 安全そうなら warn で自走 (v5.10.0 実装済み)、(b) operator 条件 (本番影響 / main への不可逆 / root 外) に触れる可能性がある操作は**実行せずスキップして他の作業を継続**し、戻った operator が保留一覧を一括レビューする。機構の核: hook の deny は run を止めない (エージェントに理由が返り続行する。2026-08-22 に floor deny 2 回で実測)。止めるのは ask だけ。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 140.1 | `destructive_delete: defer` 追加: R05 の確認相当場面で ask の代わりに deny を返し、reason に行動契約 (「保留キューに積んだ / 再試行禁止 / 他タスクを継続 / 終了時に保留一覧を報告」) を埋め込む。操作は `.claude/state/deferred-ops.jsonl` (timestamp / session_id / rule_id / command / 判定理由) へ追記 | (a) defer 設定で deny + キュー 1 行の実バイナリ probe, (b) 同一コマンド再試行でキューが重複せず deny 継続, (c) 既存 ask/warn 挙動の regression なし | - | cc:todo |
+| 140.2 | 保留キューの承認 flow: `bin/harness deferred list / approve <id>` CLI。approve は既存 plan preapproval (`ConsumePlanPreapproval`) と同じ consume 機構で「次の 1 回」を通す。progress surface に保留 N 件 + コピペ用 approve コマンドを表示 (136.2 の承認待ちキュー表示と同型) | (a) approve 後の再実行が allow になる probe, (b) 未 approve は deny のまま, (c) surface 表示の render test | 140.1 | cc:todo |
+| 140.3 | エージェント自主停止の禁止文言: harness-release / breezing / harness-work の SKILL.md に「background 待ちで停止しない (停止すると background 子は残らない)」「『検証を待ちます』『確認します』で turn を終えない。同期実行で待つか、保留として報告して次へ進む」を AUTOSTART pattern と同じ literal 列挙で追加。2026-08-22 の release run で 2 回発生した停止パターンが再現ケース | (a) 該当 SKILL.md に禁止文言, (b) mirror 同期 PASS | - | cc:todo |
+| 140.4 | defer を他の configurable ask へ一般化するか判定: R12 (main push) は operator 例外として ask 維持が既定。R04 は work-mode で既にカバー。判定結果と根拠を decisions.md へ記録 | (a) decisions.md に判定エントリ | 140.1 | cc:todo |
+
