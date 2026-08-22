@@ -337,7 +337,7 @@ RECOVERING → ABORTED     (リカバリ失敗、人間介入必要)
 | R02 | Write/Edit/MultiEdit | 保護パス (.env, .git/, *.pem, *.key, id_rsa 等) | deny | なし |
 | R03 | Bash | redirection / `tee` による `> .env`, `tee .git/` 等 | deny（TOML ask-list の `.env` / `.env.*` exact match + reason のみ ask） | `[[safety.guardrail.protectedPathAskList]]` |
 | R04 | Write/Edit/MultiEdit | プロジェクトルート外への絶対パス（OS 一時領域を除く） | ask | workMode / OS 一時領域 |
-| R05 | Bash | `rm -rf` / `rm --recursive` | warn（v5.11.0〜の既定。`destructive_delete=ask` で確認に戻せる。warn: 綴りが root 配下 / 自セッション scratch / 相対なら approve + warn + `.claude/state/destructive-delete.jsonl` 記録。root 外・`..`・未解決 `$VAR`・glob・素の `.` / `/` は warn でも ask。warn の approve は advisory で、後続の deny/ask ルール (R06/R08/R10/R11/R12) が常に勝つ） | workMode / `destructive_delete` |
+| R05 | Bash | `rm -rf` / `rm --recursive` | warn（v5.11.0〜の既定。`destructive_delete=ask` で確認に戻せる。warn: 抽出できた削除対象の綴りが**すべて** root 配下 / 自セッション scratch / 相対なら approve + warn (対象を抽出できない形は従来どおり ask) + `.claude/state/destructive-delete.jsonl` 記録。root 外・`..`・未解決 `$VAR`・glob・素の `.` / `/` は warn でも ask。warn の approve は advisory で、後続の deny/ask ルール (R06/R08/R10/R11/R12) が常に勝つ） | workMode / `destructive_delete` |
 | R06 | Bash | `git push --force` / `-f` | deny | なし |
 | R07 | Write/Edit/MultiEdit | codexMode 中の直接書き込み | deny | なし |
 | R08 | Write/Edit/MultiEdit/Bash | breezing reviewer の書き込み/変更コマンド | deny | なし |
