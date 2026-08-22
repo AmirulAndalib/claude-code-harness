@@ -1406,6 +1406,12 @@ else
     fail_test "scope leash 実効性契約テスト失敗 — 'bash tests/test-scope-leash-fires-on-security-diff.sh' で詳細確認"
 fi
 
+if bash "$PLUGIN_ROOT/tests/test-r05-destructive-delete-policy.sh" > /dev/null 2>&1; then
+    pass_test "R05 destructive_delete=warn が実バイナリ経由で allow + 記録し、既定 ask と root 外 backstop を保つ契約テストが通ります (test-r05-destructive-delete-policy.sh)"
+else
+    fail_test "R05 destructive_delete policy 契約テスト失敗 — 'bash tests/test-r05-destructive-delete-policy.sh' で詳細確認"
+fi
+
 echo ""
 echo "23. Config schema (Phase 135.5)"
 echo "----------------------------------------"

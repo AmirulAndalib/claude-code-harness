@@ -206,7 +206,33 @@ These actions may launch a validated bare `rm`; nested `find` removal retains
 These execution-context checks use the same shell tokenizer as target
 extraction, so line continuations, quoting, and escape concatenation cannot
 change the command name seen by R05. A worktree-local symlink to an external
-directory therefore does not receive the skip. `WorkMode` retains its existing
+directory therefore does not receive the skip.
+
+### `destructive_delete=warn` (HOTL opt-in)
+
+Every `ask` listed above exists because the static analysis cannot *prove* the
+target is agent-owned, not because the target is known to be dangerous. In
+practice the operator answers those prompts with "yes" without being able to
+evaluate the symlink scenario either. `destructive_delete = warn`
+(`.claude-code-harness.config.yaml` `safety.destructive_delete`, `harness.toml`
+`[safety.permissions] destructiveDelete`, or the env override
+`HARNESS_DESTRUCTIVE_DELETE_POLICY`) replaces that prompt with the agent's own
+judgement plus a review trail:
+
+- Targets whose *spelling* is relative, under the project root, or inside this
+  session's scratch are approved with an `R05_WARN` system message, and the
+  command is appended to `.claude/state/destructive-delete.jsonl`
+  (`timestamp`, `session_id`, `agent_id`, `cwd`, `command`, `policy`, `rule_id`).
+- Targets spelled outside the project root, containing `..`, an unresolved
+  `$VAR`, a glob, or the bare `.` / `/` still `ask` (the blast-radius backstop
+  of the HOTL contract, `spec.md` invariant 3). The Runtime Floor deny for
+  out-of-worktree deletion is unchanged and runs before R05.
+- The 133.10 residual (a preceding segment planting a symlink so an in-root
+  spelling resolves outside the worktree) is accepted knowingly under `warn`;
+  the record is what makes it reviewable afterwards. The default stays `ask`.
+- `WorkMode` continues to skip R05 entirely; `warn` only matters outside a run.
+
+`WorkMode` retains its existing
 R05 bypass. Destruction outside the task worktree remains a hard deny in the
 Runtime Floor, which runs before the policy rules and does not depend on
 `WorkMode`.

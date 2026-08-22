@@ -352,6 +352,7 @@ func BuildContext(input hookproto.HookInput) hookproto.RuleContext {
 		CodexMode:                 codexMode,
 		BreezingRole:              breezingRole,
 		ProtectedBranchPushPolicy: resolveProtectedBranchPushPolicy(input, projectRoot),
+		DestructiveDeletePolicy:   resolveDestructiveDeletePolicy(input, projectRoot),
 		ConsumePlanPreapproval:    newPlanPreapprovalConsumer(projectRoot, input),
 		ProtectedPathAskList:      resolveProtectedPathAskList(input, projectRoot),
 		TddEnforceLevel:           tddRuntime.Level,
@@ -541,6 +542,12 @@ func evaluatePreTool(input hookproto.HookInput) hookproto.HookResult {
 
 	ctx := BuildContext(input)
 	result := policy.EvaluateRules(ctx)
+	// destructive_delete=warn: R05 approved a deletion it could not statically
+	// verify. The approval only makes sense together with the record — this is
+	// the HOTL review trail the operator reads instead of answering a prompt.
+	if isDestructiveDeleteWarnApproval(result) {
+		recordDestructiveDeleteWarning(ctx.ProjectRoot, input, result)
+	}
 	if scopeWarning != "" && result.Decision == hookproto.DecisionApprove && result.SystemMessage == "" {
 		result.SystemMessage = scopeWarning
 	}

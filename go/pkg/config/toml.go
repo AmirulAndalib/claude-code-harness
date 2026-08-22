@@ -93,6 +93,7 @@ type PermissionsConfig struct {
 	Deny                []string `toml:"deny"`
 	Ask                 []string `toml:"ask"`
 	ProtectedBranchPush string   `toml:"protectedBranchPush"`
+	DestructiveDelete   string   `toml:"destructiveDelete"`
 }
 
 // GuardrailConfig maps to [safety.guardrail].

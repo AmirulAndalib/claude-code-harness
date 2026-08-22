@@ -47,6 +47,13 @@ func readProtectedBranchPushPolicyFromHarnessTOML(path string) string {
 }
 
 func readProtectedBranchPushPolicyFromYAML(projectRoot string) string {
+	return readSafetyValueFromYAML(projectRoot, "protected_branch_push", "protectedBranchPush")
+}
+
+// readSafetyValueFromYAML scans .claude-code-harness.config.yaml for the first
+// of keys, accepted either at top level or nested under `safety:`. It is a
+// line-oriented reader on purpose (no YAML dependency in the hook fast-path).
+func readSafetyValueFromYAML(projectRoot string, keys ...string) string {
 	configPath := filepath.Join(projectRoot, ".claude-code-harness.config.yaml")
 	f, err := os.Open(configPath)
 	if err != nil {
@@ -63,11 +70,10 @@ func readProtectedBranchPushPolicyFromYAML(projectRoot string) string {
 			continue
 		}
 		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
-			if value, ok := parseSimpleYAMLValue(trimmed, "protected_branch_push"); ok {
-				return value
-			}
-			if value, ok := parseSimpleYAMLValue(trimmed, "protectedBranchPush"); ok {
-				return value
+			for _, key := range keys {
+				if value, ok := parseSimpleYAMLValue(trimmed, key); ok {
+					return value
+				}
 			}
 			inSafety = strings.HasPrefix(trimmed, "safety:")
 			continue
@@ -75,11 +81,10 @@ func readProtectedBranchPushPolicyFromYAML(projectRoot string) string {
 		if !inSafety {
 			continue
 		}
-		if value, ok := parseSimpleYAMLValue(trimmed, "protected_branch_push"); ok {
-			return value
-		}
-		if value, ok := parseSimpleYAMLValue(trimmed, "protectedBranchPush"); ok {
-			return value
+		for _, key := range keys {
+			if value, ok := parseSimpleYAMLValue(trimmed, key); ok {
+				return value
+			}
 		}
 	}
 	return ""
