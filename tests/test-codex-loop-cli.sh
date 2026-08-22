@@ -44,13 +44,13 @@ task_id="$1"
 state_dir="${PROJECT_ROOT}/.claude/state/contracts"
 mkdir -p "${state_dir}"
 path="${state_dir}/${task_id}.sprint-contract.json"
-advisor_json='{"enabled":false,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":[],"model_policy":{"claude_default":"opus","codex_default":"gpt-5.4"}}'
+advisor_json='{"enabled":false,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":[],"model_policy":{"claude_default":"opus","codex_default":"gpt-5.6-sol"}}'
 if [ "${FAKE_ADVISOR_MODE:-off}" = "preflight" ]; then
-  advisor_json='{"enabled":true,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":["security-sensitive"],"model_policy":{"claude_default":"opus","codex_default":"gpt-5.4"}}'
+  advisor_json='{"enabled":true,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":["security-sensitive"],"model_policy":{"claude_default":"opus","codex_default":"gpt-5.6-sol"}}'
 elif [ "${FAKE_ADVISOR_MODE:-off}" = "retry" ]; then
-  advisor_json='{"enabled":true,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":[],"model_policy":{"claude_default":"opus","codex_default":"gpt-5.4"}}'
+  advisor_json='{"enabled":true,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":[],"model_policy":{"claude_default":"opus","codex_default":"gpt-5.6-sol"}}'
 elif [ "${FAKE_ADVISOR_MODE:-off}" = "plateau" ]; then
-  advisor_json='{"enabled":true,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":[],"model_policy":{"claude_default":"opus","codex_default":"gpt-5.4"}}'
+  advisor_json='{"enabled":true,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":[],"model_policy":{"claude_default":"opus","codex_default":"gpt-5.6-sol"}}'
 fi
 cat > "${path}" <<JSON
 {
@@ -1359,7 +1359,7 @@ run_advisor_preflight_case() {
   bash "${LOOP_SCRIPT}" start all --max-cycles 1 --pacing worker >/dev/null
 
   poll_for_status "${repo}/.claude/state/codex-loop/run.json" "completed" || fail "advisor preflight: run did not finish"
-  jq -e '.consultations == 1 and .last_decision == "PLAN" and (.last_trigger | contains("high-risk-preflight")) and .last_model == "gpt-5.4"' \
+  jq -e '.consultations == 1 and .last_decision == "PLAN" and (.last_trigger | contains("high-risk-preflight")) and .last_model == "gpt-5.6-sol"' \
     "${repo}/.claude/state/codex-loop/run.json" >/dev/null \
     && pass "advisor preflight: status JSON records consultation" \
     || fail "advisor preflight: status JSON missing advisor fields"

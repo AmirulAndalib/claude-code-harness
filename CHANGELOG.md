@@ -6,6 +6,16 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Changed
+
+- **Codex Breezing の実装 Worker を `gpt-5.6-luna` / `max` に統一**。Codex-native の `breezing` は setup が配置する managed custom agent `worker.toml` を選び、`breezing --codex` は中央の worker route を解決する。公式 companion 1.0.6 が受け付けない `max` は Harness が raw `codex exec` の reasoning config へ変換する。reviewer / advisor / deep は従来どおり `gpt-5.6-sol` / `xhigh` のまま
+- **Codex review の transport を per-run local proxy に固定**。`model` / `review_model` / `model_reasoning_effort` を `codex app-server` へ注入しつつ official companion envelope を保持する。`review --commit` は provider dispatch 前に拒否し、成功した delegation だけを ledger に記録する。TERM/INT は companion と proxy へ同時転送し、最大 1 秒待機後に残存 child を KILL/reap する
+- **Codex setup と host distribution の安全境界を追加**。local/remote setup は preflight 後に、Harness 所有の legacy `[notify]` 2 形態だけを backup + atomic migration する。custom/ambiguous shape は no-mutation fail とし、`features.multi_agent` と `features.default_mode_request_user_input` を欠落時に追加する。Claude/Codex dist は worker/reviewer profile と review runtime-helper closure を同梱する
+
+### Verification boundary
+
+- Windows named-pipe path は fixture/static checks のみで、live Windows provider/app-server は未観測。今回の実装は provider/API 呼び出し、実 HOME 変更、live install を行わない
+
 ## [5.10.0] - 2026-08-22
 
 ### Added

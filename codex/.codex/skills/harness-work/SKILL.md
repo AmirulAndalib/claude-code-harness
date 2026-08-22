@@ -70,7 +70,7 @@ Harness の統合実行スキル。
 
 | backend | 実装の担い手 | 委託コマンド |
 |---------|------------|------------|
-| `claude`（global fallback） | Codex native subagent（`spawn_agent({message, fork_context})`） | spawn_agent で worker を spawn |
+| `claude`（global fallback） | Codex native subagent（`spawn_agent`） | spawn_agent で worker を spawn |
 | `codex` | Codex CLI | `bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" task --write "<prompt>"` |
 | `cursor` | cursor-agent（model `composer-2.5-fast`） | `bash "${HARNESS_PLUGIN_ROOT}/scripts/cursor-companion.sh" task --write --workspace <worktree> "<prompt>"` |
 
@@ -182,13 +182,15 @@ harness-work
 - `harness-work all` → 全タスク、自動モード選択
 - `harness-work 3-6` → 4件なので Breezing 自動選択
 
-## Effort レベル制御（Opus 4.8 / v2.1.111+）
+## Effort レベル制御（Codex 0.148 / managed routes）
 
-effort はモデルの推論強度を選ぶ正式なノブ。`low(○)/medium(◐)/high(●)/xhigh` の 4 段階で、
-`/effort auto` でデフォルトにリセットできる（`max` は v2.1.72 で廃止、`xhigh` が後継）。
+effort はモデルの推論強度を選ぶ正式なノブ。generic な standard / review route は
+`low(○)/medium(◐)/high(●)/xhigh` を使う。Breezing の implementation worker は
+managed `worker` route の設定をそのまま使い、skill から effort を上書きしない。
+`/effort auto` は generic route の既定へ戻す操作であり、worker route の `max` 契約を
+`xhigh` へ静かに置換してはならない。
 
-Opus 4.8 では thinking は既定 off で、effort が推論深度の主レバー（過去のどの Opus より effort の影響が大きい）。
-「浅い推論」を観測したら prompt で回避せず effort を上げる。
+「浅い推論」を観測したら prompt で回避せず、対象 role の中央 routing 設定を確認する。
 そのため複雑タスクの強化は **free-text marker（旧 `ultrathink`）を spawn prompt に注入する方式を廃止**し、
 複雑度スコアから **Worker spawn の effort tier を選ぶ**方式に統一する。
 
@@ -265,7 +267,7 @@ if topology in ["solo", "parallel"] and backend in ["cursor", "codex"]:
         companion_output = bash("bash \"${HARNESS_PLUGIN_ROOT}/scripts/cursor-companion.sh\" task --write --workspace {worktree_path} \"{companion_prompt}\"")
     else:
         companion_state_file = "{worktree_path}/.claude/state/codex-primary-environment.json"
-        companion_output = bash("HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worktree_path} \"{companion_prompt}\"")
+        companion_output = bash("CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worktree_path} \"{companion_prompt}\"")
     latest_commit = git("-C", worktree_path, "rev-parse", "HEAD")
     if backend == "cursor" and git("-C", worktree_path, "status", "--porcelain") != "":
         git("-C", worktree_path, "add", "-A")
@@ -355,14 +357,14 @@ BASE_REF="$(git rev-parse HEAD)"
 WT_ID="codex-$(date +%Y%m%d-%H%M%S)-$$"
 WORKTREE_PATH=".claude/worktrees/${WT_ID}"
 git worktree add -b "codex-work/${WT_ID}" "$WORKTREE_PATH" "$BASE_REF"
-HARNESS_CODEX_PRIMARY_ENV_STATE_FILE="$WORKTREE_PATH/.claude/state/codex-primary-environment.json" \
+CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE="$WORKTREE_PATH/.claude/state/codex-primary-environment.json" \
   bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" task --write -C "$WORKTREE_PATH" \
   "タスク内容。完了前にこの worktree で exactly one git commit を作成してください。"
 
 # stdin 経由（大きなプロンプト向け）
 CODEX_PROMPT=$(mktemp /tmp/codex-prompt-XXXXXX.md)
 # タスク内容を書き出し
-cat "$CODEX_PROMPT" | HARNESS_CODEX_PRIMARY_ENV_STATE_FILE="$WORKTREE_PATH/.claude/state/codex-primary-environment.json" \
+cat "$CODEX_PROMPT" | CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE="$WORKTREE_PATH/.claude/state/codex-primary-environment.json" \
   bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" task --write -C "$WORKTREE_PATH"
 rm -f "$CODEX_PROMPT"
 
@@ -463,7 +465,7 @@ for task in execution_order:
         bash("mkdir -p .claude/worktrees && git worktree add -b {worktree_branch} {worktree_path} {BASE_REF}")
         companion_prompt = "{task prompt}\n\nAfter making changes, create exactly one git commit in this worktree before returning."
         companion_state_file = "{worktree_path}/.claude/state/codex-primary-environment.json"
-        companion_output = bash("HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worktree_path} \"{companion_prompt}\"")
+        companion_output = bash("CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worktree_path} \"{companion_prompt}\"")
         latest_commit = git("-C", worktree_path, "rev-parse", "HEAD")
         if latest_commit == BASE_REF:
             raise EscalationError("codex companion produced no commit")
@@ -472,8 +474,9 @@ for task in execution_order:
     else:
         print("🚀 claude / native-subagent / {branch} / {task.number}")
         worker_id = spawn_agent({
+            agent_type: "worker",
             message: "タスク: {task.内容}\nDoD: {task.DoD}\ncontract_path: {contract_path}\nspec_path: {spec_path}\nspec_skip_reason: {spec_skip_reason}\nmode: breezing\n\n作業は分離 worktree で行い、完了後に git commit してください。\n完了時は {commit, worktreePath, branch, files_changed, summary} を返してください。",
-            fork_context: true
+            fork_turns: "3"
         })
         worker_result = wait_agent({ targets: [worker_id] })
     # worker_result には {commit, worktreePath, branch, files_changed, summary} が含まれる
@@ -483,8 +486,7 @@ for task in execution_order:
     if backend == "claude" and worker_result.type == "advisor-request.v1":
         advisor_id = spawn_agent({
             message: worker_result.request_json,
-            agent_type: "default",
-            fork_context: true
+            agent_type: "default"
         })
         advisor_result = wait_agent({ targets: [advisor_id] })
         close_agent({ target: advisor_id })
@@ -554,7 +556,7 @@ for task in execution_order:
         else:
             previous_commit = latest_commit
             companion_state_file = "{worker_result.worktreePath}/.claude/state/codex-primary-environment.json"
-            companion_output = bash("HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worker_result.worktreePath} \"Review findings:\n{issues}\n\nFix the findings and commit the result.\"")
+            companion_output = bash("CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worker_result.worktreePath} \"Review findings:\n{issues}\n\nFix the findings and commit the result.\"")
             latest_commit = git("-C", worker_result.worktreePath, "rev-parse", "HEAD")
             if latest_commit == previous_commit:
                 raise EscalationError("codex companion retry produced no new commit")

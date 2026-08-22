@@ -120,13 +120,16 @@ grep -q '^GROK_MODEL=grok-4.5$' <<<"$grok_env" || fail "grok env must export GRO
 # effort はモデルごとの語彙内であること。standard tier は grok-4.5 (high|medium|low)。
 grep -q '^GROK_EFFORT=medium$' <<<"$grok_env" || fail "grok env must export GROK_EFFORT"
 
-# Existing hosts must remain stable when grok is added
+# Existing hosts must remain stable when grok is added. Codex's worker route is
+# intentionally pinned to the current Luna/max implementation contract.
 claude_worker="$(bash "$ROUTER" --host claude --role worker --field model)"
 [ "$claude_worker" = "claude-sonnet-5" ] || fail "claude worker routing regressed"
 cursor_worker="$(bash "$ROUTER" --host cursor --role worker --field model)"
 [ "$cursor_worker" = "composer-2.5-fast" ] || fail "cursor worker routing regressed"
 codex_worker="$(bash "$ROUTER" --host codex --role worker --field model)"
-[ "$codex_worker" = "gpt-5.6-sol" ] || fail "codex worker routing regressed"
+[ "$codex_worker" = "gpt-5.6-luna" ] || fail "codex worker routing regressed"
+codex_worker_effort="$(bash "$ROUTER" --host codex --role worker --field effort)"
+[ "$codex_worker_effort" = "max" ] || fail "codex worker effort routing regressed"
 
 # Dist build: package-local paths, core skills present
 DIST_TMP="$(mktemp -d)"

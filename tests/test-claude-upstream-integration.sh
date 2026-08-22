@@ -473,8 +473,8 @@ grep -q 'model_providers.amazon-bedrock.aws' "${CODEX_PROVIDER_POLICY_DOC}" || {
   echo "Codex provider policy doc must document the AWS profile config path"
   exit 1
 }
-grep -q 'Harness の配布用 `codex/.codex/config.toml` には `model = "gpt-5.4"` を default として書かない' "${CODEX_PROVIDER_POLICY_DOC}" || {
-  echo "Codex provider policy doc must not pin gpt-5.4 in shipped setup defaults"
+grep -q '未指定の config は provider/account/CLI recommended model を継承し、固定の gpt-5.4 default は仮定しない' "${CODEX_PROVIDER_POLICY_DOC}" || {
+  echo "Codex provider policy doc must document unpinned provider/account/CLI model inheritance"
   exit 1
 }
 grep -q 'Claude Code 側の Bedrock guidance' "${CODEX_PROVIDER_POLICY_DOC}" || {
@@ -513,6 +513,65 @@ grep -q 'Codex 0.123.0 provider / model metadata.*A: docs 化済み' "${ROOT_DIR
   echo "Feature Table must mark 53.2.1 provider/model metadata guidance as done"
   exit 1
 }
+
+# 2026-08-22: Codex current model migration contract
+# The official Codex models page retires the ChatGPT-sign-in GPT-5.4 entries on
+# 2026-08-31. Keep distributed setup unpinned so provider/account/CLI policy
+# can select the recommended model; only explicit replacement examples pin Terra.
+CODEX_CONFIG="${ROOT_DIR}/codex/.codex/config.toml"
+CODEX_README="${ROOT_DIR}/codex/README.md"
+CODEX_SANDBOX_POLICY_DOC="${ROOT_DIR}/docs/codex-sandbox-execution-policy.md"
+CODEX_REFERENCE="${ROOT_DIR}/skills/harness-setup/references/codex.md"
+CODEX_REFERENCE_MIRRORS=(
+  "${ROOT_DIR}/codex/.codex/skills/harness-setup/references/codex.md"
+  "${ROOT_DIR}/opencode/skills/harness-setup/references/codex.md"
+)
+CODEX_MODEL_DOC_URL='https://developers.openai.com/codex/models'
+for codex_model_doc in "${CODEX_CONFIG}" "${CODEX_README}" "${CODEX_PROVIDER_POLICY_DOC}" "${CODEX_REFERENCE}"; do
+  grep -Fq "${CODEX_MODEL_DOC_URL}" "${codex_model_doc}" || {
+    echo "${codex_model_doc} must link the official Codex models page"
+    exit 1
+  }
+  grep -Fq 'GPT-5.4 and GPT-5.4 mini retire from Codex with ChatGPT sign-in on August 31, 2026.' "${codex_model_doc}" || {
+    echo "${codex_model_doc} must state the ChatGPT-sign-in GPT-5.4 retirement date"
+    exit 1
+  }
+  grep -Fq 'replace `gpt-5.4` with `gpt-5.6-terra` and `gpt-5.4-mini` with `gpt-5.6-luna`' "${codex_model_doc}" || {
+    echo "${codex_model_doc} must state the official GPT-5.4 replacement mapping"
+    exit 1
+  }
+  grep -Fq "The OpenAI API and Codex authenticated with your own API key aren't affected." "${codex_model_doc}" || {
+    echo "${codex_model_doc} must preserve the API-key authentication exception"
+    exit 1
+  }
+done
+
+grep -Fq 'provider/account/CLI recommended model' "${CODEX_CONFIG}" || {
+  echo "codex/.codex/config.toml must inherit the provider/account/CLI recommended model"
+  exit 1
+}
+if grep -Fq 'model = "gpt-5.4"' "${CODEX_CONFIG}"; then
+  echo "codex/.codex/config.toml must not pin the retiring gpt-5.4 model"
+  exit 1
+fi
+grep -Fq 'provider/account/CLI recommended model' "${CODEX_README}" || {
+  echo "codex/README.md must explain unpinned model inheritance"
+  exit 1
+}
+grep -Fq 'codex --sandbox read-only --model gpt-5.6-terra exec -' "${CODEX_SANDBOX_POLICY_DOC}" || {
+  echo "Codex sandbox policy must use Terra for its explicit replacement sample"
+  exit 1
+}
+if grep -Fq 'codex --sandbox read-only --model gpt-5.4 exec -' "${CODEX_SANDBOX_POLICY_DOC}"; then
+  echo "Codex sandbox policy must not keep the retiring gpt-5.4 command sample"
+  exit 1
+fi
+for codex_reference_mirror in "${CODEX_REFERENCE}" "${CODEX_REFERENCE_MIRRORS[@]}"; do
+  cmp -s "${CODEX_REFERENCE}" "${codex_reference_mirror}" || {
+    echo "Codex harness-setup reference mirror is not byte-consistent: ${codex_reference_mirror}"
+    exit 1
+  }
+done
 
 # Phase 53.2.2: Codex /mcp verbose diagnostics and plugin .mcp.json loading policy
 CODEX_MCP_DIAGNOSTICS_DOC="${ROOT_DIR}/docs/codex-mcp-diagnostics.md"

@@ -1,6 +1,6 @@
 # Codex Provider Setup Policy
 
-最終更新: 2026-05-10
+最終更新: 2026-08-22
 
 この文書は Codex `0.123.0` で追加された provider と model metadata、および Codex `0.130.0` stable で明確化された Bedrock 認証の扱いを、Harness の Codex setup guidance として固定するためのものです。
 
@@ -21,6 +21,7 @@ Harness は、どの改札へ向かえばよいかを書いた案内板です。
 - Codex Amazon Bedrock provider PR: <https://github.com/openai/codex/pull/18744>
 - Codex config basics: <https://developers.openai.com/codex/config-basic>
 - Codex config reference: <https://developers.openai.com/codex/config-reference>
+- Codex models and ChatGPT-sign-in retirement guidance: <https://developers.openai.com/codex/models>
 - Amazon Bedrock OpenAI model docs: <https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-openai.html>
 
 ## 対象と判断
@@ -32,7 +33,7 @@ Harness は、どの改札へ向かえばよいかを書いた案内板です。
 | `model_providers.amazon-bedrock.aws.profile` | AWS profile を選ぶ設定 | 認証情報は AWS 側に置き、Harness は profile 名の例だけ示す |
 | `aws login` / console-login credentials | AWS console-login credential を AWS profile 経由で使う認証経路 | Codex `0.130.0` stable の Bedrock auth として案内する。Harness は credential 本体を書かない |
 | `model` | Codex が使う model を固定する設定 | 再現性が必要な時だけ user / project config で指定する。Harness setup default では固定しない |
-| `gpt-5.4` | Codex `0.123.0` 時点の current default model metadata | Codex 本体の bundled model metadata として扱う。Harness は古い model slug を推奨値として残さない |
+| `gpt-5.4` / `gpt-5.4-mini` | ChatGPT サインイン時に 2026-08-31 で Codex から retire する model | `gpt-5.6-terra` / `gpt-5.6-luna` への移行だけを明示し、配布 config の default には固定しない |
 | Claude Code Bedrock guidance | Claude Code 側で Bedrock / Vertex / custom gateway を扱う設定 | Codex の `amazon-bedrock` provider と混ぜない。Claude 側は `CLAUDE_CODE_USE_BEDROCK` や Anthropic model overrides の領域 |
 
 ## Codex `amazon-bedrock` provider
@@ -63,26 +64,34 @@ Harness の扱いは変えません。
 
 つまり、console-login credentials は「AWS profile の中身」として扱い、Harness の template や setup は credential material に触れません。
 
-## Model default policy
+## Model default and migration policy
 
-Codex `0.123.0` の release では、bundled model metadata が更新され、現在の default として `gpt-5.4` が含まれます。
+The official Codex models guidance states:
+
+> GPT-5.4 and GPT-5.4 mini retire from Codex with ChatGPT sign-in on August 31, 2026.
+> If you sign in with ChatGPT, replace `gpt-5.4` with `gpt-5.6-terra` and `gpt-5.4-mini` with `gpt-5.6-luna`.
+> The OpenAI API and Codex authenticated with your own API key aren't affected.
 
 Harness の方針:
 
-- Harness の配布用 `codex/.codex/config.toml` には `model = "gpt-5.4"` を default として書かない。
+- 未指定の config は provider/account/CLI recommended model を継承し、固定の gpt-5.4 default は仮定しない。
+- Harness の配布用 `codex/.codex/config.toml` は `model` を unset のままにする。
 - `scripts/setup-codex.sh` や `$harness-setup codex` は、ユーザーの既存 `model` を勝手に置き換えない。
 - model を固定したい場合は、ユーザーが自分の `~/.codex/config.toml` または project `.codex/config.toml` に明示する。
 - 古い `gpt-5.2-codex` や `gpt-5-codex` を、現在の推奨 sample として新しく案内しない。
 
-固定が必要になる例:
+ChatGPT サインインの保存済み設定を移行する明示例:
 
 ```toml
-# 再現性が必要な検証や、組織の allowlist がある場合だけ指定する。
-model = "gpt-5.4"
+# 旧 gpt-5.4 の明示 pin を移行する場合
+model = "gpt-5.6-terra"
+
+# 旧 gpt-5.4-mini の明示 pin を移行する場合
+model = "gpt-5.6-luna"
 ```
 
-通常は `model` を省略し、Codex 本体の current default と model metadata に任せます。
-これにより、Codex 側の model catalog 更新を Harness が古い固定値で邪魔しにくくなります。
+通常は `model` を省略し、provider/account/CLI recommended model に任せます。
+API key 認証の Codex は GPT-5.4 retirement の影響を受けません。
 
 ## Claude Code guidance との切り分け
 
@@ -100,7 +109,7 @@ Claude Code の Bedrock 設定を変えても、Codex の `model_provider` は�
 
 ## Verification record
 
-2026-04-23 に、古い固定 model slug が必要以上に残っていないかを次の観点で確認しました。
+2026-08-22 に、公式 Codex models guidance と配布設定の model policy を確認しました。
 
 ```bash
 rg -n "gpt-5\\.2-codex|gpt-5-codex|gpt-5\\.1|codex-mini|gpt-5\\.3-codex|gpt-5\\.4" \
@@ -109,10 +118,10 @@ rg -n "gpt-5\\.2-codex|gpt-5-codex|gpt-5\\.1|codex-mini|gpt-5\\.3-codex|gpt-5\\.
 
 判断:
 
-- `scripts/check-codex.sh` の `gpt-5.2-codex` 推奨 sample は削除対象。
-- `gpt-5.4` は Codex `0.123.0` の current default metadata、advisor contract fixture、loop advisor policy の文脈では許容。
-- `gpt-5.1` / `gpt-5-codex` などは、過去 release の説明や upstream PR の引用・検出対象であれば許容。
-- 新しい setup guidance では、古い model slug を推奨値として追加しない。
+- `gpt-5.4` / `gpt-5.4-mini` は ChatGPT サインイン向けの移行元識別子としてのみ残す。
+- ChatGPT サインインの明示 pin は `gpt-5.6-terra` / `gpt-5.6-luna` に移行する。
+- API key 認証は GPT-5.4 retirement の対象外として案内する。
+- 新しい setup guidance では、配布 config に固定 model を追加しない。
 
 ## Why this way
 

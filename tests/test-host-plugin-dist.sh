@@ -56,13 +56,25 @@ assert_absent "$CLAUDE_OUT" ".cursor-plugin"
 assert_absent "$CLAUDE_OUT" ".grok-plugin"
 assert_absent "$CLAUDE_OUT" "codex"
 assert_absent "$CLAUDE_OUT" ".cursor"
+assert_present "$CLAUDE_OUT" "scripts/codex-companion.sh"
+assert_present "$CLAUDE_OUT" "scripts/codex-review-app-server-proxy.mjs"
+assert_present "$CLAUDE_OUT" "scripts/lib/orchestration-ledger.sh"
+assert_present "$CLAUDE_OUT" "scripts/model-routing.sh"
 
 assert_present "$CODEX_OUT" ".codex-plugin/plugin.json"
 assert_present "$CODEX_OUT" "skills/harness-plan/SKILL.md"
 assert_present "$CODEX_OUT" "scripts/codex-companion.sh"
+assert_present "$CODEX_OUT" "scripts/codex-review-app-server-proxy.mjs"
+assert_present "$CODEX_OUT" "scripts/lib/orchestration-ledger.sh"
 assert_present "$CODEX_OUT" "scripts/cursor-companion.sh"
 assert_present "$CODEX_OUT" "scripts/resolve-impl-backend.sh"
 assert_present "$CODEX_OUT" "scripts/model-routing.sh"
+for profile in worker.toml reviewer.toml; do
+  assert_present "$CODEX_OUT" "agents/$profile"
+  if ! cmp -s "$ROOT_DIR/codex/.codex/agents/$profile" "$CODEX_OUT/agents/$profile"; then
+    fail "Codex dist agent profile must be the generated canonical artifact: $profile"
+  fi
+done
 assert_absent "$CODEX_OUT" ".claude-plugin"
 assert_absent "$CODEX_OUT" ".cursor-plugin"
 assert_absent "$CODEX_OUT" ".grok-plugin"

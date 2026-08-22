@@ -1,8 +1,9 @@
-# Codex Team Config template (Codex CLI 0.110.0+, policy aligned through 0.130.0 stable, extended through 0.134.0)
+# Codex Team Config template (Codex CLI 0.110.0+, policy aligned through 0.130.0 stable, extended through 0.134.0, refreshed through 0.148.0 stable)
 # Copy to ${CODEX_HOME:-~/.codex}/config.toml (user) or .codex/config.toml (project).
 
 [features]
 multi_agent = true
+default_mode_request_user_input = true
 
 # Phase 56.2.2: Codex 0.124.0 stable hooks parity review
 # Harness intentionally ships no inline hooks in the distributed config:
@@ -36,8 +37,13 @@ multi_agent = true
 # [model_providers.amazon-bedrock.aws]
 # profile = "codex-bedrock"
 #
-# Leave model unset to inherit Codex bundled model metadata, including the
-# current gpt-5.4 default. Pin model only for reproducible or managed setups.
+# Official Codex model guidance: GPT-5.4 and GPT-5.4 mini retire from Codex with ChatGPT sign-in on August 31, 2026.
+# If you sign in with ChatGPT, replace `gpt-5.4` with `gpt-5.6-terra` and `gpt-5.4-mini` with `gpt-5.6-luna`.
+# The OpenAI API and Codex authenticated with your own API key aren't affected.
+# See https://developers.openai.com/codex/models.
+# Leave model unset to inherit the provider/account/CLI recommended model;
+# do not assume a fixed gpt-5.4 default in distributed config. Pin model only
+# for reproducible or managed setups.
 #
 # Codex 0.134.0 makes `--profile` the primary profile selector across CLI,
 # TUI permissions, and sandbox flows. Legacy profile v1 configs are rejected
@@ -90,7 +96,3 @@ sandbox = "workspace-read-only"
 # 0.110.0: workspace-write sandbox auto-includes ~/.codex/memories/ as writable root
 # 0.110.0: web search / MCP tool calls mark thread as "polluted" (memories not generated)
 no_memories_if_mcp_or_web_search = false  # harness workers use MCP sparingly; keep memories
-
-[notify]
-# Session end notification: log to harness state + codex memories (0.110.0: ~/.codex/memories/ auto-writable)
-after_agent = "mkdir -p .claude/state && echo \"[HARNESS-LEARNING] $(date -u +%Y-%m-%dT%H:%M:%SZ) Session completed\" >> .claude/state/session-log.txt"

@@ -61,7 +61,17 @@ EOF
   assert_eq "2" "$(get_advisor_retry_threshold)" "default advisor.retry_threshold"
   assert_eq "true" "$(get_advisor_consult_before_user_escalation)" "default advisor.consult_before_user_escalation"
   assert_eq "opus" "$(get_advisor_claude_model)" "default advisor.claude_model"
-  assert_eq "gpt-5.4" "$(get_advisor_codex_model)" "default advisor.codex_model"
+  assert_eq "gpt-5.6-sol" "$(get_advisor_codex_model)" "default advisor.codex_model"
+)
+
+(
+  cd "${PROJECT_ROOT}"
+  PROJECT_ROOT="${PROJECT_ROOT}"
+  CONFIG_FILE="${PROJECT_ROOT}/.claude-code-harness.config.yaml"
+  # shellcheck disable=SC1090
+  source "${CONFIG_UTILS}"
+
+  assert_eq "gpt-5.6-sol" "$(get_advisor_codex_model)" "active advisor.codex_model"
 )
 
 cat > "${TMP_DIR}/project/custom.yaml" <<'EOF'
@@ -73,7 +83,7 @@ advisor:
   retry_threshold: 4
   consult_before_user_escalation: false
   claude_model: opus-extended
-  codex_model: gpt-5.5
+  codex_model: gpt-5.6-luna
 EOF
 
 (
@@ -89,7 +99,7 @@ EOF
   assert_eq "4" "$(get_advisor_retry_threshold)" "override advisor.retry_threshold"
   assert_eq "false" "$(get_advisor_consult_before_user_escalation)" "override advisor.consult_before_user_escalation"
   assert_eq "opus-extended" "$(get_advisor_claude_model)" "override advisor.claude_model"
-  assert_eq "gpt-5.5" "$(get_advisor_codex_model)" "override advisor.codex_model"
+  assert_eq "gpt-5.6-luna" "$(get_advisor_codex_model)" "override advisor.codex_model"
 
   ensure_advisor_state_files
 

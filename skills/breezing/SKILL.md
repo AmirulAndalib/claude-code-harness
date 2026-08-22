@@ -98,10 +98,25 @@ Lead は run 単位で、作業内容・量からフラットに backend を選�
 | 作業の性質 | 推奨 backend | 理由 |
 |---|---|---|
 | 通常の実装・修正・テスト（既定） | `claude` (native) | Worker 契約（`worker-report.v1` / self_review 5 件）が全部効く |
-| 大規模で独立性の高い一括実装、Claude 側 rate limit 回避 | `codex` | deep tier を xhigh で委譲できる（model は `model-routing.sh` が解決） |
+| 大規模で独立性の高い一括実装、Claude 側 rate limit 回避 | `codex` | `breezing --codex` の companion が専用の worker route を解決して委譲する。Native Codex は managed custom agent を選択し、deep / review / advisor は各 role の route を維持する |
 | UI 大量生成、lean な高速委譲 | `cursor` | lean path（worktree 隔離 + Lead diff review） |
 
 モデル ID は skill に書かない。`bash "${HARNESS_PLUGIN_ROOT}/scripts/model-routing.sh" --host <backend> --role worker` が正本。
+`breezing --codex` の companion 経路だけが `bash "${HARNESS_PLUGIN_ROOT}/scripts/model-routing.sh" --host codex --role worker` で
+専用の `worker` route を解決する。`max` が返る場合は
+`codex-companion.sh` が公式 companion 1.0.6 の `--effort max` 非対応を吸収し、
+raw `codex exec` の config override へ正規化する。Worker の write/sandbox
+intent は保持し、deep / review / advisor の role route を worker に流用しない。
+
+Codex-native Breezing は管理済み `.codex/agents/worker.toml` を
+`agent_type: worker` で選択する。model / reasoning は custom agent 側で管理し、
+skill から直接渡さない。bounded `fork_turns: "3"` は残してよいが、
+`[agents].default_subagent_*` は全 subagent を retune するため設定しない。
+この worker role は setup が user の `$CODEX_HOME/agents/worker.toml` または
+project の `.codex/agents/worker.toml` にコピーして初めて有効になる。Codex 0.148 の
+plugin manifest は native agent role を登録できず、plugin の install / cache / dist
+への収録だけでは有効化されない。
+公式の Subagents 設定: https://learn.chatgpt.com/docs/agent-configuration/subagents?surface=app
 
 ### 進捗報告は出してよい (見やすい範囲で)
 
@@ -259,14 +274,20 @@ Go orchestrator 経路（`harness work --team`）では、Breezing の Lead/Work
 
 公式プラグイン `codex-plugin-cc` 経由で Codex CLI にすべての実装を委託するモード:
 
+この `--codex` は companion 経路であり、専用 `worker` route を解決して実装を委託する。
+公式 companion 1.0.6 が `--effort max` を拒否するため、router が `max` を返す場合は
+Harness の `codex-companion.sh` が raw `codex exec` の config override へ変換する。
+レビュー・助言・deep 判断は、それぞれの role-scoped route を使う。Native Codex
+Breezing の managed custom-agent 選択とは別経路である。
+
 ```bash
 # タスク委託（書き込み可能）
-bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" task --write "タスク内容"
+CODEX_MODEL_TIER=worker bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" task --write "タスク内容"
 
 # stdin 経由（大きなプロンプト向け）
 CODEX_PROMPT=$(mktemp /tmp/codex-prompt-XXXXXX.md)
 # タスク内容を書き出し
-cat "$CODEX_PROMPT" | bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" task --write
+cat "$CODEX_PROMPT" | CODEX_MODEL_TIER=worker bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" task --write
 rm -f "$CODEX_PROMPT"
 ```
 

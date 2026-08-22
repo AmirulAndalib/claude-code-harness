@@ -8,9 +8,10 @@
 // differences (event key name, file path, deny mechanism); this package turns
 // each [host] table into that host's native hooks.json bytes.
 //
-// Scope: this package emits HOOK configs only. The Claude PreToolUse command is
-// represented for completeness/testing, but the live .claude-plugin/hooks.json
-// (a hand-maintained 592-line file) is NOT overwritten until the Phase 91.8
+// Scope: this package emits native hook configs and managed agent profile
+// artifacts. The Claude PreToolUse command is represented for
+// completeness/testing, but the live .claude-plugin/hooks.json (a
+// hand-maintained 592-line file) is NOT overwritten until the Phase 91.8
 // cutover — `harness gen` skips writing it.
 //
 // hostgen is a tooling package (it parses hosts.toml with BurntSushi/toml),
@@ -22,7 +23,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -57,17 +61,31 @@ const ClaudePreToolCommand = `/bin/bash -c 'valid_root(){ local r="${1:-}"; [ -n
 // Host describes one host's pre-action hook capabilities, parsed from a [host]
 // table in hosts.toml.
 type Host struct {
-	Name                 string `toml:"-"`
-	HookEvent            string `toml:"hook_event"`
-	HookPath             string `toml:"hook_path"`
-	Matcher              string `toml:"matcher"`
-	Deny                 string `toml:"deny"`
-	Transport            string `toml:"transport"`
-	Model                string `toml:"model"`
-	DeliveryStrategy     string `toml:"delivery_strategy"`
-	DeliveryEventTurn    string `toml:"delivery_event_turn"`
-	DeliveryEventMonitor string `toml:"delivery_event_monitor"`
-	HookGeneration       string `toml:"hook_generation"`
+	Name                 string                  `toml:"-"`
+	HookEvent            string                  `toml:"hook_event"`
+	HookPath             string                  `toml:"hook_path"`
+	Matcher              string                  `toml:"matcher"`
+	Deny                 string                  `toml:"deny"`
+	Transport            string                  `toml:"transport"`
+	Model                string                  `toml:"model"`
+	DeliveryStrategy     string                  `toml:"delivery_strategy"`
+	DeliveryEventTurn    string                  `toml:"delivery_event_turn"`
+	DeliveryEventMonitor string                  `toml:"delivery_event_monitor"`
+	HookGeneration       string                  `toml:"hook_generation"`
+	AgentProfiles        map[string]AgentProfile `toml:"agent_profiles"`
+}
+
+// AgentProfile is a managed Codex custom-agent declaration. OutputPath is the
+// repository-relative path of the generated artifact; the remaining fields are
+// emitted as the Codex profile itself.
+type AgentProfile struct {
+	OutputPath            string `toml:"output_path"`
+	Name                  string `toml:"name"`
+	Description           string `toml:"description"`
+	Model                 string `toml:"model"`
+	ModelReasoningEffort  string `toml:"model_reasoning_effort"`
+	SandboxMode           string `toml:"sandbox_mode"`
+	DeveloperInstructions string `toml:"developer_instructions"`
 }
 
 // Load parses hosts.toml and returns a map keyed by host name (claude, codex,
@@ -83,9 +101,100 @@ func Load(path string) (map[string]Host, error) {
 	out := make(map[string]Host, len(raw))
 	for name, h := range raw {
 		h.Name = name
+		for role, profile := range h.AgentProfiles {
+			if err := validateAgentProfile(role, profile); err != nil {
+				return nil, fmt.Errorf("hosts.toml: %s.agent_profiles.%s: %w", name, role, err)
+			}
+		}
 		out[name] = h
 	}
 	return out, nil
+}
+
+// GenerateAgentProfile emits one managed Codex custom-agent profile. The
+// output path is metadata used by the caller and is deliberately not copied
+// into the Codex file, whose schema only contains the profile fields.
+func GenerateAgentProfile(profile AgentProfile) ([]byte, error) {
+	if err := validateAgentProfile("", profile); err != nil {
+		return nil, fmt.Errorf("hostgen: invalid agent profile: %w", err)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "name = %s\n", strconv.Quote(profile.Name))
+	fmt.Fprintf(&b, "description = %s\n", strconv.Quote(profile.Description))
+	fmt.Fprintf(&b, "model = %s\n", strconv.Quote(profile.Model))
+	fmt.Fprintf(&b, "model_reasoning_effort = %s\n", strconv.Quote(profile.ModelReasoningEffort))
+	if profile.SandboxMode != "" {
+		fmt.Fprintf(&b, "sandbox_mode = %s\n", strconv.Quote(profile.SandboxMode))
+	}
+	b.WriteString("developer_instructions = ")
+	b.WriteString(formatTOMLString(profile.DeveloperInstructions))
+	b.WriteByte('\n')
+	return []byte(b.String()), nil
+}
+
+func validateAgentProfile(role string, profile AgentProfile) error {
+	if profile.OutputPath == "" {
+		return errors.New("output_path is required")
+	}
+	if err := validateInPackagePath(profile.OutputPath); err != nil {
+		return fmt.Errorf("output_path: %w", err)
+	}
+	if role != "" && profile.Name != role {
+		return fmt.Errorf("name %q must match profile key %q", profile.Name, role)
+	}
+	for field, value := range map[string]string{
+		"name":                   profile.Name,
+		"description":            profile.Description,
+		"model":                  profile.Model,
+		"model_reasoning_effort": profile.ModelReasoningEffort,
+		"sandbox_mode":           profile.SandboxMode,
+		"developer_instructions": profile.DeveloperInstructions,
+	} {
+		if field == "sandbox_mode" && strings.TrimSpace(value) == "" {
+			continue
+		}
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s is required", field)
+		}
+		if strings.ContainsRune(value, '\x00') {
+			return fmt.Errorf("%s contains NUL", field)
+		}
+	}
+	if strings.Contains(profile.DeveloperInstructions, `"""`) {
+		return errors.New("developer_instructions must not contain triple quotes")
+	}
+	return nil
+}
+
+func validateInPackagePath(value string) error {
+	if filepath.IsAbs(value) || strings.HasPrefix(value, `\\`) ||
+		(len(value) >= 3 && ((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) && value[1] == ':' && (value[2] == '/' || value[2] == '\\')) {
+		return errors.New("must be a relative in-package path")
+	}
+	if value == "" || filepath.Clean(value) == "." {
+		return errors.New("must name a file inside the package")
+	}
+	// Check slash-separated components explicitly so this remains safe when a
+	// descriptor is evaluated on a different host OS than the authoring host.
+	for _, component := range strings.FieldsFunc(value, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if component == ".." {
+			return errors.New("must not contain .. path components")
+		}
+	}
+	if strings.ContainsRune(value, '\x00') {
+		return errors.New("must not contain NUL")
+	}
+	return nil
+}
+
+func formatTOMLString(value string) string {
+	if !strings.ContainsAny(value, "\r\n") {
+		return strconv.Quote(value)
+	}
+	// The descriptor uses a TOML multiline basic string for instructions so the
+	// generated file stays readable and preserves the exact instruction text.
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	return `"""` + "\n" + value + `"""`
 }
 
 // GenerateHooksJSON emits the host's native hooks.json bytes wiring

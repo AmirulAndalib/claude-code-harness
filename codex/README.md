@@ -96,30 +96,52 @@ If you use Claude Code Harness, run:
 /setup codex
 ```
 
-### Option 2: Manual (user-based)
+### Option 2: Manual (fresh managed surfaces only)
+
+This path is only for a user whose `skills`, `rules`, and `agents` surfaces
+are empty and who has no `config.toml`. For an existing install, use Option 1;
+it preserves user-owned configuration and backs up the exact legacy Harness
+state that it migrates.
 
 ```bash
 git clone https://github.com/Chachamaru127/claude-code-harness.git
 
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
-BACKUP_ROOT="$CODEX_HOME/backups/manual-codex-setup"
-mkdir -p "$CODEX_HOME/skills" "$CODEX_HOME/rules" "$BACKUP_ROOT"
-
-# Prevent duplicate skill listings from legacy backup/archive directories.
-for legacy in "$CODEX_HOME/skills"/_archived "$CODEX_HOME/skills"/*.backup.*; do
-  [ -e "$legacy" ] || continue
-  mv "$legacy" "$BACKUP_ROOT/"
+for target in \
+  "$CODEX_HOME/config.toml" \
+  "$CODEX_HOME/agents/worker.toml" \
+  "$CODEX_HOME/agents/reviewer.toml"; do
+  { [ ! -e "$target" ] && [ ! -L "$target" ]; } || {
+    echo "existing Codex configuration detected; use Option 1" >&2
+    exit 1
+  }
 done
+for target_dir in "$CODEX_HOME/skills" "$CODEX_HOME/rules" "$CODEX_HOME/agents"; do
+  [ ! -L "$target_dir" ] || {
+    echo "symlinked Codex managed directory detected; use Option 1" >&2
+    exit 1
+  }
+  [ -z "$(find "$target_dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ] || {
+    echo "existing Codex managed files detected; use Option 1" >&2
+    exit 1
+  }
+done
+mkdir -p "$CODEX_HOME/skills" "$CODEX_HOME/rules" "$CODEX_HOME/agents"
 
 for entry in claude-code-harness/codex/.codex/skills/*; do
   name="$(basename "$entry")"
   case "$name" in
     _archived|*.backup.*) continue ;;
   esac
-  rm -rf "$CODEX_HOME/skills/$name"
   cp -R "$entry" "$CODEX_HOME/skills/"
 done
 cp -R claude-code-harness/codex/.codex/rules/* "$CODEX_HOME/rules/"
+for agent in \
+  claude-code-harness/codex/.codex/agents/worker.toml \
+  claude-code-harness/codex/.codex/agents/reviewer.toml; do
+  [ -f "$agent" ] || { echo "missing managed Codex agent: $agent" >&2; exit 1; }
+  cp "$agent" "$CODEX_HOME/agents/"
+done
 cp claude-code-harness/codex/.codex/config.toml "$CODEX_HOME/config.toml"
 ```
 
@@ -149,9 +171,14 @@ Harness does not write AWS credentials, Bedrock endpoints, provider secrets, or 
 Run `aws login` and maintain the resulting AWS profile outside Harness; Harness only points Codex at the profile name when the user opts in.
 Claude Code Bedrock settings such as `CLAUDE_CODE_USE_BEDROCK`, Anthropic model overrides, and `modelOverrides` are separate from Codex `model_provider`.
 
-Codex `0.123.0` also refreshes bundled model metadata, including the current `gpt-5.4` default.
-Harness therefore leaves `model` unset in the distributed Codex config and avoids old fixed model samples such as `gpt-5.2-codex`.
-Pin `model = "gpt-5.4"` only in your own config when reproducibility or an organization allowlist requires it.
+The official Codex models guidance is at `https://developers.openai.com/codex/models`.
+GPT-5.4 and GPT-5.4 mini retire from Codex with ChatGPT sign-in on August 31, 2026.
+If you sign in with ChatGPT, replace `gpt-5.4` with `gpt-5.6-terra` and `gpt-5.4-mini` with `gpt-5.6-luna`.
+The OpenAI API and Codex authenticated with your own API key aren't affected.
+
+Harness leaves `model` unset in the distributed Codex config so it inherits the provider/account/CLI recommended model;
+the distributed config does not assume a fixed gpt-5.4 default. It also avoids old fixed model samples such as `gpt-5.2-codex`.
+When a ChatGPT-sign-in config explicitly pins `gpt-5.4`, use `model = "gpt-5.6-terra"`; replace an explicit `gpt-5.4-mini` pin with `model = "gpt-5.6-luna"`.
 
 Details: `docs/codex-provider-setup-policy.md`.
 

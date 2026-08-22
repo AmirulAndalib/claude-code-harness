@@ -104,6 +104,41 @@ setting `HARNESS_BRAIN_MODEL=fable` opts those two tiers into
 silently. The opt-in never changes the worker or review tiers and never
 touches the codex/cursor catalogs.
 
+### D70 Codex role and review contract
+
+Codex role routing is explicit and intentionally separates implementation from
+review:
+
+| Harness role | Effective Codex route | Reasoning | Boundary |
+|---|---|---|---|
+| `worker` | `gpt-5.6-luna` | `max` | Breezing implementation and retries; native Codex uses managed `worker.toml` |
+| `standard` (generic) | `gpt-5.6-sol` | `xhigh` | Compatibility implementation/setup route; it does not inherit the worker tier |
+| `review` / `reviewer` | `gpt-5.6-sol` (`review_model` included) | `xhigh` | Independent review and adversarial checks |
+| `lite` | `gpt-5.6-luna` | `low` | Cheap read-heavy exploration; not a replacement for the worker tier |
+
+Native Codex Breezing selects `agent_type: worker`; the managed custom-agent
+profile owns the native worker model and effort. The `breezing --codex`
+companion call sites pin `CODEX_MODEL_TIER=worker`, so they cannot silently
+inherit a generic session route. Reviewer, advisor, and deep routes remain
+separate from worker routing.
+
+Routed Codex review is a per-run local transport. The wrapper starts
+`scripts/codex-review-app-server-proxy.mjs`, which launches `codex app-server
+--stdio` with the effective `model`, `review_model`, and
+`model_reasoning_effort` injected as config. The official Codex companion
+connects through `CODEX_COMPANION_APP_SERVER_ENDPOINT`; its official
+request/result envelope remains authoritative. `review --commit` fails closed
+before provider dispatch. Only a companion-plus-proxy success emits a
+successful delegation ledger entry. Rejected requests and failed transports do
+not count.
+
+For `TERM` or `INT`, the wrapper forwards the signal to the companion and
+proxy at the same time, waits at most one second, then sends `KILL` and reaps
+any remaining child. The proxy applies the same terminate → bounded wait →
+force-kill → reap rule to its app-server child. POSIX uses a Unix socket;
+Windows named-pipe coverage is fixture/static only here, and live Windows
+provider/app-server behavior is not observed.
+
 Cursor remains `internal-compatible`, not a public `supported` claim. The
 shipped `harness` CLI keeps Cursor opt-in by default; individual
 local environments may set `HARNESS_IMPL_BACKEND=cursor` in env, project
@@ -234,6 +269,20 @@ Rules:
   set and is not overwritten, but `harness gen --check` verifies its PreToolUse
   guardrail group still matches `hosts.toml`, so the pre-action route shared by
   all three hosts cannot drift even though the rest of that file is not generated.
+- Codex managed custom-agent profiles use the same source boundary: a
+  `[codex.agent_profiles.<role>]` declaration in `hosts.toml` supplies the
+  profile metadata and in-package `output_path`. `harness gen` writes the
+  Codex profiles (currently `codex/.codex/agents/worker.toml` and
+  `codex/.codex/agents/reviewer.toml`) and `harness gen --check`
+  byte-compares them with the committed artifacts. The Codex distribution
+  requires those generated profiles; setup activation is unchanged and still
+  copies them into the user's or project's `.codex/agents/` directory.
+- Both Claude and Codex distributions must carry the complete runtime-helper
+  closure needed by their Breezing/review paths. In particular, a package that
+  contains `codex-review-app-server-proxy.mjs` must also contain its companion,
+  router, ledger, and related helper callers; `scripts/build-host-plugin-dist.sh`
+  copies that closure for both host packages. A generated profile or proxy
+  present only in the source tree is not an activation or distribution claim.
 - A host's generated shim must not cross-contaminate another host: the Codex
   artifact contains only Codex hook config and the Codex skill/agent mirror, the
   Cursor artifact only Cursor's, and so on. Cross-host manifests never appear in
@@ -289,6 +338,38 @@ drift-proof as gitignored build output would be. A future pure-CLI install that
 regenerates on the target could revisit untracking; it is out of scope while
 marketplace and setup-copy distribution is the supported path.
 
+### Codex setup preflight and migration contract (D70)
+
+Both local and remote Codex setup run configuration preflight before changing
+skills, rules, managed agents, or project `AGENTS.md`. The migration recognizes
+only the two Harness-owned legacy root `[notify]` forms below:
+
+```toml
+# setup form
+[notify]
+after_agent = "echo '[HARNESS-LEARNING] Session completed' >> .claude/state/session-log.txt"
+```
+
+```toml
+# distributed-template form
+[notify]
+after_agent = "mkdir -p .claude/state && echo \"[HARNESS-LEARNING] $(date -u +%Y-%m-%dT%H:%M:%SZ) Session completed\" >> .claude/state/session-log.txt"
+```
+
+For either exact owned form, setup backs up the original config outside the
+skill scan path and replaces the migrated file atomically. Custom, duplicate,
+dotted, descendant, or otherwise ambiguous `notify` shapes fail closed before
+creating a backup or mutating the config, managed targets, or project files.
+The same preflight rule applies when a config is reached through a symlink.
+
+Fresh and existing configurations receive `[features] multi_agent = true` and
+`default_mode_request_user_input = true` when those keys are absent. Explicit
+canonical boolean values and unrelated tables remain unchanged. Setup also
+activates the generated `worker.toml` and `reviewer.toml` profiles. The D70
+implementation and its fixture checks do not perform provider/API calls or
+live HOME/install operations; a real setup invocation still has the documented
+user/project file scope.
+
 ## Clean Mode And Compatibility Mode
 
 Harness defines two user-facing environment profiles. These are Harness
@@ -306,4 +387,3 @@ uses dry-run inventory first, then user-confirmed archive or disable actions.
 Compatibility import in Cursor Desktop can reintroduce duplicate skills even
 after clean distribution packages are installed; Harness documents that limit
 and detects duplicate origins before suggesting fixes.
-

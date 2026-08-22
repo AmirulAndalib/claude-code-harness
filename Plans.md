@@ -160,3 +160,72 @@ Phase 119-124 (2026-07-19 〜 2026-07-25、全 task `cc:done`) は
 **共有ファイル lane (Invariant 1)**: `tests/validate-plugin.sh` の owner は 134.8 / 135.5 (この順で直列)。`Plans.md` / `CHANGELOG.md` は worker 編集禁止 (Lead が統合時に編集)。hooks.json 2 ファイルの owner は 135.2 → 135.3 (直列)。`skills/harness-accept/` は 134.4 → 134.6 → 137.2 の順で直列。prose lane (skills/agents md) は 134.3 → 134.7 → 136.3 → 137.1 → 137.3 で直列可 (異なるファイルなら並列も可)。生成物 (binary / mirror) は統合後に trunk で 1 回再生成 (Invariant 3)。
 
 ---
+
+## Phase 139: D70 Codex Breezing worker route (2026-08-22 起票)
+
+**Purpose**: Codex Breezing の実装 Worker だけを managed `worker` role の
+`gpt-5.6-luna` / `max` へ固定し、レビュー・Advisor・deep と generic
+`standard`（`gpt-5.6-sol` / `xhigh`）を混線させない。Native Codex は
+`.codex/agents/worker.toml`、managed reviewer は `reviewer.toml`、companion は
+中央 tier を正本とする。Codex の current default も `lite` の
+`gpt-5.4-mini` / `low` から `gpt-5.6-luna` / `low` へ移行する。
+
+**Current-default boundary**: ChatGPT sign-in retirement guidance と承認済み
+user policy を、Harness の current routed default を新世代へ統一する判断根拠とする。
+これは API-key 利用者まで upstream forced retirement の対象になったという主張ではなく、
+Harness の routing default を更新する契約である。provider/API/HOME/install の操作は
+この task に含めない。
+
+**Spec result**: Spec delta — execution-backends / distribution の sub-spec に、
+`hosts.toml` → `harness gen` が managed Codex worker/reviewer profiles を生成し、
+setup が user/project の `agents/{worker,reviewer}.toml` へ activation する狭い配布契約を追加する。
+`spec.md` の North Star、HOTL、provider/API 境界、generic `standard` の意味は
+変更しない。D70 は role routing、companion の effort 表現、ミラーと検証配線の
+運用契約であり、モデル品質・費用・実環境の保証を追加しない。
+
+Native profile の仕様根拠は OpenAI の [Codex Subagents 設定](https://developers.openai.com/codex/subagents)。
+この Phase の実装・fixture 検証は provider/API/HOME/install を実行しない。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 139.1 | `[lane:gate]` `[tdd:required]` D70 worker route: managed `worker.toml` を `agent_type: worker` で選び、Native worker は `gpt-5.6-luna` / `max`、companion の全 Breezing call-site は `CODEX_MODEL_TIER=worker` を pin。generic `standard` は `gpt-5.6-sol` / `xhigh`、`lite` / explorer は Luna/low のまま明示し、review / advisor / deep route と混線させない。managed `reviewer.toml` は worker と別 role として生成・activation する。official companion が受け付けない max は raw `codex exec -c model_reasoning_effort="max"` へ fail-visible に正規化する | worker/reviewer profile の name/description/developer instructions/model/effort、native spawn shape、worker call-site pin、lite migration、generic/review/advisor/deep 分離、invalid route の pre-dispatch fail-closed を確認。未取得の provider/API/HOME/install evidence は主張しない | D70 operator decision (`.claude/memory/decisions.md:431-448`) | cc:done [focused/full green; dual review APPROVE] |
+| 139.2 | `[lane:gate]` `[tdd:required]` routed review transport: review ごとの local app-server proxy が `model` / `review_model` / `model_reasoning_effort` を `codex app-server --stdio` に注入し、official companion envelope を保持する。`review --commit` は provider dispatch 前に fail-closed。companion + proxy の成功時だけ orchestration ledger の successful delegation として記録し、reject / transport failure は数えない。TERM/INT は companion と proxy へ同時転送し、最大 1 秒待機 → KILL → reap。POSIX Unix socket と Windows named-pipe fixture/static 境界を明示する | config injection、official envelope、`--commit` reject、ledger 成功条件、child 消滅、signal lifecycle の focused checks を final rerun で確認。Windows live provider/app-server は未観測として扱う | 139.1 | cc:done [focused/full green; dual review APPROVE] |
+| 139.3 | `[lane:gate]` `[tdd:required]` Codex setup/distribution contract: local/remote setup の config と backup destination preflight を skills/rules/agents/project `AGENTS.md` より先に実行する。Harness 所有の legacy root `[notify]` は setup form と distributed-template form の 2 形態だけを backup + atomic migration し、custom/ambiguous shape は backup を含め no-mutation fail。`[features] multi_agent = true` と `default_mode_request_user_input = true` を欠落時に追加し、明示値は保持する。Claude/Codex dist は worker/reviewer profile と review proxy の runtime-helper closure を一緒に配布する | local/remote preflight、backup destination failure の全 target 不変、exact notify 2 形態、custom/ambiguous no-mutation、feature defaults、generated profile activation、両 host dist の helper closure を確認。live HOME/install は行わず、Windows named-pipe live support は claim しない | 139.1, 139.2 | cc:done [focused/full green; dual review APPROVE] |
+
+**D70 TDD evidence**: `2026-08-22T19:44:53+0900` に変更前 baseline
+`8d74739aaeee8dad3290828711189d9efc6a2787` を `git archive HEAD` と
+export-ignore 対象 subtree の `git archive HEAD:<subtree>` から一時領域へ復元し、
+現行 focused test だけを overlay して RED を再実行した。実測 command / literal は次の通り。
+
+- `bash tests/test-model-routing.sh` → `router help must advertise the dedicated worker tier`
+- `bash tests/test-codex-package.sh` → `missing: codex/.codex/agents/worker.toml` / `reviewer.toml`
+- `bash tests/test-codex-setup-local.sh` → `expected file to exist: .../agents/worker.toml`
+- `bash tests/test-host-plugin-dist.sh` → `claude missing scripts/codex-companion.sh`
+- `bash tests/test-breezing-codex-worker-route.sh` → `managed Codex worker agent profile is missing`
+- `bash tests/test-codex-reviewer-route.sh` → `review companion argv must preserve pair: -c model="gpt-5.6-sol"`
+- `bash tests/test-codex-setup-remote.sh` → `agents/worker.toml: No such file or directory`
+- `bash tests/test-run-advisor-consultation.sh` / `bash tests/test-advisor-config.sh` → expected Sol, actual `gpt-5.4`
+- `GOWORK=off go test ./cmd/harness ./internal/hostgen ...` → `AgentProfiles undefined` / `GenerateAgentProfile undefined`
+
+同一 focused tests と full checks の GREEN、final review、commit はそれぞれ完了後に
+別 evidence として確定する。repo-supported `tdd-red-log` は runtime-only/gitignored のため、
+tracked RED はこの Plans section を正本とする。
+
+**D70 GREEN / review evidence**: 同一 worktree で routing、worker、reviewer、
+setup local/remote、Codex package 27/27、host distribution、Advisor、Codex loop 42/42、
+Claude upstream integration を再実行して GREEN。`go test ./...`、`go vet ./...`、
+`harness gen --check`、skill mirror、consistency、全4 platform binary rebuild、
+binary/source drift、ShellCheck、`git diff --check` も GREEN。`tests/validate-plugin.sh` は
+147 pass / 0 warning / 0 failure。AI residual scan は APPROVE / major 0。
+Regression/Security reviewer と Skeptic reviewer の最終判定はいずれも APPROVE / blocking 0。
+provider/API、実 HOME/install、実 Windows named pipe、実 provider model selection は未実行・未観測。
+
+**Current route evidence / boundary**: live routing は Codex `lite` を
+`gpt-5.6-luna` / `low`、generic `standard`・review・advisor・deep を
+`gpt-5.6-sol` / `xhigh`、専用 worker を Luna/max とする。ChatGPT sign-in
+retirement guidance と user policy は current default migration の判断根拠であり、
+API-key 利用者に upstream forced retirement が及ぶという evidence ではない。Native
+reviewer の managed `reviewer.toml` と effective Sol/xhigh wiring、worker routing/help
+を含む実装対象は current worktree で focused/full checks と dual review を通過した。
+完了判定は profile の存在だけでなく、setup/distribution、review transport、fail-closed、
+lifecycle、ledger の実行 evidence を含む。

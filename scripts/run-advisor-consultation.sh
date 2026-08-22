@@ -133,6 +133,7 @@ EOF
 
 set +e
 python3 - "${PROMPT_FILE}" "${RAW_OUTPUT_FILE}" "${STDERR_FILE}" "${TIMEOUT_SEC}" "${COMPANION_BIN}" "${MODEL}" "${SCHEMA_FILE}" <<'PY'
+import os
 import pathlib
 import subprocess
 import sys
@@ -155,11 +156,24 @@ def _to_text(value):
     return value
 
 try:
+    advisor_env = os.environ.copy()
+    advisor_env["CODEX_MODEL_TIER"] = "advisor"
     completed = subprocess.run(
-        ["bash", companion, "task", "--model", model, "--output-schema", schema],
+        [
+            "bash",
+            companion,
+            "task",
+            "--model",
+            model,
+            "--effort",
+            "xhigh",
+            "--output-schema",
+            schema,
+        ],
         input=prompt,
         text=True,
         capture_output=True,
+        env=advisor_env,
         timeout=timeout_sec,
         check=False,
     )

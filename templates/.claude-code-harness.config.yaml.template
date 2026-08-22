@@ -23,7 +23,7 @@ advisor:
   retry_threshold: 2
   consult_before_user_escalation: true
   claude_model: opus
-  codex_model: gpt-5.4
+  codex_model: gpt-5.6-sol
 
 cleanup:
   plans:
