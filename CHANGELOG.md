@@ -6,6 +6,8 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [5.11.0] - 2026-08-22
+
 ### Changed
 
 - **guardrail R05: `destructive_delete` の既定値を `ask` → `warn` に変更** (operator 裁定 2026-08-22)。未設定のプロジェクトでも、静的に検証できない削除は「確認で停止」ではなく「allow + `R05_WARN` 警告 + `.claude/state/destructive-delete.jsonl` 記録」になる。root 外の綴り・`..`・未解決 `$VAR`・glob・素の `.` の常時 ask backstop と runtime floor は不変。従来挙動に戻すには repo の `harness.toml` の `[safety.permissions]` セクションに `destructiveDelete = "ask"` (または yaml `safety.destructive_delete: ask`)。明示された不正値は従来どおり ask に正規化 (fail-safe)。git 外の消えたら困るデータを root 配下に持つ repo と guardrail 開発時は ask への opt-out を推奨
@@ -6082,7 +6084,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.10.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.11.0...HEAD
+[5.11.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.10.0...v5.11.0
 [5.10.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.9.0...v5.10.0
 [5.9.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.8.0...v5.9.0
 [5.8.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.7.0...v5.8.0
