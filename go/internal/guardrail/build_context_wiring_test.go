@@ -148,16 +148,18 @@ var wiringCases = []wiringCase{
 	{
 		field: "DestructiveDeletePolicy",
 		prepare: func(t *testing.T, root string) hookproto.HookInput {
-			// live producer: harness.toml [safety.permissions] destructiveDelete
+			// live producer: harness.toml [safety.permissions] destructiveDelete.
+			// Uses "ask" (the non-default value since v5.11.0) so the case
+			// proves the file drives the field instead of passing vacuously.
 			if err := os.WriteFile(filepath.Join(root, "harness.toml"),
-				[]byte("[safety.permissions]\ndestructiveDelete = \"warn\"\n"), 0o644); err != nil {
+				[]byte("[safety.permissions]\ndestructiveDelete = \"ask\"\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			return wiringInput(root)
 		},
 		check: func(t *testing.T, ctx hookproto.RuleContext) {
-			if ctx.DestructiveDeletePolicy != "warn" {
-				t.Fatalf("DestructiveDeletePolicy = %q, want warn (from harness.toml)", ctx.DestructiveDeletePolicy)
+			if ctx.DestructiveDeletePolicy != "ask" {
+				t.Fatalf("DestructiveDeletePolicy = %q, want ask (from harness.toml)", ctx.DestructiveDeletePolicy)
 			}
 		},
 	},

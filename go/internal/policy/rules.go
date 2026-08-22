@@ -267,7 +267,8 @@ var Rules = []GuardRule{
 			if dangerousRemovalTargetsAreAgentOwned(command, targets, ctx.ProjectRoot, ctx.Input.SessionID) {
 				return nil
 			}
-			// destructive_delete=warn (operator opt-in, HOTL). When the static
+			// destructive_delete=warn (HOTL; product default since v5.11.0,
+			// per-repo opt-out via destructive_delete=ask). When the static
 			// analysis cannot PROVE the target is agent-owned — a relative
 			// target after `cd`, any preceding shell segment (133.10: a prior
 			// segment can plant a symlink so the same spelling resolves outside

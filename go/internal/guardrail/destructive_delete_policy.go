@@ -40,7 +40,15 @@ func resolveDestructiveDeletePolicy(input hookproto.HookInput, projectRoot strin
 		}
 	}
 
-	return policy.DestructiveDeletePolicyAsk
+	// Product default (v5.11.0, operator decision 2026-08-22): warn. The
+	// HOTL contract treats a human prompt that the operator cannot actually
+	// evaluate as a stall, not a safeguard — so an UNSET policy relaxes to
+	// warn (allow + record). An explicitly configured but invalid value still
+	// normalizes to ask (fail-safe parse) in NormalizeDestructiveDeletePolicy,
+	// and any repo can opt back out with destructive_delete/destructiveDelete
+	// = "ask". The always-ask backstop (out-of-root spelling, `..`, unresolved
+	// $VAR, glob, bare `.`) is unaffected by this default.
+	return policy.DestructiveDeletePolicyWarn
 }
 
 func readDestructiveDeletePolicyFromHarnessTOML(path string) string {

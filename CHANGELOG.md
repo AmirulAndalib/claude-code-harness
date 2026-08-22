@@ -6,6 +6,10 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Changed
+
+- **guardrail R05: `destructive_delete` の既定値を `ask` → `warn` に変更** (operator 裁定 2026-08-22)。未設定のプロジェクトでも、静的に検証できない削除は「確認で停止」ではなく「allow + `R05_WARN` 警告 + `.claude/state/destructive-delete.jsonl` 記録」になる。root 外の綴り・`..`・未解決 `$VAR`・glob・素の `.` の常時 ask backstop と runtime floor は不変。従来挙動に戻すには repo の `harness.toml` の `[safety.permissions]` セクションに `destructiveDelete = "ask"` (または yaml `safety.destructive_delete: ask`)。明示された不正値は従来どおり ask に正規化 (fail-safe)。git 外の消えたら困るデータを root 配下に持つ repo と guardrail 開発時は ask への opt-out を推奨
+
 ## [5.10.0] - 2026-08-22
 
 ### Added

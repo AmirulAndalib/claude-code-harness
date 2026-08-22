@@ -208,7 +208,7 @@ extraction, so line continuations, quoting, and escape concatenation cannot
 change the command name seen by R05. A worktree-local symlink to an external
 directory therefore does not receive the skip.
 
-### `destructive_delete=warn` (HOTL opt-in)
+### `destructive_delete=warn` (HOTL; the default since v5.11.0)
 
 Every `ask` listed above exists because the static analysis cannot *prove* the
 target is agent-owned, not because the target is known to be dangerous. In
@@ -229,7 +229,10 @@ judgement plus a review trail:
   out-of-worktree deletion is unchanged and runs before R05.
 - The 133.10 residual (a preceding segment planting a symlink so an in-root
   spelling resolves outside the worktree) is accepted knowingly under `warn`;
-  the record is what makes it reviewable afterwards. The default stays `ask`.
+  the record is what makes it reviewable afterwards. Since v5.11.0 `warn` is
+  the product default (operator decision 2026-08-22); repos that keep
+  unrecoverable non-git data under the project root, or sessions developing
+  the guardrails themselves, opt back out with `destructive_delete = ask`.
 - `WorkMode` continues to skip R05 entirely; `warn` only matters outside a run.
 
 `WorkMode` retains its existing
