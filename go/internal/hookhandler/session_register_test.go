@@ -4,10 +4,24 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+type sessionHookCommandConfig struct {
+	Type    string `json:"type"`
+	Command string `json:"command"`
+}
+
+type sessionHookGroupConfig struct {
+	Hooks []sessionHookCommandConfig `json:"hooks"`
+}
+
+type sessionHooksConfig struct {
+	Hooks map[string][]sessionHookGroupConfig `json:"hooks"`
+}
 
 // TestRegisterHealth_NotConfigured covers the tri-state "not-configured"
 // arm from active-watching-test-policy.md: SessionStart fires without a
@@ -103,8 +117,8 @@ func TestRegisterHealth_Corrupted(t *testing.T) {
 	}
 }
 
-// TestSessionUnregister_RemovesEntry covers the Stop hook contract: an
-// entry that was registered must be hard-deleted from active.json so peers
+// TestSessionUnregister_RemovesEntry covers the unregister handler contract:
+// an entry that was registered must be hard-deleted from active.json so peers
 // scanning for live coordination state see the truth immediately.
 func TestSessionUnregister_RemovesEntry(t *testing.T) {
 	dir := t.TempDir()
@@ -135,7 +149,7 @@ func TestSessionUnregister_RemovesEntry(t *testing.T) {
 // TestRegister_StaleCleanup covers the bounded-growth invariant: entries
 // older than registerStaleCutoff (24h) must be pruned during the next
 // register write so active.json does not accumulate the long tail of
-// crashed sessions that never ran Stop.
+// crashed sessions that never ran SessionEnd.
 func TestRegister_StaleCleanup(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HARNESS_PROJECT_ROOT", dir)
@@ -176,7 +190,7 @@ func TestRegister_StaleCleanup(t *testing.T) {
 }
 
 // TestUnregister_NoActiveJsonNoError covers a second not-configured arm:
-// Stop fires before any register ever ran (e.g., a session that aborted
+// SessionEnd fires before any register ever ran (e.g., a session that aborted
 // mid-startup). The handler must not error and must not create state.
 func TestUnregister_NoActiveJsonNoError(t *testing.T) {
 	dir := t.TempDir()
@@ -188,4 +202,106 @@ func TestUnregister_NoActiveJsonNoError(t *testing.T) {
 	if _, err := os.Stat(activeFile); !os.IsNotExist(err) {
 		t.Errorf("unregister must not create active.json out of nowhere, stat err=%v", err)
 	}
+}
+
+// TestSessionRosterLifecycle_StopRetainsUntilSessionEnd pins the lifecycle
+// boundary: Stop is a turn boundary and must leave the registered session in
+// the roster, while SessionEnd is the terminal boundary that unregisters it.
+// The configured commands are applied through the same handler as the hook
+// dispatcher so this test fails while session-unregister is wired to Stop.
+func TestSessionRosterLifecycle_StopRetainsUntilSessionEnd(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HARNESS_PROJECT_ROOT", dir)
+
+	const sessionID = "lifecycle-session"
+	payload := `{"session_id":"` + sessionID + `"}`
+	if err := HandleSessionRegister(strings.NewReader(payload), nil); err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+
+	paths := sessionHookConfigPaths(t)
+	configs := make([]sessionHooksConfig, 0, len(paths))
+	for _, path := range paths {
+		config := readSessionHooksConfig(t, path)
+		configs = append(configs, config)
+	}
+
+	// Use the source hooks.json as the lifecycle simulation. The mirror is
+	// checked above and separately by tests/test-hooks-sync.sh.
+	config := configs[0]
+	if err := applyConfiguredSessionUnregister(config.Hooks["Stop"], payload); err != nil {
+		t.Fatalf("Stop lifecycle simulation failed: %v", err)
+	}
+	if roster := FormatSessionTeamList(dir, time.Now()); !strings.Contains(roster, sessionID) {
+		t.Fatalf("Stop must retain registered session %q, roster=%q", sessionID, roster)
+	}
+	for i, config := range configs {
+		assertSessionEndWiring(t, paths[i], config)
+		for _, group := range config.Hooks["Stop"] {
+			if hasSessionHook(group, "session-unregister") {
+				t.Fatalf("hooks config %d must not unregister on Stop", i)
+			}
+		}
+	}
+
+	if err := applyConfiguredSessionUnregister(config.Hooks["SessionEnd"], payload); err != nil {
+		t.Fatalf("SessionEnd lifecycle simulation failed: %v", err)
+	}
+	if roster := FormatSessionTeamList(dir, time.Now()); strings.Contains(roster, sessionID) {
+		t.Fatalf("SessionEnd must remove registered session %q, roster=%q", sessionID, roster)
+	}
+}
+
+func sessionHookConfigPaths(t *testing.T) []string {
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller could not locate session_register_test.go")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "..", "..", ".."))
+	return []string{
+		filepath.Join(root, "hooks", "hooks.json"),
+		filepath.Join(root, ".claude-plugin", "hooks.json"),
+	}
+}
+
+func readSessionHooksConfig(t *testing.T, path string) sessionHooksConfig {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read hooks config %s: %v", path, err)
+	}
+	var config sessionHooksConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatalf("parse hooks config %s: %v", path, err)
+	}
+	return config
+}
+
+func assertSessionEndWiring(t *testing.T, path string, config sessionHooksConfig) {
+	t.Helper()
+	for _, group := range config.Hooks["SessionEnd"] {
+		if hasSessionHook(group, "session-cleanup") && hasSessionHook(group, "session-unregister") {
+			return
+		}
+	}
+	t.Fatalf("%s must wire session-unregister in the SessionEnd block with session-cleanup", path)
+}
+
+func hasSessionHook(group sessionHookGroupConfig, name string) bool {
+	for _, hook := range group.Hooks {
+		if strings.Contains(hook.Command, "hook "+name) {
+			return true
+		}
+	}
+	return false
+}
+
+func applyConfiguredSessionUnregister(groups []sessionHookGroupConfig, payload string) error {
+	for _, group := range groups {
+		if hasSessionHook(group, "session-unregister") {
+			return HandleSessionUnregister(strings.NewReader(payload), nil)
+		}
+	}
+	return nil
 }
