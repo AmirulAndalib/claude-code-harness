@@ -252,6 +252,74 @@ func TestSessionRosterLifecycle_StopRetainsUntilSessionEnd(t *testing.T) {
 	}
 }
 
+// TestSessionRegister_StopRefreshPreservesDeclaredPresence pins the turn
+// heartbeat contract: Stop must re-run session-register, but an existing
+// presence card declared by the session keeps its label/task content while
+// only its mtime is refreshed.
+func TestSessionRegister_StopRefreshPreservesDeclaredPresence(t *testing.T) {
+	dir := initGitRepoForPresence(t)
+	t.Setenv("HARNESS_PROJECT_ROOT", dir)
+
+	const (
+		sessionID = "session-refresh-presence"
+		label     = "declared-label"
+		taskID    = "141.2"
+	)
+	initialPayload := `{"session_id":"` + sessionID + `","label":"` + label + `"}`
+	if err := HandleSessionRegister(strings.NewReader(initialPayload), nil); err != nil {
+		t.Fatalf("initial register failed: %v", err)
+	}
+	if err := SessionDeclareTask(dir, sessionID, taskID); err != nil {
+		t.Fatalf("declare task failed: %v", err)
+	}
+
+	path := presencePath(t, dir, sessionID)
+	beforeBody, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read declared presence: %v", err)
+	}
+	beforeCard := ParsePresenceCardBody(beforeBody)
+	if beforeCard.Label != label || beforeCard.Task != taskID {
+		t.Fatalf("declared card = %#v, want label=%q task=%q", beforeCard, label, taskID)
+	}
+
+	old := time.Now().Add(-time.Minute)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatalf("age presence card: %v", err)
+	}
+
+	paths := sessionHookConfigPaths(t)
+	configs := make([]sessionHooksConfig, 0, len(paths))
+	for _, hookPath := range paths {
+		config := readSessionHooksConfig(t, hookPath)
+		configs = append(configs, config)
+		if !hasSessionHookInGroups(config.Hooks["Stop"], "session-register") {
+			t.Fatalf("%s must wire session-register in the Stop block", hookPath)
+		}
+	}
+
+	// Simulate the source Stop block. The mirror is checked above and by the
+	// dedicated hooks synchronization test.
+	if err := applyConfiguredSessionRegister(configs[0].Hooks["Stop"], `{"session_id":"`+sessionID+`","label":"new-label"}`); err != nil {
+		t.Fatalf("Stop register refresh failed: %v", err)
+	}
+
+	afterInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat refreshed presence card: %v", err)
+	}
+	if !afterInfo.ModTime().After(old) {
+		t.Fatalf("presence mtime = %s, want newer than %s", afterInfo.ModTime(), old)
+	}
+	afterBody, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read refreshed presence: %v", err)
+	}
+	if string(afterBody) != string(beforeBody) {
+		t.Fatalf("register must preserve declared card bytes; before=%s after=%s", beforeBody, afterBody)
+	}
+}
+
 func sessionHookConfigPaths(t *testing.T) []string {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
@@ -295,6 +363,24 @@ func hasSessionHook(group sessionHookGroupConfig, name string) bool {
 		}
 	}
 	return false
+}
+
+func hasSessionHookInGroups(groups []sessionHookGroupConfig, name string) bool {
+	for _, group := range groups {
+		if hasSessionHook(group, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func applyConfiguredSessionRegister(groups []sessionHookGroupConfig, payload string) error {
+	for _, group := range groups {
+		if hasSessionHook(group, "session-register") {
+			return HandleSessionRegister(strings.NewReader(payload), nil)
+		}
+	}
+	return nil
 }
 
 func applyConfiguredSessionUnregister(groups []sessionHookGroupConfig, payload string) error {
