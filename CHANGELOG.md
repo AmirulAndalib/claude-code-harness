@@ -6,6 +6,8 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [5.12.0] - 2026-08-24
+
 ### Added
 
 - **Codex Breezing の実装 Worker を `gpt-5.6-luna` / `max` に統一**。Codex-native の `breezing` は setup が配置する managed custom agent `worker.toml` を選び、`breezing --codex` は中央の worker route を解決する。公式 companion 1.0.6 が受け付けない `max` は Harness が raw `codex exec` の reasoning config へ変換する。reviewer / advisor / deep は従来どおり `gpt-5.6-sol` / `xhigh` のまま
@@ -6099,7 +6101,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.11.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.12.0...HEAD
+[5.12.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.11.0...v5.12.0
 [5.11.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.10.0...v5.11.0
 [5.10.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.9.0...v5.10.0
 [5.9.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.8.0...v5.9.0
