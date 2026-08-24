@@ -352,6 +352,17 @@ build_codex() {
   # Keep this list narrow: these are runtime helpers needed by the shipped
   # Codex skill surface, including cursor:setup which builds the Cursor pack.
   copy_runtime_helpers "${OUT_DIR}"
+
+  # codex-companion.sh performs worktree fingerprint capture before and after
+  # every task. Ship the launcher and all supported platform binaries so the
+  # generated package remains executable outside the source checkout.
+  mkdir -p "${OUT_DIR}/bin"
+  for bin in harness harness-darwin-amd64 harness-darwin-arm64 harness-linux-amd64 harness-windows-amd64.exe; do
+    if [ -f "${ROOT_DIR}/bin/${bin}" ]; then
+      cp "${ROOT_DIR}/bin/${bin}" "${OUT_DIR}/bin/${bin}"
+    fi
+  done
+  cp "${ROOT_DIR}/VERSION" "${OUT_DIR}/VERSION"
 }
 
 normalize_cursor_skill_invocation() {

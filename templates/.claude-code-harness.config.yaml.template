@@ -59,12 +59,14 @@ safety:
   protected_branch_push: ask
   # R05 (rm -rf / find -delete) when the target cannot be proven agent-owned
   # (relative target after cd, any preceding shell segment):
-  # ask:  confirm with the user (default)
-  # warn: HOTL — allow, inject a warning, and append the command to
-  #       .claude/state/destructive-delete.jsonl for after-the-fact review.
-  #       Targets spelled outside the project root, `..`, unresolved $VAR,
-  #       globs and bare `.` / `/` still ask.
-  destructive_delete: ask
+  # warn: HOTL (default since v5.11.0) — allow, inject a warning, and append
+  #       the command to .claude/state/destructive-delete.jsonl for
+  #       after-the-fact review. Targets spelled outside the project root,
+  #       `..`, unresolved $VAR, globs and bare `.` / `/` still ask.
+  # ask:  confirm with the user. Opt out to this in repos that keep
+  #       unrecoverable non-git data under the project root, or when
+  #       developing the guardrails themselves.
+  destructive_delete: warn
   # R03 protected path break-glass ask-list is supported only in harness.toml:
   # [[safety.guardrail.protectedPathAskList]]
   # path = ".env"

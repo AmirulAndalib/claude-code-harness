@@ -608,6 +608,38 @@ else
   log_fail "codex README update-path guidance is incomplete"
 fi
 
+log_test "codex README documents Breezing role routing and activation boundaries"
+readme_role_routing_ok=true
+for required_text in \
+  '## Codex Breezing Role Routing' \
+  'Path-based skill loading does not install the managed worker/reviewer profiles' \
+  'restart Codex after setup completes' \
+  '/harness-setup codex' \
+  'Files other than the managed' \
+  'Those two filenames are backed up and replaced even when the existing' \
+  '| Codex-native `$breezing` implementation Worker |' \
+  '| `$breezing --codex` implementation Worker |' \
+  '| Routed Codex review / managed Reviewer |' \
+  '`gpt-5.6-luna` / `max`' \
+  '`gpt-5.6-sol` / `xhigh`' \
+  '`features.default_mode_request_user_input = true`' \
+  'Explicit `true` or `false` values already present in the user config are preserved' \
+  'top-level `model` unset for the main Codex session'; do
+  if ! rg -q --fixed-strings "$required_text" "codex/README.md"; then
+    echo "  missing: ${required_text}"
+    readme_role_routing_ok=false
+  fi
+done
+if rg -q --fixed-strings '/setup codex' "codex/README.md"; then
+  echo "  stale: /setup codex alias remains"
+  readme_role_routing_ok=false
+fi
+if $readme_role_routing_ok; then
+  log_pass "codex README explains role routing and setup activation"
+else
+  log_fail "codex README role-routing guidance is incomplete"
+fi
+
 log_test "Codex 0.130.0 stable provider and workflow policy is documented"
 codex_0130_policy_ok=true
 for required_policy_term in \

@@ -32,7 +32,39 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRIMARY_ENV_GUARD="${SCRIPT_DIR}/codex-primary-environment-guard.sh"
 MODEL_ROUTER="${SCRIPT_DIR}/model-routing.sh"
 EXECUTION_ROOT="${HARNESS_CODEX_EXECUTION_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-HARNESS_BIN="${EXECUTION_ROOT}/bin/harness"
+HARNESS_BIN_OVERRIDE="${HARNESS_BIN:-}"
+
+resolve_harness_bin() {
+  local candidate
+
+  # An explicit binary is an operator contract: preserve it even when missing
+  # so fingerprint_capture fails visibly at the exact requested path.
+  if [ -n "${HARNESS_BIN_OVERRIDE}" ]; then
+    printf '%s\n' "${HARNESS_BIN_OVERRIDE}"
+    return 0
+  fi
+
+  if [ -n "${HARNESS_PLUGIN_ROOT:-}" ]; then
+    candidate="${HARNESS_PLUGIN_ROOT}/bin/harness"
+    if [ -x "${candidate}" ]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  fi
+
+  candidate="${SCRIPT_DIR}/../bin/harness"
+  if [ -x "${candidate}" ]; then
+    printf '%s\n' "${candidate}"
+    return 0
+  fi
+
+  # Backward-compatible source-checkout fallback. EXECUTION_ROOT remains the
+  # worktree being fingerprinted; it is not the preferred runtime bundle root.
+  candidate="${EXECUTION_ROOT}/bin/harness"
+  printf '%s\n' "${candidate}"
+}
+
+HARNESS_BIN="$(resolve_harness_bin)"
 FP_BEFORE=""
 FP_AFTER=""
 CODEX_ROUTE_RESOLVED=0
@@ -957,15 +989,18 @@ if [ "${REVIEW_APP_SERVER_ENABLED}" -eq 1 ]; then
   exit $?
 fi
 
+# A rejected write is not a delegation. Run the primary-environment guard
+# before recording the task in the orchestration ledger.
+guard_primary_environment_if_needed "$@"
+
 # Compatibility paths emit only after all preflight validation has completed.
 # Routed reviews emit from run_review_with_app_server after their app-server is
 # ready, so rejected or failed transports do not inflate delegation counts.
 emit_codex_ledger_once "${SUBCOMMAND}" "$@"
 
 # ---- Effort 伝播（task サブコマンドのみ）----
-  # task サブコマンドの場合、タスク説明から effort を計算して --effort フラグで渡す。
-  # calculate-effort.sh が存在しない場合は CODEX_EFFORT 環境変数（デフォルト: medium）を使う。
-  guard_primary_environment_if_needed "$@"
+# task サブコマンドの場合、タスク説明から effort を計算して --effort フラグで渡す。
+# calculate-effort.sh が存在しない場合は CODEX_EFFORT 環境変数（デフォルト: medium）を使う。
 
 if [ "$SUBCOMMAND" = "task" ]; then
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

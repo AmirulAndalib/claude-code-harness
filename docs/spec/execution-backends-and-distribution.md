@@ -281,8 +281,15 @@ Rules:
   closure needed by their Breezing/review paths. In particular, a package that
   contains `codex-review-app-server-proxy.mjs` must also contain its companion,
   router, ledger, and related helper callers; `scripts/build-host-plugin-dist.sh`
-  copies that closure for both host packages. A generated profile or proxy
-  present only in the source tree is not an activation or distribution claim.
+  copies that closure for both host packages. The Codex task path also requires
+  the `bin/harness` launcher, supported platform binaries, and `VERSION` because
+  the companion performs worktree fingerprint capture before and after a task.
+  Runtime bundle discovery is separate from the target execution root: the
+  companion resolves `HARNESS_BIN` from an explicit override, the active plugin
+  root, or its adjacent package before using a source-checkout fallback. The
+  execution root remains the worktree being guarded.
+  A generated profile, proxy, or helper present only in the source tree is not
+  an activation or distribution claim.
 - A host's generated shim must not cross-contaminate another host: the Codex
   artifact contains only Codex hook config and the Codex skill/agent mirror, the
   Cursor artifact only Cursor's, and so on. Cross-host manifests never appear in

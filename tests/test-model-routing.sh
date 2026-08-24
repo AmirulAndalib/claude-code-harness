@@ -452,6 +452,43 @@ grep -qx -- 'breezing worker max route' "${TMP_DIR}/args-worker-max.txt" || {
   exit 1
 }
 
+# A primary-environment rejection is not a real delegation. It must stop
+# before either the provider or the orchestration ledger is touched.
+primary_guard_primary="${TMP_DIR}/primary-guard-primary"
+primary_guard_target="${TMP_DIR}/primary-guard-target"
+primary_guard_state="${TMP_DIR}/primary-guard-state.json"
+primary_guard_ledger="${TMP_DIR}/primary-guard-ledger.jsonl"
+primary_guard_provider_args="${TMP_DIR}/primary-guard-provider-args.txt"
+mkdir -p "${primary_guard_primary}" "${primary_guard_target}"
+printf '{"repo_root":"%s","git_dir":"","branch":"","cwd":"%s"}\n' \
+  "${primary_guard_primary}" "${primary_guard_primary}" >"${primary_guard_state}"
+
+primary_guard_status=0
+if CODEX_STUB_ARGS_FILE="${primary_guard_provider_args}" \
+  HARNESS_ORCHESTRATION_LEDGER="${primary_guard_ledger}" \
+  HARNESS_CODEX_PRIMARY_ENV_STATE_FILE="${primary_guard_state}" \
+  HOME="${TMP_DIR}/home" \
+  PATH="${TMP_DIR}/bin:${PATH}" \
+  CODEX_MODEL_TIER="worker" \
+    bash "${COMPANION}" task --write -C "${primary_guard_target}" \
+      "non-primary write must not count" >/dev/null 2>&1; then
+  primary_guard_status=0
+else
+  primary_guard_status=$?
+fi
+[ "${primary_guard_status}" -eq 2 ] || {
+  echo "non-primary write must fail closed with rc=2"
+  exit 1
+}
+[ ! -e "${primary_guard_provider_args}" ] || {
+  echo "non-primary write must not start the provider"
+  exit 1
+}
+[ ! -s "${primary_guard_ledger}" ] || {
+  echo "non-primary write rejection must not emit a delegation ledger entry"
+  exit 1
+}
+
 CODEX_STUB_ARGS_FILE="${TMP_DIR}/args-worker-max-explicit-model.txt" \
 HOME="${TMP_DIR}/home" \
 PATH="${TMP_DIR}/bin:${PATH}" \
