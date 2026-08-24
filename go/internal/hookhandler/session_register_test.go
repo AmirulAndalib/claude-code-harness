@@ -1,6 +1,7 @@
 package hookhandler
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -186,6 +187,155 @@ func TestRegister_StaleCleanup(t *testing.T) {
 	}
 	if _, ok := sessions["new-session"]; !ok {
 		t.Errorf("newly registered session must be present, got: %s", data)
+	}
+}
+
+// TestSessionRoster_ForeignEntrySurvivesRegisterAndPrune proves that entries
+// owned by another session-state schema are carried through a CCH write. The
+// foreign entry carries a last_seen field with a foreign shape: decoding it as
+// ActiveSession would still make the old prune loop delete it as stale.
+func TestSessionRoster_ForeignEntrySurvivesRegisterAndPrune(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HARNESS_PROJECT_ROOT", dir)
+
+	const (
+		foreignID = "mem-foreign-entry"
+		ownID     = "cch-own-entry"
+	)
+	foreign := json.RawMessage(`{"source":"mem","last_seen":1,"updated_at":"2026-08-24T08:00:00Z","payload":{"note":"keep me"}}`)
+	sessionsDir := filepath.Join(dir, ".claude", "sessions")
+	if err := os.MkdirAll(sessionsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	activeFile := filepath.Join(sessionsDir, "active.json")
+	seed := map[string]json.RawMessage{
+		foreignID: foreign,
+		"cch-stale-entry": mustMarshalActiveSession(t, ActiveSession{
+			ShortID:  "cch-stale-ent",
+			LastSeen: time.Now().Add(-26 * time.Hour).Unix(),
+			PID:      "1",
+			Status:   "active",
+		}),
+	}
+	if err := writeRawActiveJSONForTest(activeFile, seed); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := HandleSessionRegister(strings.NewReader(`{"session_id":"`+ownID+`"}`), nil); err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+
+	assertRawActiveEntryEqual(t, activeFile, foreignID, foreign)
+	assertActiveEntryMissing(t, activeFile, "cch-stale-entry")
+	assertActiveEntryPresent(t, activeFile, ownID)
+
+	if err := HandleSessionUnregister(strings.NewReader(`{"session_id":"`+ownID+`"}`), nil); err != nil {
+		t.Fatalf("unregister failed: %v", err)
+	}
+	assertRawActiveEntryEqual(t, activeFile, foreignID, foreign)
+}
+
+// TestSessionRoster_UnregisterDoesNotDeleteForeignEntry protects the case
+// where the foreign producer happens to use the same key that CCH is asked to
+// unregister. Only an entry matching the CCH schema is owned by this handler.
+func TestSessionRoster_UnregisterDoesNotDeleteForeignEntry(t *testing.T) {
+	dir := initGitRepoForPresence(t)
+	t.Setenv("HARNESS_PROJECT_ROOT", dir)
+
+	const sessionID = "shared-key"
+	foreign := json.RawMessage(`{"provider":"mem","record_id":"shared-key","body":["retain"]}`)
+	activeFile := filepath.Join(dir, ".claude", "sessions", "active.json")
+	if err := writeRawActiveJSONForTest(activeFile, map[string]json.RawMessage{sessionID: foreign}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := HandleSessionRegister(strings.NewReader(`{"session_id":"`+sessionID+`"}`), nil); err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+	assertRawActiveEntryEqual(t, activeFile, sessionID, foreign)
+	presence := presencePath(t, dir, sessionID)
+	if _, err := os.Stat(presence); err != nil {
+		t.Fatalf("register should create CCH presence for the session: %v", err)
+	}
+	if roster := FormatSessionTeamList(dir, time.Now()); !strings.Contains(roster, sessionID) {
+		t.Fatalf("team view should report the registered presence before unregister: %q", roster)
+	}
+
+	if err := HandleSessionUnregister(strings.NewReader(`{"session_id":"`+sessionID+`"}`), nil); err != nil {
+		t.Fatalf("unregister failed: %v", err)
+	}
+	assertRawActiveEntryEqual(t, activeFile, sessionID, foreign)
+	if _, err := os.Stat(presence); !os.IsNotExist(err) {
+		t.Fatalf("unregister should remove CCH presence, stat err=%v", err)
+	}
+	if roster := FormatSessionTeamList(dir, time.Now()); strings.Contains(roster, sessionID) {
+		t.Fatalf("team view must stop reporting the ended presence: %q", roster)
+	}
+}
+
+func mustMarshalActiveSession(t *testing.T, session ActiveSession) json.RawMessage {
+	t.Helper()
+	raw, err := json.Marshal(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func writeRawActiveJSONForTest(path string, entries map[string]json.RawMessage) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(entries)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, raw, 0o644)
+}
+
+func readRawActiveJSONForTest(t *testing.T, path string) map[string]json.RawMessage {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entries map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		t.Fatalf("active.json is not an object: %v\n%s", err, raw)
+	}
+	return entries
+}
+
+func assertRawActiveEntryEqual(t *testing.T, path, id string, want json.RawMessage) {
+	t.Helper()
+	entries := readRawActiveJSONForTest(t, path)
+	got, ok := entries[id]
+	if !ok {
+		t.Fatalf("active.json entry %q is missing", id)
+	}
+	var gotCompact, wantCompact bytes.Buffer
+	if err := json.Compact(&gotCompact, got); err != nil {
+		t.Fatalf("compact stored entry %q: %v", id, err)
+	}
+	if err := json.Compact(&wantCompact, want); err != nil {
+		t.Fatalf("compact expected entry %q: %v", id, err)
+	}
+	if !bytes.Equal(gotCompact.Bytes(), wantCompact.Bytes()) {
+		t.Errorf("entry %q changed:\n got: %s\nwant: %s", id, gotCompact.Bytes(), wantCompact.Bytes())
+	}
+}
+
+func assertActiveEntryMissing(t *testing.T, path, id string) {
+	t.Helper()
+	if _, ok := readRawActiveJSONForTest(t, path)[id]; ok {
+		t.Errorf("active.json entry %q should be absent", id)
+	}
+}
+
+func assertActiveEntryPresent(t *testing.T, path, id string) {
+	t.Helper()
+	if _, ok := readRawActiveJSONForTest(t, path)[id]; !ok {
+		t.Errorf("active.json entry %q should be present", id)
 	}
 }
 

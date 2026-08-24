@@ -206,8 +206,12 @@ func FormatSessionTeamList(projectRoot string, now time.Time) string {
 	sessions := readActiveJSON(activePath)
 	lastSeenCutoff := now.Unix() - int64(registerStaleCutoff.Seconds())
 	var rosterOnly []string
-	for id, s := range sessions {
+	for id, raw := range sessions {
 		if _, listed := seen[id]; listed {
+			continue
+		}
+		s, ok := decodeOwnedActiveSession(raw)
+		if !ok {
 			continue
 		}
 		if !validPresenceSessionID(id) {

@@ -1,6 +1,7 @@
 package hookhandler
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"os"
@@ -68,16 +69,23 @@ func HandleSessionRegister(in io.Reader, _ io.Writer) error {
 	if len(short) > 12 {
 		short = short[:12]
 	}
-	sessions[inp.SessionID] = ActiveSession{
+	ownedEntry := marshalActiveSession(ActiveSession{
 		ShortID:  short,
 		LastSeen: now,
 		PID:      strconv.Itoa(os.Getpid()),
 		Status:   "active",
+	})
+	// A foreign producer may already use this key. Do not overwrite an entry
+	// that CCH cannot prove it owns; preserving the foreign record is safer
+	// than claiming the key and destroying its payload.
+	if existing, ok := sessions[inp.SessionID]; !ok || isOwnedActiveSession(existing) {
+		sessions[inp.SessionID] = ownedEntry
 	}
 
 	cutoff := now - int64(registerStaleCutoff.Seconds())
-	for id, s := range sessions {
-		if s.LastSeen < cutoff {
+	for id, raw := range sessions {
+		s, ok := decodeOwnedActiveSession(raw)
+		if ok && s.LastSeen < cutoff {
 			delete(sessions, id)
 		}
 	}
@@ -108,7 +116,10 @@ func HandleSessionUnregister(in io.Reader, _ io.Writer) error {
 		return nil
 	}
 
-	sessionsDir := filepath.Join(resolveProjectRoot(), ".claude", "sessions")
+	projectRoot := resolveProjectRoot()
+	defer removeSharedPresence(projectRoot, inp.SessionID)
+
+	sessionsDir := filepath.Join(projectRoot, ".claude", "sessions")
 	activeFile := filepath.Join(sessionsDir, "active.json")
 	if _, err := os.Stat(activeFile); err != nil {
 		// not-configured: no register has ever run; nothing to release.
@@ -116,12 +127,11 @@ func HandleSessionUnregister(in io.Reader, _ io.Writer) error {
 	}
 
 	sessions := readActiveJSON(activeFile)
-	if _, ok := sessions[inp.SessionID]; !ok {
+	if _, ok := decodeOwnedActiveSession(sessions[inp.SessionID]); !ok {
 		return nil
 	}
 	delete(sessions, inp.SessionID)
 	_ = writeActiveJSON(activeFile, sessions)
-	removeSharedPresence(resolveProjectRoot(), inp.SessionID)
 	return nil
 }
 
@@ -130,8 +140,8 @@ func HandleSessionUnregister(in io.Reader, _ io.Writer) error {
 // new entry and write it back, which is the corrupted-state recovery
 // described in active-watching-test-policy.md (the next healthy register
 // rebuilds the file).
-func readActiveJSON(path string) map[string]ActiveSession {
-	sessions := map[string]ActiveSession{}
+func readActiveJSON(path string) map[string]json.RawMessage {
+	sessions := map[string]json.RawMessage{}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return sessions
@@ -139,7 +149,10 @@ func readActiveJSON(path string) map[string]ActiveSession {
 	if err := json.Unmarshal(data, &sessions); err != nil {
 		// Corrupted file — start fresh rather than crash the SessionStart
 		// chain. The healthy register that follows will rebuild it.
-		return map[string]ActiveSession{}
+		return map[string]json.RawMessage{}
+	}
+	if sessions == nil {
+		return map[string]json.RawMessage{}
 	}
 	return sessions
 }
@@ -147,7 +160,7 @@ func readActiveJSON(path string) map[string]ActiveSession {
 // writeActiveJSON serializes the map and writes it via tmp-file + rename
 // for atomicity, mirroring scripts/session-register.sh's `mktemp`+`mv`
 // pattern so a peer reader never sees a half-written file.
-func writeActiveJSON(path string, sessions map[string]ActiveSession) error {
+func writeActiveJSON(path string, sessions map[string]json.RawMessage) error {
 	out, err := json.MarshalIndent(sessions, "", "  ")
 	if err != nil {
 		return err
@@ -158,4 +171,81 @@ func writeActiveJSON(path string, sessions map[string]ActiveSession) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+const (
+	activeShortIDKey  = "short_id"
+	activeLastSeenKey = "last_seen"
+	activePIDKey      = "pid"
+	activeStatusKey   = "status"
+)
+
+// marshalActiveSession encodes only the schema owned by CCH. Raw messages for
+// every other producer are kept in the surrounding map and are never routed
+// through this function.
+func marshalActiveSession(session ActiveSession) json.RawMessage {
+	raw, _ := json.Marshal(session)
+	return raw
+}
+
+// decodeOwnedActiveSession accepts an entry only when its object has exactly
+// the four fields owned by CCH and each field has the expected JSON type. This
+// prevents an entry from another producer from becoming an ActiveSession with
+// zero values and being pruned or removed by CCH.
+func decodeOwnedActiveSession(raw json.RawMessage) (ActiveSession, bool) {
+	var fields map[string]json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &fields) != nil || len(fields) != 4 {
+		return ActiveSession{}, false
+	}
+
+	shortID, ok := decodeActiveString(fields[activeShortIDKey])
+	if !ok {
+		return ActiveSession{}, false
+	}
+	lastSeen, ok := decodeActiveInt64(fields[activeLastSeenKey])
+	if !ok {
+		return ActiveSession{}, false
+	}
+	pid, ok := decodeActiveString(fields[activePIDKey])
+	if !ok {
+		return ActiveSession{}, false
+	}
+	status, ok := decodeActiveString(fields[activeStatusKey])
+	if !ok {
+		return ActiveSession{}, false
+	}
+
+	return ActiveSession{
+		ShortID:  shortID,
+		LastSeen: lastSeen,
+		PID:      pid,
+		Status:   status,
+	}, true
+}
+
+func isOwnedActiveSession(raw json.RawMessage) bool {
+	_, ok := decodeOwnedActiveSession(raw)
+	return ok
+}
+
+func decodeActiveString(raw json.RawMessage) (string, bool) {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return "", false
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", false
+	}
+	return value, true
+}
+
+func decodeActiveInt64(raw json.RawMessage) (int64, bool) {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return 0, false
+	}
+	var value int64
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return 0, false
+	}
+	return value, true
 }

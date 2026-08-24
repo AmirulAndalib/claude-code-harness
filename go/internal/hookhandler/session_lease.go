@@ -564,8 +564,14 @@ func LoadLiveSessionsFromActiveJSON(repoRoot string) map[string]struct{} {
 		return nil
 	}
 	set := make(map[string]struct{}, len(sessions))
-	for id := range sessions {
+	for id, raw := range sessions {
+		if _, ok := decodeOwnedActiveSession(raw); !ok {
+			continue
+		}
 		set[id] = struct{}{}
+	}
+	if len(set) == 0 {
+		return nil
 	}
 	return set
 }

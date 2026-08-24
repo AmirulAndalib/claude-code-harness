@@ -1,6 +1,7 @@
 package hookhandler
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -36,14 +37,16 @@ func writeActiveJSONOnly(t *testing.T, projectRoot, sessionID string, lastSeen t
 	if len(short) > 12 {
 		short = short[:12]
 	}
-	sessions := map[string]ActiveSession{
-		sessionID: {
-			ShortID:  short,
-			LastSeen: lastSeen.Unix(),
-			PID:      strconv.Itoa(os.Getpid()),
-			Status:   "active",
-		},
+	entry, err := json.Marshal(ActiveSession{
+		ShortID:  short,
+		LastSeen: lastSeen.Unix(),
+		PID:      strconv.Itoa(os.Getpid()),
+		Status:   "active",
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
+	sessions := map[string]json.RawMessage{sessionID: entry}
 	if err := writeActiveJSON(filepath.Join(sessionsDir, "active.json"), sessions); err != nil {
 		t.Fatal(err)
 	}
