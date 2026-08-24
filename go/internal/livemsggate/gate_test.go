@@ -229,3 +229,33 @@ func assertCheck(t *testing.T, result livemsggate.Result, name livemsggate.Check
 	}
 	t.Fatalf("check %s missing; result = %#v", name, result)
 }
+
+// TestUnconfiguredReviewerDoesNotHold pins that an absent judge cannot become a
+// verdict. Before this, verification=on held every completion notice with
+// "agent reviewer is unavailable", because no production reviewer is wired —
+// which made on-mode block exactly the message type it exists to carry.
+func TestUnconfiguredReviewerDoesNotHold(t *testing.T) {
+	result := livemsggate.Evaluate(context.Background(), livemsggate.Options{
+		RepoRoot: t.TempDir(),
+		Body:     "テストが成功しました",
+	})
+
+	if result.Verdict != livemsggate.VerdictSend {
+		t.Fatalf("verdict = %q, want SEND when no reviewer is configured: %#v", result.Verdict, result)
+	}
+	assertCheck(t, result, livemsggate.CheckAgentReview, livemsggate.ResultNotObserved)
+}
+
+// TestConfiguredReviewerInconclusiveHolds keeps the other half: a judge that
+// actually looked and could not confirm still holds the message.
+func TestConfiguredReviewerInconclusiveHolds(t *testing.T) {
+	result := livemsggate.Evaluate(context.Background(), livemsggate.Options{
+		RepoRoot: t.TempDir(),
+		Body:     "テストが成功しました",
+		Reviewer: &fakeReviewer{result: livemsggate.ReviewResult{Result: livemsggate.ResultNotObserved, Detail: "could not confirm the test run"}},
+	})
+
+	if result.Verdict != livemsggate.VerdictHold {
+		t.Fatalf("verdict = %q, want HOLD when a configured reviewer is inconclusive", result.Verdict)
+	}
+}

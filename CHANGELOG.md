@@ -21,7 +21,7 @@ Change history for claude-code-harness.
 | harness-mem との同居 | `active.json` を自スキーマ決め打ちで読み、他ツールのエントリを 24h prune で削除していた | `map[string]json.RawMessage` で読み書きし、知らないエントリは触らず保持 |
 
 - **エージェント主導の送信**: `skills/session-send/SKILL.md` を追加。`bin/harness inbox send --team/--from/--to/--subject` を案内し、送ってよいもの (完了通知 / これから触る場所の宣言 / 引き継ぎ) と送らないもの (作業中の相談 / 推測) を線引きする。根拠は CooperBench の測定 — 同一ファイルを 2 エージェントが触ると成功率が単独の約半分に落ち、失敗の 63% が相手の変更についての誤った思い込みだった
-- **検証の関所 (opt-in、既定 off)**: `[livemsg] verification = "off" | "on"` を追加。解決は `destructiveDelete` と同じ 5 段 (env / project YAML / project `harness.toml` / plugin `harness.toml` / 既定)。**off の間は送信経路が gate を呼ばない**ため、検証を使わない利用者にコストがかからない。on では機械チェック (ファイル実在 / commit 実在 / `git status` との一致) を第一パスとし、機械で判定できない主張だけ read-only agent (`agents/livemsg-gate.md`) に委譲する。`HOLD` は宛先へ 1 件も届けず、理由を送信側に返す (`templates/schemas/livemsg-gate.v1.json`)
+- **検証の関所 (opt-in、既定 off)**: `[livemsg] verification = "off" | "on"` を追加。解決は `destructiveDelete` と同じ 5 段 (env / project YAML / project `harness.toml` / plugin `harness.toml` / 既定)。**off の間は送信経路が gate を呼ばない**ため、検証を使わない利用者にコストがかからない。on では機械チェック (ファイル実在 / commit 実在 / `git status` との一致) が判定を担う。機械で判定できない主張の委譲先として read-only agent の口 (`Reviewer` interface + `agents/livemsg-gate.md`) を用意しているが、**本実行経路にはまだ接続していない**。判定役が未設定のときは HOLD にせず `not_observed` を記録して機械チェックの結果を通す (判定役の不在は判定ではない。ここで止めると「テストが成功しました」のような完了通知が全て止まり、パイプラインの目的そのものを壊す)。`HOLD` は宛先へ 1 件も届けず、理由を送信側に返す (`templates/schemas/livemsg-gate.v1.json`)
 - **hermes を 5 ツール目として追加**: `hosts.toml` に `[hermes]` を追加。hermes は `~/.hermes/config.yaml` の YAML 宣言型のため hook ファイルは生成せず、turn delivery のみ配線
 - 配線検証: `scripts/ci/check-session-pipeline-wiring.sh` (7 点) を `tests/validate-plugin.sh` に配線 (配線前 RED 実測済み)
 

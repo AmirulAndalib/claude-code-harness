@@ -158,10 +158,21 @@ func Evaluate(ctx context.Context, opts Options) Result {
 		unresolved = true
 	}
 	if unresolved && result.Verdict != VerdictHold {
-		review := ReviewResult{Result: ResultNotObserved, Detail: "agent reviewer is unavailable"}
-		if opts.Reviewer != nil {
-			review = opts.Reviewer.Review(ctx, opts.RepoRoot, opts.Body, append([]Check(nil), result.Checked...))
+		// No reviewer configured is not-configured, not a failed review. Holding
+		// here would block every "テストが成功しました" — the completion notice the
+		// pipeline exists to carry — so the absence of a judge cannot become a
+		// verdict. Record it as not_observed and let the machine checks stand.
+		if opts.Reviewer == nil {
+			result.Checked = append(result.Checked, Check{
+				Check:   CheckAgentReview,
+				Result:  ResultNotObserved,
+				Subject: truncate(strings.TrimSpace(opts.Body), 512),
+				Detail:  "agent reviewer is not configured; machine checks only",
+			})
+			result.Reason = "machine checks passed; no agent reviewer configured"
+			return result
 		}
+		review := opts.Reviewer.Review(ctx, opts.RepoRoot, opts.Body, append([]Check(nil), result.Checked...))
 		if !validCheckResult(review.Result) {
 			review = ReviewResult{Result: ResultNotObserved, Detail: "agent reviewer returned an invalid result"}
 		}
