@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Chachamaru127/claude-code-harness/go/internal/livemsggate"
 )
 
 func runInboxSendWithVerification(t *testing.T, verification string) int {
@@ -23,9 +25,9 @@ func TestInboxSendVerificationOffSkipsGate(t *testing.T) {
 	original := livemsgVerificationGate
 	t.Cleanup(func() { livemsgVerificationGate = original })
 	calls := 0
-	livemsgVerificationGate = func(inboxSendOpts) livemsgVerificationDecision {
+	livemsgVerificationGate = func(inboxSendOpts) (livemsgVerificationDecision, *livemsggate.Result) {
 		calls++
-		return livemsgVerificationSend
+		return livemsgVerificationSend, nil
 	}
 
 	if code := runInboxSendWithVerification(t, "off"); code != 0 {
@@ -40,9 +42,9 @@ func TestInboxSendVerificationOnCallsGate(t *testing.T) {
 	original := livemsgVerificationGate
 	t.Cleanup(func() { livemsgVerificationGate = original })
 	calls := 0
-	livemsgVerificationGate = func(inboxSendOpts) livemsgVerificationDecision {
+	livemsgVerificationGate = func(inboxSendOpts) (livemsgVerificationDecision, *livemsggate.Result) {
 		calls++
-		return livemsgVerificationSend
+		return livemsgVerificationSend, nil
 	}
 
 	if code := runInboxSendWithVerification(t, "on"); code != 0 {
@@ -60,8 +62,8 @@ func TestInboxSendVerificationOnCallsGate(t *testing.T) {
 func TestInboxSendVerificationHoldBlocksDelivery(t *testing.T) {
 	original := livemsgVerificationGate
 	t.Cleanup(func() { livemsgVerificationGate = original })
-	livemsgVerificationGate = func(inboxSendOpts) livemsgVerificationDecision {
-		return livemsgVerificationDecision("HOLD")
+	livemsgVerificationGate = func(inboxSendOpts) (livemsgVerificationDecision, *livemsggate.Result) {
+		return livemsgVerificationDecision("HOLD"), nil
 	}
 
 	t.Setenv("HARNESS_LIVEMSG_VERIFICATION", "on")

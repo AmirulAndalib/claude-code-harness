@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/Chachamaru127/claude-code-harness/go/internal/livemsg"
@@ -18,35 +17,15 @@ type livemsgVerificationDecision string
 
 const livemsgVerificationSend livemsgVerificationDecision = "SEND"
 
-var livemsgVerificationResult struct {
-	sync.Mutex
-	value *livemsggate.Result
-}
-var livemsgVerificationCall sync.Mutex
-
-var livemsgVerificationGate = func(opts inboxSendOpts) livemsgVerificationDecision {
+// livemsgVerificationGate is the replaceable seam. It returns the verdict and
+// the evidence behind it; tests substitute it wholesale. Returning both is why
+// no shared slot is needed to carry the result back to the caller.
+var livemsgVerificationGate = func(opts inboxSendOpts) (livemsgVerificationDecision, *livemsggate.Result) {
 	result := livemsggate.Evaluate(context.Background(), livemsggate.Options{
 		RepoRoot: resolveRepoRoot(),
 		Body:     sanitizeLivemsgBodyForStore(opts.Body),
 	})
-	livemsgVerificationResult.Lock()
-	livemsgVerificationResult.value = &result
-	livemsgVerificationResult.Unlock()
-	return livemsgVerificationDecision(result.Verdict)
-}
-
-func runLivemsgVerificationGate(opts inboxSendOpts) (livemsgVerificationDecision, *livemsggate.Result) {
-	livemsgVerificationCall.Lock()
-	defer livemsgVerificationCall.Unlock()
-	livemsgVerificationResult.Lock()
-	livemsgVerificationResult.value = nil
-	livemsgVerificationResult.Unlock()
-	decision := livemsgVerificationGate(opts)
-	livemsgVerificationResult.Lock()
-	result := livemsgVerificationResult.value
-	livemsgVerificationResult.value = nil
-	livemsgVerificationResult.Unlock()
-	return decision, result
+	return livemsgVerificationDecision(result.Verdict), &result
 }
 
 type inboxSendOpts struct {
@@ -79,7 +58,7 @@ func runInboxSendCommand(args []string, stdout, stderr io.Writer) int {
 	// The verdict must decide the send. A gate whose return value is discarded
 	// is wiring that cannot ever hold anything back (D58: wired != working).
 	if config.ResolveLivemsgVerification(resolveRepoRoot(), os.Getenv("CLAUDE_PLUGIN_ROOT")) == config.LivemsgVerificationOn {
-		if decision, result := runLivemsgVerificationGate(opts); decision != livemsgVerificationSend {
+		if decision, result := livemsgVerificationGate(opts); decision != livemsgVerificationSend {
 			if result != nil {
 				data, marshalErr := json.Marshal(result)
 				if marshalErr != nil {
