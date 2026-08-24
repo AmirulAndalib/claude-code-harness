@@ -143,7 +143,7 @@ func buildDeliveryDoc(h Host) (interface{}, bool) {
 			"version": 1,
 			"hooks":   hooks,
 		}, true
-	case "codex", "claude", "grok":
+	case "codex", "claude", "grok", "hermes":
 		// grok reads the Claude document shape (133.8, verified against
 		// grok 1.0.3). It was previously dropped by the default branch even
 		// though hosts.toml declares delivery_strategy/delivery_event_turn for
@@ -183,8 +183,13 @@ func GenerateHooksJSON(h Host) ([]byte, error) {
 		doc = claudeDoc(h)
 	case "grok":
 		doc = grokDoc(h)
+	case "hermes":
+		// Hermes hooks are declared in ~/.hermes/config.yaml. Keep it out of
+		// native hook-file generation while allowing delivery metadata above to
+		// be generated and validated independently.
+		return nil, fmt.Errorf("hostgen: native hook file is managed by ~/.hermes/config.yaml for host %q: %w", h.Name, ErrHookGenerationDeferred)
 	default:
-		return nil, fmt.Errorf("hostgen: unknown host %q (expected claude, codex, cursor, or grok)", h.Name)
+		return nil, fmt.Errorf("hostgen: unknown host %q (expected claude, codex, cursor, grok, or hermes)", h.Name)
 	}
 	return marshalStable(doc)
 }
