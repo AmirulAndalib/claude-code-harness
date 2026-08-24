@@ -1423,6 +1423,16 @@ else
 fi
 
 echo ""
+echo "24. Session pipeline wiring (Phase 141.10)"
+echo "----------------------------------------"
+
+if bash "$PLUGIN_ROOT/scripts/ci/check-session-pipeline-wiring.sh" > /dev/null 2>&1; then
+    pass_test "セッション協調パイプライン (名簿 / 身分証 / 送る口 / broadcast scope / mem 同居 / 検証 knob / hermes) の 7 点が配線されています"
+else
+    fail_test "session pipeline wiring contract failed — 'bash scripts/ci/check-session-pipeline-wiring.sh' で詳細確認"
+fi
+
+echo ""
 echo "=========================================="
 echo "テスト結果サマリー"
 echo "=========================================="
