@@ -53,6 +53,17 @@ func sharedLiveSessionsDirFromRoot(projectRoot string) string {
 	return filepath.Join(repoRoot, ".claude", "sessions", "live-sessions")
 }
 
+// sharedSessionsDirFromRoot resolves the shared .claude/sessions directory by
+// reusing the same git-common-dir resolution as the presence directory. Empty
+// string means git is unavailable, so callers can keep their local fallback.
+func sharedSessionsDirFromRoot(projectRoot string) string {
+	liveDir := sharedLiveSessionsDirFromRoot(projectRoot)
+	if liveDir == "" {
+		return ""
+	}
+	return filepath.Dir(liveDir)
+}
+
 // sharedLiveSessionsDirFromLeaseCfg resolves the presence dir using the same
 // git-common-dir inputs as leaseStore so worktree callers observe the shared
 // tree on the main checkout.
