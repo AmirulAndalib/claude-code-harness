@@ -1,6 +1,7 @@
 ---
 name: session-send
 description: "This skill should be used when the user asks to notify other session, requests a session handoff, says tell other agent, or needs a cross-session message."
+description-en: "This skill should be used when the user asks to notify other session, requests a session handoff, says tell other agent, or needs a cross-session message."
 description-ja: "他のセッションに知らせる、セッション間連絡、引き継ぎを送る、と依頼されたときに使用する。"
 allowed-tools: ["Bash"]
 ---
