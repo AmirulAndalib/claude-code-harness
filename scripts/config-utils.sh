@@ -408,7 +408,7 @@ get_advisor_claude_model() {
 }
 
 get_advisor_codex_model() {
-  advisor_config_value "codex_model" "gpt-5.4"
+  advisor_config_value "codex_model" "gpt-5.6-sol"
 }
 
 get_advisor_state_dir() {

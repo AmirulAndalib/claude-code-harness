@@ -51,6 +51,9 @@ TOML
 
 If your Codex build picks up `[[skills.config]]`, `git pull` updates them in place.
 Because support can drift by Codex build, verify this on a fresh Codex process before using it as the only onboarding path for end users.
+Path-based skill loading does not install the managed worker/reviewer profiles
+or merge interaction defaults into `config.toml`. Use Option 1 when you need the
+Harness Breezing role routing described below.
 
 ### Option 1: Script (recommended, user-based)
 
@@ -60,7 +63,12 @@ Because support can drift by Codex build, verify this on a fresh Codex process b
 ```
 
 This is the reliable default for end users today.
-After updating Harness, rerun the same script to sync `~/.codex/skills` to the latest `harness-*` bundle.
+After updating Harness, rerun the same script to sync `~/.codex/skills`, rules,
+managed agents, and missing safe config defaults. Files other than the managed
+names `worker.toml` and `reviewer.toml` are preserved, as are explicit config
+values. Those two filenames are backed up and replaced even when the existing
+files were user-created.
+Then restart Codex after setup completes so it reloads the installed profiles.
 
 Project-local install is still available:
 
@@ -87,48 +95,87 @@ is a Codex CLI compatibility route, not Codex app proof. Keep
 `scripts/setup-codex.sh --user` as the user-facing fallback path when
 marketplace install is unavailable or when a user needs the existing
 backup/legacy cleanup behavior.
+Package or cache presence does not prove native custom-agent activation. Run
+Option 1 when `worker.toml`, `reviewer.toml`, or the config defaults below must
+be active in the user or project Codex environment.
 
 ### Option 1.5: Claude Code (in-session)
 
 If you use Claude Code Harness, run:
 
 ```bash
-/setup codex
+/harness-setup codex
 ```
 
-### Option 2: Manual (user-based)
+### Option 2: Manual (fresh managed surfaces only)
+
+This path is only for a user whose `skills`, `rules`, and `agents` surfaces
+are empty and who has no `config.toml`. For an existing install, use Option 1;
+it preserves user-owned configuration and backs up the exact legacy Harness
+state that it migrates.
 
 ```bash
 git clone https://github.com/Chachamaru127/claude-code-harness.git
 
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
-BACKUP_ROOT="$CODEX_HOME/backups/manual-codex-setup"
-mkdir -p "$CODEX_HOME/skills" "$CODEX_HOME/rules" "$BACKUP_ROOT"
-
-# Prevent duplicate skill listings from legacy backup/archive directories.
-for legacy in "$CODEX_HOME/skills"/_archived "$CODEX_HOME/skills"/*.backup.*; do
-  [ -e "$legacy" ] || continue
-  mv "$legacy" "$BACKUP_ROOT/"
+for target in \
+  "$CODEX_HOME/config.toml" \
+  "$CODEX_HOME/agents/worker.toml" \
+  "$CODEX_HOME/agents/reviewer.toml"; do
+  { [ ! -e "$target" ] && [ ! -L "$target" ]; } || {
+    echo "existing Codex configuration detected; use Option 1" >&2
+    exit 1
+  }
 done
+for target_dir in "$CODEX_HOME/skills" "$CODEX_HOME/rules" "$CODEX_HOME/agents"; do
+  [ ! -L "$target_dir" ] || {
+    echo "symlinked Codex managed directory detected; use Option 1" >&2
+    exit 1
+  }
+  [ -z "$(find "$target_dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ] || {
+    echo "existing Codex managed files detected; use Option 1" >&2
+    exit 1
+  }
+done
+mkdir -p "$CODEX_HOME/skills" "$CODEX_HOME/rules" "$CODEX_HOME/agents"
 
 for entry in claude-code-harness/codex/.codex/skills/*; do
   name="$(basename "$entry")"
   case "$name" in
     _archived|*.backup.*) continue ;;
   esac
-  rm -rf "$CODEX_HOME/skills/$name"
   cp -R "$entry" "$CODEX_HOME/skills/"
 done
 cp -R claude-code-harness/codex/.codex/rules/* "$CODEX_HOME/rules/"
+for agent in \
+  claude-code-harness/codex/.codex/agents/worker.toml \
+  claude-code-harness/codex/.codex/agents/reviewer.toml; do
+  [ -f "$agent" ] || { echo "missing managed Codex agent: $agent" >&2; exit 1; }
+  cp "$agent" "$CODEX_HOME/agents/"
+done
 cp claude-code-harness/codex/.codex/config.toml "$CODEX_HOME/config.toml"
 ```
 
-## Codex Multi-Agent Defaults
+## Codex Breezing Role Routing
 
-- `features.multi_agent = true`
-- Harness role declarations are installed under `[agents.*]`
-- Setup scripts always ensure `multi_agent` + role defaults in target `config.toml`
-- Setup scripts keep backups in `$CODEX_HOME/backups/*` and move removed Harness skills out of `skills/` so Codex does not keep listing stale commands
+Harness pins models for Breezing roles, not for the main Codex conversation.
+The recommended setup script activates the native profiles by placing them in
+the selected user or project `agents/` directory.
+
+| Invocation | Effective role path | Model / effort | Boundary |
+|---|---|---|---|
+| Codex-native `$breezing` implementation Worker | Managed `worker.toml` selected as `agent_type: worker` | `gpt-5.6-luna` / `max` | Active only after setup installs the profile and Codex reloads it |
+| `$breezing --codex` implementation Worker | Central `worker` route; Harness translates unsupported companion `max` to raw `codex exec` reasoning config | `gpt-5.6-luna` / `max` | Fails visibly instead of silently lowering effort |
+| Routed Codex review / managed Reviewer | Review app-server route or managed `reviewer.toml` | `gpt-5.6-sol` / `xhigh`, read-only | Kept separate from the implementation Worker |
+| `$breezing --cursor` or another explicit backend | That backend's own route | Not set by the Codex profiles | No Codex model pin is inherited |
+
+- `features.multi_agent = true` and
+  `features.default_mode_request_user_input = true` are added only when missing.
+- Explicit `true` or `false` values already present in the user config are preserved.
+- Harness role declarations remain under `[agents.*]`; setup also installs the
+  managed `worker.toml` and `reviewer.toml` profiles.
+- Setup keeps backups in `$CODEX_HOME/backups/*` and moves removed Harness skills
+  out of `skills/` so Codex does not keep listing stale commands.
 
 ## Provider And Model Policy
 
@@ -149,9 +196,15 @@ Harness does not write AWS credentials, Bedrock endpoints, provider secrets, or 
 Run `aws login` and maintain the resulting AWS profile outside Harness; Harness only points Codex at the profile name when the user opts in.
 Claude Code Bedrock settings such as `CLAUDE_CODE_USE_BEDROCK`, Anthropic model overrides, and `modelOverrides` are separate from Codex `model_provider`.
 
-Codex `0.123.0` also refreshes bundled model metadata, including the current `gpt-5.4` default.
-Harness therefore leaves `model` unset in the distributed Codex config and avoids old fixed model samples such as `gpt-5.2-codex`.
-Pin `model = "gpt-5.4"` only in your own config when reproducibility or an organization allowlist requires it.
+The official Codex models guidance is at `https://developers.openai.com/codex/models`.
+GPT-5.4 and GPT-5.4 mini retire from Codex with ChatGPT sign-in on August 31, 2026.
+If you sign in with ChatGPT, replace `gpt-5.4` with `gpt-5.6-terra` and `gpt-5.4-mini` with `gpt-5.6-luna`.
+The OpenAI API and Codex authenticated with your own API key aren't affected.
+
+Harness leaves the top-level `model` unset for the main Codex session so it inherits the provider/account/CLI recommended model;
+the Breezing Worker and Reviewer profiles above are intentionally role-pinned.
+The distributed config does not assume a fixed gpt-5.4 default. It also avoids old fixed model samples such as `gpt-5.2-codex`.
+When a ChatGPT-sign-in config explicitly pins `gpt-5.4`, use `model = "gpt-5.6-terra"`; replace an explicit `gpt-5.4-mini` pin with `model = "gpt-5.6-luna"`.
 
 Details: `docs/codex-provider-setup-policy.md`.
 
@@ -278,7 +331,9 @@ Details: `docs/codex-plugin-workflows-policy.md`.
 
 - `$harness-plan`, `$harness-sync`, `$harness-work`, `$breezing`, `$harness-review`, and `$harness-loop` are the primary Codex-facing workflow surfaces.
 - Codex should be driven from the `harness-*` skill names, not legacy aliases like `$work`, `$plan-with-agent`, or `$verify`.
-- `$harness-work` and `$breezing` use Codex native multi-agent orchestration.
+- `$harness-work` and `$breezing` use Codex native multi-agent orchestration when
+  the resolved route is native. `$breezing --codex` uses the Codex companion
+  route, while `$breezing --cursor` uses Cursor's route.
 - `$harness-loop` uses a real background runner behind `harness codex-loop start/status/stop`.
 - `$harness-loop` defaults to a Breezing executor: each cycle runs the current ready batch, not just one task.
 - `$harness-loop --max-workers N` caps the ready batch concurrency; `--max-workers max` uses all currently ready tasks in the selected range.

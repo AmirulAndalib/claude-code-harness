@@ -1,7 +1,7 @@
 # Model Routing Policy
 
 Status: adopted
-Last updated: 2026-06-11
+Last updated: 2026-08-22
 
 This document defines the default model and reasoning-effort routing for
 Claude Code, Codex, Cursor, and Grok in Harness workflows.
@@ -14,6 +14,7 @@ Harness must route model and effort from the workflow role:
 
 - `lite`: cheap, read-heavy, low-risk work
 - `standard`: ordinary implementation and setup
+- `worker`: Breezing implementation and retry work
 - `deep`: architecture, security, cross-repo, migration, and failure recovery
 - `review`: quality gates and adversarial checks
 - `release`: procedural release and public-surface checks
@@ -50,17 +51,23 @@ agentic coding, Sonnet 5 as the best speed / intelligence balance, and Haiku
 worker = Sonnet 5. Official docs:
 https://platform.claude.com/docs/en/about-claude/models/overview
 
-Codex offers `gpt-5.6-sol` / `gpt-5.6-terra` as its top coding tier,
-`gpt-5.4-mini` for lighter coding tasks and subagents, and
+Codex offers `gpt-5.6-luna`, `gpt-5.6-sol` / `gpt-5.6-terra` as its top coding
+tiers, with `gpt-5.6-luna` also used at low effort for lighter coding tasks and
+subagents, and
 `gpt-5.3-codex-spark` as an optional research-preview fast iteration model for
-ChatGPT Pro users. Harness routes delegated Codex work to `gpt-5.6-sol` at
-`xhigh` (operator decision 2026-07-24; `terra` is the accepted alternative).
-Official docs: https://developers.openai.com/codex/models
+ChatGPT Pro users. Harness routes the dedicated Codex implementation worker
+(`worker`) to `gpt-5.6-luna` at `max`; generic `standard`, `deep`, `review`, and
+`advisor` remain on
+`gpt-5.6-sol` at `xhigh` (operator decision 2026-08-22). The central router is
+the SSOT for these companion role defaults; the managed worker custom agent is
+the native worker-route SSOT. Official docs:
+https://developers.openai.com/codex/models
 
 Codex config supports `model`, `review_model`, `model_reasoning_effort`, and
 agent concurrency settings such as `agents.max_threads` / `agents.max_depth`.
 Custom Codex agents can set their own `model`, `model_reasoning_effort`, and
-`sandbox_mode`. Official docs:
+`sandbox_mode` in the official format; the managed worker contract below does
+not currently declare `sandbox_mode`. Official docs:
 https://developers.openai.com/codex/config-reference and
 https://developers.openai.com/codex/subagents
 
@@ -139,10 +146,12 @@ Notes:
 
 | Harness tier | Codex model | Reasoning effort | Use cases |
 | --- | --- | --- | --- |
-| `lite` | `gpt-5.4-mini` | `minimal` or `low` | explorer subagents, simple docs, small cleanup, cheap parallel fan-out |
-| `standard` | `gpt-5.6-sol` | `xhigh` | normal implementation, test fixes, focused refactors |
+| `lite` | `gpt-5.6-luna` | `low` | explorer subagents, simple docs, small cleanup, cheap parallel fan-out |
+| `standard` | `gpt-5.6-sol` | `xhigh` | generic implementation and setup compatibility path |
+| `worker` | `gpt-5.6-luna` | `max` | Breezing implementation, retries, and focused refactors |
 | `deep` | `gpt-5.6-sol` | `xhigh` | cross-file architecture, security, migrations, failed-loop recovery |
 | `review` | `gpt-5.6-sol` via `review_model` | `xhigh` | `/review`, companion review, adversarial diff review |
+| `advisor` | `gpt-5.6-sol` | `xhigh` | blocked-loop PLAN / CORRECTION / STOP decisions |
 | `release` | `gpt-5.6-sol` | `high` | release-preflight and PR closeout evidence |
 | `spark` | `gpt-5.3-codex-spark` | `low` | optional Pro-only real-time UI micro-iteration; never required |
 
@@ -158,13 +167,18 @@ max_threads = 8
 max_depth = 1
 ```
 
+This baseline is for the interactive Codex session and is not the native
+Breezing worker definition. `breezing --codex` uses the separate explicit
+`worker` route from `scripts/model-routing.sh` instead of inheriting the
+session baseline.
+
 Recommended project-scoped Codex custom agents:
 
 ```toml
 # .codex/agents/explorer.toml
 name = "explorer"
 description = "Read-only codebase exploration and evidence gathering."
-model = "gpt-5.4-mini"
+model = "gpt-5.6-luna"
 model_reasoning_effort = "low"
 sandbox_mode = "read-only"
 developer_instructions = "Inspect files and return concise evidence with paths. Do not edit files."
@@ -174,11 +188,26 @@ developer_instructions = "Inspect files and return concise evidence with paths. 
 # .codex/agents/worker.toml
 name = "worker"
 description = "Scoped implementation worker for a single task."
-model = "gpt-5.6-sol"
-model_reasoning_effort = "xhigh"
-sandbox_mode = "workspace-write"
+model = "gpt-5.6-luna"
+model_reasoning_effort = "max"
 developer_instructions = "Implement only the assigned task, run focused checks, and report changed files and validation."
 ```
+
+Codex-native Breezing selects this managed custom agent with
+`agent_type: worker`. The required custom-agent fields above own the worker's
+model, reasoning effort, and instructions; sandbox and permission remain
+owned by the execution path. Native Breezing does not pass model or reasoning
+fields directly through `spawn_agent`. A bounded
+`fork_turns: "3"` fork may remain as an execution limit. Do not configure
+`[agents].default_subagent_*`: those global defaults would retune every native
+subagent, including reviewer and advisor roles.
+
+This custom agent becomes active only after setup copies it to the user
+`$CODEX_HOME/agents/worker.toml` or project `.codex/agents/worker.toml` path.
+Codex 0.148 plugin manifests cannot register native agent roles; plugin
+installation, cache, or dist inclusion alone does not activate this agent.
+Official Subagents configuration:
+https://developers.openai.com/codex/subagents
 
 ```toml
 # .codex/agents/reviewer.toml
@@ -194,16 +223,44 @@ Notes:
 
 - Codex CLI `codex exec` uses `--model` / `-m` for per-run model selection and
   `-c model_reasoning_effort="<level>"` for per-run effort overrides.
-- `scripts/codex-companion.sh` may continue accepting Harness-level `--effort`,
-  but any direct `codex exec` path must translate that into
-  `-c model_reasoning_effort=...`.
+- The official Codex companion 1.0.6 rejects `--effort max`. For the separate
+  `breezing --codex` companion path, Harness resolves the central `worker`
+  route and normalizes `max` to raw `codex exec` config
+  (`-c model_reasoning_effort="max"`) while preserving the routed model and
+  write/sandbox intent. Non-`max` explicit effort requests may stay on the
+  companion path.
+- Any direct `codex exec` path must translate a Harness-level `--effort` into
+  `-c model_reasoning_effort=...` rather than silently dropping it.
 - `agents.max_depth` stays `1`. Recursive fan-out increases token use and makes
   outcomes less predictable.
-- `agents.max_threads = 8` is acceptable for Harness breezing because worker
-  routing sends cheap exploration to `gpt-5.4-mini`; if all children use
+- `agents.max_threads = 8` is acceptable for Harness breezing because lite
+  routing sends cheap exploration to `gpt-5.6-luna` at low effort; if all children use
   `gpt-5.6-sol xhigh`, lower concurrency first.
 - Do not make Codex fast mode the default. It is a latency/credit trade-off,
   not an intelligence tier.
+
+### Routed review transport (D70)
+
+Codex `review` and `adversarial-review` routes use a fresh, per-run local
+`scripts/codex-review-app-server-proxy.mjs`. The proxy starts `codex
+app-server --stdio` and injects the effective `model`, `review_model`, and
+`model_reasoning_effort` values for that run. The official Codex companion is
+still the protocol endpoint: Harness passes the proxy endpoint through
+`CODEX_COMPANION_APP_SERVER_ENDPOINT` and preserves the official companion
+request/result envelope rather than inventing a second review protocol.
+
+Review `--commit` is rejected before provider dispatch because the official
+companion's `--base` option is not a semantic commit target. A routed review is
+written to the orchestration ledger only after the companion and proxy both
+finish successfully; rejected calls and failed transports do not count as
+successful delegations. On `TERM` or `INT`, the wrapper forwards the signal to
+the companion and app-server proxy concurrently, waits at most one second,
+then sends `KILL` to any survivor and reaps it. The proxy applies the same
+fail-closed child lifecycle to its `codex app-server` child.
+
+The POSIX path uses a Unix socket. The Windows named-pipe path is covered by
+fixture/static checks only in this repository; a live Windows provider or
+app-server run has not been observed.
 
 ## Cursor Routing (adapter candidate)
 
@@ -273,8 +330,8 @@ Notes:
 | --- | --- | --- | --- | --- | --- |
 | Interactive operator session | `opusplan`, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `medium` | `grok-4.5`, `low` | strong default without forcing max spend |
 | `/harness-plan` | `opusplan` or Opus 5 for non-trivial planning | `gpt-5.6-sol`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.6`, `xhigh` | planning quality affects all downstream work |
-| `worker` | Sonnet 5, `medium` to `high` | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `medium` | `grok-4.5`, `medium` | implementation benefits from iteration and tests |
-| `explorer` / read-only fan-out | Haiku 4.5, `low` | `gpt-5.4-mini`, `low` | `composer-2-fast`, `low` | `grok-4.5`, `low` | cheap context isolation |
+| `worker` | Sonnet 5, `medium` to `high` | `gpt-5.6-luna`, `max` | `composer-2.5-fast`, `medium` | `grok-4.5`, `medium` | implementation benefits from iteration and tests |
+| `explorer` / read-only fan-out | Haiku 4.5, `low` | `gpt-5.6-luna`, `low` | `composer-2-fast`, `low` | `grok-4.5`, `low` | cheap context isolation |
 | `reviewer` | Fable 5, `xhigh` (primary verdict tier) | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `xhigh` (fresh-context pre-review only; primary verdict on brain) | `grok-4.6`, `xhigh` | review is where deeper reasoning pays |
 | `advisor` | Opus 5, `xhigh` (Fable 5 via `HARNESS_BRAIN_MODEL=fable`) | `gpt-5.6-sol`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.6`, `xhigh` | blocked-loop decisions need high confidence |
 | `release` | Sonnet 5, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `high` | `grok-4.6`, `high` | procedural but public-facing |
@@ -299,6 +356,17 @@ tier -> codex --model / -c model_reasoning_effort
 tier -> cursor model (+ effort label for docs/tests)
 role -> tier
 ```
+
+Codex-native Breezing selects the managed `.codex/agents/worker.toml` with
+`agent_type: worker`; model and reasoning come from that custom agent rather
+than being passed directly by the skill. A bounded `fork_turns: "3"` fork may
+remain. Keep `[agents].default_subagent_*` unset so reviewer and advisor routes
+are not retuned globally. The separate `breezing --codex` companion path
+resolves the central `worker` route and normalizes `max` through raw
+`codex exec` config. The skill must not become a second model catalog;
+companion-route IDs stay in this policy and `scripts/model-routing.sh`, while
+native worker model/effort stay intentionally in the managed
+`.codex/agents/worker.toml`.
 
 The router should be tested independently from the current user-level
 `~/.codex/config.toml` or `~/.claude/settings.json`, because those files are

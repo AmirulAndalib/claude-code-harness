@@ -268,7 +268,7 @@ for task in execution_order:
     elif backend == "codex":
         companion_prompt = "{task prompt}\n\nAfter making changes, create exactly one git commit in this worktree before returning."
         companion_state_file = "{worktree_path}/.claude/state/codex-primary-environment.json"
-        companion_output = bash("HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worktree_path} \"{companion_prompt}\"")
+        companion_output = bash("CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worktree_path} \"{companion_prompt}\"")
         latest_commit = git("-C", worktree_path, "rev-parse", "HEAD")
         if latest_commit == TASK_BASE_REF:
             raise EscalationError("codex companion produced no commit")
@@ -277,8 +277,9 @@ for task in execution_order:
     else:
         print("🚀 claude / native-subagent / {branch_name} / {task.ID}")
         worker_id = spawn_agent({
+            agent_type: "worker",
             message: "作業ディレクトリ: {worktree_path} で作業してください。\n\nタスク: {task.内容}\nDoD: {task.DoD}\ncontract_path: {contract_path}\n\n実装してください。完了後 git commit してください。\n\n完了時、以下の JSON を返してください:\n{\"commit\": \"<hash>\", \"files_changed\": [...], \"summary\": \"...\"}",
-            fork_context: true
+            fork_turns: "3"
         })
         worker_result = wait_agent({ targets: [worker_id] })
 
@@ -286,8 +287,7 @@ for task in execution_order:
     if backend == "claude" and worker_result.type == "advisor-request.v1":
         advisor_id = spawn_agent({
             agent_type: "default",
-            message: worker_result.request_json,
-            fork_context: true
+            message: worker_result.request_json
         })
         advisor_result = wait_agent({ targets: [advisor_id] })
         close_agent({ target: advisor_id })
@@ -345,7 +345,7 @@ for task in execution_order:
         else:
             previous_commit = git("-C", worktree_path, "rev-parse", "HEAD")
             companion_state_file = "{worktree_path}/.claude/state/codex-primary-environment.json"
-            bash("HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worktree_path} \"Review findings:\n{issues}\n\nFix the findings and create one new git commit before returning.\"")
+            bash("CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worktree_path} \"Review findings:\n{issues}\n\nFix the findings and create one new git commit before returning.\"")
             latest_commit = git("-C", worktree_path, "rev-parse", "HEAD")
             if latest_commit == previous_commit:
                 raise EscalationError("codex companion retry produced no new commit")
@@ -385,8 +385,8 @@ Depends が満たされた ready task が複数ある場合、既定では ready
 
 ```
 # 独立タスク A, B を並列 spawn（各自 worktree 分離済み）
-worker_a = spawn_agent({ message: "作業ディレクトリ: /tmp/worker-a-$$ ...", fork_context: true })
-worker_b = spawn_agent({ message: "作業ディレクトリ: /tmp/worker-b-$$ ...", fork_context: true })
+worker_a = spawn_agent({ agent_type: "worker", message: "作業ディレクトリ: /tmp/worker-a-$$ ...", fork_turns: "3" })
+worker_b = spawn_agent({ agent_type: "worker", message: "作業ディレクトリ: /tmp/worker-b-$$ ...", fork_turns: "3" })
 
 # 各 Worker の完了を個別に待ち → レビュー → cherry-pick（直列）
 # wait_agent は最初の1つを返すので、残りの Worker はまだ動作中

@@ -31,8 +31,23 @@ for t in "${TARGETS[@]}"; do
   fi
 done
 
+# The tag-triggered workflow publishes the matching CHANGELOG section verbatim.
+# A separate translated release-notes draft would show the operator a preview
+# that the workflow never uses.
+STALE_PREVIEW_PATTERN='Release Notes ドラフト|GitHub Release notes preview|GitHub Release notes: 英語|GitHub Release Preview|最初の 10 行'
+for t in "${TARGETS[@]}"; do
+  if [ -d "$t" ]; then
+    n=$( { grep -rnE "$STALE_PREVIEW_PATTERN" "$t" 2>/dev/null || true; } | wc -l | tr -d ' ')
+    if [ "$n" -gt 0 ]; then
+      echo "FAIL: $t still describes an unpublished release-notes draft" >&2
+      grep -rnE "$STALE_PREVIEW_PATTERN" "$t" >&2
+      hit_count=$((hit_count + n))
+    fi
+  fi
+done
+
 if [ "$hit_count" -eq 0 ]; then
-  echo "PASS: skill copies are free of direct release-create invocation steps"
+  echo "PASS: skill copies use the workflow-owned release body contract"
   exit 0
 else
   echo "FAIL: total $hit_count hit(s) found across skill copies" >&2

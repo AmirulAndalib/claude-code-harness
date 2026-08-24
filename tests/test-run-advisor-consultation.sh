@@ -19,6 +19,17 @@ fail() {
   exit 1
 }
 
+assert_eq() {
+  local expected="$1"
+  local actual="$2"
+  local label="$3"
+  if [ "${expected}" = "${actual}" ]; then
+    pass "${label}"
+  else
+    fail "${label}: expected='${expected}' actual='${actual}'"
+  fi
+}
+
 cat > "${TMP_DIR}/request.json" <<'EOF'
 {
   "schema_version": "advisor-request.v1",
@@ -44,6 +55,14 @@ if [ -n "${FAKE_ADVISOR_CAPTURE_PROMPT:-}" ]; then
   cat > "${FAKE_ADVISOR_CAPTURE_PROMPT}"
 else
   cat >/dev/null
+fi
+if [ -n "${FAKE_ADVISOR_CAPTURE_CALL:-}" ]; then
+  {
+    printf 'CODEX_MODEL_TIER=%s\n' "${CODEX_MODEL_TIER:-}"
+    printf 'ARGS_BEGIN\n'
+    printf '<%s>\n' "$@"
+    printf 'ARGS_END\n'
+  } > "${FAKE_ADVISOR_CAPTURE_CALL}"
 fi
 case "${MODE}" in
   PLAN)
@@ -101,6 +120,26 @@ run_case() {
 run_case PLAN PLAN
 run_case CORRECTION CORRECTION
 run_case STOP STOP
+
+# The configured advisor must use the current Sol model and the dedicated
+# advisor tier. The tier is the public seam for the central router's xhigh
+# effort contract; omitting it would leave the call on the generic route.
+CODEX_ADVISOR_COMPANION="${TMP_DIR}/fake-companion.sh" \
+  FAKE_ADVISOR_MODE="PLAN" \
+  FAKE_ADVISOR_CAPTURE_CALL="${TMP_DIR}/advisor-route.call" \
+  bash "${WRAPPER}" \
+    --request-file "${TMP_DIR}/request.json" \
+    --response-file "${TMP_DIR}/advisor-route.response.json" > "${TMP_DIR}/advisor-route.stdout"
+
+captured_model="$(awk '/^<--model>$/{getline; gsub(/^<|>$/, ""); print; exit}' "${TMP_DIR}/advisor-route.call")"
+captured_tier="$(sed -n 's/^CODEX_MODEL_TIER=//p' "${TMP_DIR}/advisor-route.call")"
+captured_effort_arg="$(awk '/^<--effort>$/{getline; gsub(/^<|>$/, ""); print; exit}' "${TMP_DIR}/advisor-route.call")"
+assert_eq "gpt-5.6-sol" "${captured_model}" "configured advisor call pins Sol model"
+assert_eq "advisor" "${captured_tier}" "configured advisor call pins advisor tier"
+assert_eq "xhigh" "${captured_effort_arg}" "configured advisor call pins xhigh effort"
+captured_effort="$(bash "${PROJECT_ROOT}/scripts/model-routing.sh" --host codex --tier "${captured_tier}" --field effort)"
+assert_eq "xhigh" "${captured_effort}" "advisor tier routes xhigh effort"
+pass "configured advisor call uses Sol/xhigh route"
 
 set +e
 CODEX_ADVISOR_COMPANION="${TMP_DIR}/fake-companion.sh" \

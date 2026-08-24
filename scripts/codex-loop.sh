@@ -1783,7 +1783,7 @@ advisor_consult_before_user_escalation() {
 
 advisor_model_name() {
   if [ ! -f "${CONFIG_UTILS}" ]; then
-    printf 'gpt-5.4\n'
+    printf 'gpt-5.6-sol\n'
     return 0
   fi
   # shellcheck disable=SC1090

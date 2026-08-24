@@ -23,7 +23,7 @@ Usage:
   scripts/model-routing.sh --host ${hosts} --tier TIER [--format json|args|env] [--field model|effort]
   scripts/model-routing.sh --host ${hosts} --role ROLE [--format json|args|env] [--field model|effort]
 
-Tiers: lite, standard, deep, review, advisor, release, long-context, spark
+Tiers: lite, standard, worker, deep, review, advisor, release, long-context, spark
 Roles: explorer, worker, reviewer, advisor, plan, release, operator, long-context
 Allowed --host values come from hosts/registry.json (routing_host).
 EOF
@@ -53,7 +53,14 @@ done
 role_to_tier() {
   case "$1" in
     explorer|reader|search|lite) printf 'lite\n' ;;
-    worker|implementer|setup|standard) printf 'standard\n' ;;
+    worker|implementer)
+      if [ "${HOST}" = "codex" ]; then
+        printf 'worker\n'
+      else
+        printf 'standard\n'
+      fi
+      ;;
+    setup|standard) printf 'standard\n' ;;
     plan|planner|architect|deep) printf 'deep\n' ;;
     reviewer|review|adversarial-review) printf 'review\n' ;;
     advisor) printf 'advisor\n' ;;
@@ -93,12 +100,13 @@ MODEL=""
 EFFORT=""
 
 if [ "$HOST" = "codex" ]; then
-  # Codex catalog (2026-07-24): gpt-5.6-sol at xhigh for delegated work/review
-  # (operator 裁定: Codex 委譲は gpt-5.6 sol/terra を xhigh で使う。sol を採用)。
+  # Codex standard remains the compatibility Sol/xhigh route. Breezing
+  # implementation workers use the dedicated worker tier for Luna/max; the
+  # review tier stays independent so worker capacity cannot retune review.
   case "$TIER" in
-    lite) MODEL="gpt-5.4-mini"; EFFORT="low" ;;
-    standard) MODEL="gpt-5.6-sol"; EFFORT="xhigh" ;;
-    deep) MODEL="gpt-5.6-sol"; EFFORT="xhigh" ;;
+    lite) MODEL="gpt-5.6-luna"; EFFORT="low" ;;
+    standard|deep) MODEL="gpt-5.6-sol"; EFFORT="xhigh" ;;
+    worker) MODEL="gpt-5.6-luna"; EFFORT="max" ;;
     review|advisor) MODEL="gpt-5.6-sol"; EFFORT="xhigh" ;;
     release|long-context) MODEL="gpt-5.6-sol"; EFFORT="high" ;;
     spark) MODEL="gpt-5.3-codex-spark"; EFFORT="low" ;;

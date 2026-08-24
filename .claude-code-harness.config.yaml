@@ -47,7 +47,7 @@ advisor:
   consult_before_user_escalation: true
   # Default model mapping by runtime
   claude_model: opus
-  codex_model: gpt-5.4
+  codex_model: gpt-5.6-sol
 
 # Cleanup thresholds
 cleanup:

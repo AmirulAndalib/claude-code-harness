@@ -222,7 +222,7 @@ if topology in ["solo", "parallel"] and backend in ["cursor", "codex"]:
         companion_output = bash("bash \"${HARNESS_PLUGIN_ROOT}/scripts/cursor-companion.sh\" task --write --workspace {worktree_path} \"{companion_prompt}\"")
     else:
         companion_state_file = "{worktree_path}/.claude/state/codex-primary-environment.json"
-        companion_output = bash("HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worktree_path} \"{companion_prompt}\"")
+        companion_output = bash("CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worktree_path} \"{companion_prompt}\"")
     latest_commit = git("-C", worktree_path, "rev-parse", "HEAD")
     if backend == "cursor" and git("-C", worktree_path, "status", "--porcelain") != "":
         git("-C", worktree_path, "add", "-A")
@@ -249,7 +249,7 @@ def enter_non_claude_companion_review_loop(worker_result):
             companion_output = bash("bash \"${HARNESS_PLUGIN_ROOT}/scripts/cursor-companion.sh\" task --write --workspace {worker_result.worktreePath} \"Review findings:\n{issues}\n\nFix the findings and commit the result.\"")
         else:
             companion_state_file = "{worker_result.worktreePath}/.claude/state/codex-primary-environment.json"
-            companion_output = bash("HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worker_result.worktreePath} \"Review findings:\n{issues}\n\nFix the findings and commit the result.\"")
+            companion_output = bash("CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worker_result.worktreePath} \"Review findings:\n{issues}\n\nFix the findings and commit the result.\"")
         latest_commit = git("-C", worker_result.worktreePath, "rev-parse", "HEAD")
         if backend == "cursor" and git("-C", worker_result.worktreePath, "status", "--porcelain") != "":
             git("-C", worker_result.worktreePath, "add", "-A")
@@ -301,14 +301,14 @@ BASE_REF="$(git rev-parse HEAD)"
 WT_ID="codex-$(date +%Y%m%d-%H%M%S)-$$"
 WORKTREE_PATH=".claude/worktrees/${WT_ID}"
 git worktree add -b "codex-work/${WT_ID}" "$WORKTREE_PATH" "$BASE_REF"
-HARNESS_CODEX_PRIMARY_ENV_STATE_FILE="$WORKTREE_PATH/.claude/state/codex-primary-environment.json" \
+CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE="$WORKTREE_PATH/.claude/state/codex-primary-environment.json" \
   bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" task --write -C "$WORKTREE_PATH" \
   "タスク内容。完了前にこの worktree で exactly one git commit を作成してください。"
 
 # stdin 経由（大きなプロンプト向け）
 CODEX_PROMPT=$(mktemp /tmp/codex-prompt-XXXXXX.md)
 # タスク内容を書き出し
-cat "$CODEX_PROMPT" | HARNESS_CODEX_PRIMARY_ENV_STATE_FILE="$WORKTREE_PATH/.claude/state/codex-primary-environment.json" \
+cat "$CODEX_PROMPT" | CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE="$WORKTREE_PATH/.claude/state/codex-primary-environment.json" \
   bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" task --write -C "$WORKTREE_PATH"
 rm -f "$CODEX_PROMPT"
 

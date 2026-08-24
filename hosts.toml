@@ -18,9 +18,31 @@ hook_path  = ".codex/hooks.json"
 matcher    = "*"
 deny       = "permissionDecision"
 transport  = "stdin-json"
-model      = "gpt-5"
+model      = "gpt-5.6-sol"
 delivery_strategy = "turn"
 delivery_event_turn = "Stop"
+
+[codex.agent_profiles.worker]
+output_path = "codex/.codex/agents/worker.toml"
+name = "worker"
+description = "Managed implementation worker for one Harness Breezing task."
+model = "gpt-5.6-luna"
+model_reasoning_effort = "max"
+developer_instructions = """
+Implement only the assigned Harness task in the provided worktree.
+Read the task contract and relevant project spec before editing.
+Run focused tests or checks, report exact changed files and residual risks,
+and create the requested commit before returning. Do not spawn subagents.
+"""
+
+[codex.agent_profiles.reviewer]
+output_path = "codex/.codex/agents/reviewer.toml"
+name = "reviewer"
+description = "Read-only reviewer for diffs, risk, and missing tests."
+model = "gpt-5.6-sol"
+model_reasoning_effort = "xhigh"
+sandbox_mode = "read-only"
+developer_instructions = "Review evidence-first. Report prioritized findings with file and line references. Do not edit files."
 
 [cursor]
 hook_event = "preToolUse"

@@ -19,6 +19,23 @@ assert_contains() {
   grep -q "$pattern" "$file" || fail "${label}: ${pattern}"
 }
 
+assert_same_skill_body() {
+  local source="$1"
+  local mirror="$2"
+  diff -u \
+    <(awk '
+      NR == 1 && $0 == "---" { in_frontmatter = 1; next }
+      in_frontmatter && $0 == "---" { in_frontmatter = 0; next }
+      !in_frontmatter { print }
+    ' "$source") \
+    <(awk '
+      NR == 1 && $0 == "---" { in_frontmatter = 1; next }
+      in_frontmatter && $0 == "---" { in_frontmatter = 0; next }
+      !in_frontmatter { print }
+    ' "$mirror") >/dev/null \
+    || fail "opencode mirror body が SSOT と不一致です"
+}
+
 SHARED_WORK="${PROJECT_ROOT}/skills/harness-work/SKILL.md"
 SHARED_BREEZING="${PROJECT_ROOT}/skills/breezing/SKILL.md"
 CODEX_WORK="${PROJECT_ROOT}/skills-codex/harness-work/SKILL.md"
@@ -46,8 +63,7 @@ assert_contains "${CODEX_WORK}" 'Advisor Protocol' "codex harness-work"
 assert_contains "${CODEX_BREEZING}" 'advisor-response.v1' "codex breezing"
 assert_contains "${CODEX_BREEZING}" 'PIVOT_REQUIRED' "codex breezing"
 
-diff -q "${SHARED_WORK}" "${OPENCODE_MIRROR_WORK}" >/dev/null \
-  || fail "opencode mirror の harness-work が SSOT と不一致です"
+assert_same_skill_body "${SHARED_WORK}" "${OPENCODE_MIRROR_WORK}"
 diff -q "${CODEX_WORK}" "${CODEX_MIRROR_WORK}" >/dev/null \
   || fail "codex mirror の harness-work が SSOT と不一致です"
 diff -q "${CODEX_BREEZING}" "${CODEX_MIRROR_BREEZING}" >/dev/null \

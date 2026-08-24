@@ -164,7 +164,7 @@ var defaultSprintAdvisor = sprintContractAdvisor{
 	PreEscalationConsult: true,
 	ModelPolicy: sprintAdvisorModelPolicy{
 		ClaudeDefault: "opus",
-		CodexDefault:  "gpt-5.4",
+		CodexDefault:  "gpt-5.6-sol",
 	},
 }
 

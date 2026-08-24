@@ -156,7 +156,7 @@ owner / branch / release asset / CI metadata の自動取得は host ごとの�
 ## 単一ゲートフロー
 
 Bare release（0. Review Gate → 0.5 Work Commit Gate）→
-Pre-Gate（1. Preflight → 2. Version file 検出 → 3. バージョン読み取り → 4. plugin version sync preflight → 5. bump 推定 → 6. 新バージョン算出 → 7. CHANGELOG ドラフト → 8. Release notes ドラフト）→
+Pre-Gate（1. Preflight → 2. Version file 検出 → 3. バージョン読み取り → 4. plugin version sync preflight → 5. bump 推定 → 6. 新バージョン算出 → 7. CHANGELOG ドラフト → 8. CHANGELOG release body preview）→
 **単一確認ゲート**（下記「Confirmation Gate」参照、`yes` / `<修正指示>` / `cancel` の 3 択）→
 Post-Gate（9. Version file 書き換え → 10. CHANGELOG 昇格 → 11. commit → 12. branch push → 13. PR 作成/更新 → 14. default branch merge → 15. 到達可能性確認 → 16. semver tag → 17. tag push → 18. workflow publish verify → 19. 完了報告）
 の 3 段階で進む。各段の詳細は「Pre-Gate 詳細」「Confirmation Gate」「Post-Gate 詳細」を参照。
@@ -251,10 +251,11 @@ python3 "${HARNESS_PLUGIN_ROOT}/scripts/check-release-version-sync.py" --root . 
 `[Unreleased]` の内容を切り出し、`[<new>] - YYYY-MM-DD` セクションと compare link を組み立てる（まだ書き込まない）。
 詳細: [release-notes.md](${CLAUDE_SKILL_DIR}/references/release-notes.md#changelog-ドラフト作成メモリ上pre-gate-ステップ-7)
 
-### 6. Release Notes ドラフト作成 (メモリ上)
+### 6. CHANGELOG release body preview (メモリ上)
 
-`## [<new>]` セクションの内容を元に、GitHub Release 用のマークダウン（What's Changed / Before-After / Added-Changed-Fixed / フッター）を生成する。
-必須要素・生成方法・検証チェックの詳細: [release-notes.md](${CLAUDE_SKILL_DIR}/references/release-notes.md)
+tag-triggered workflow が公開する本文は、昇格後の `## [<new>]` セクション本文そのもの。
+別の英訳・要約・フッターを生成せず、workflow と同じ抽出境界の本文をそのまま preview する。
+抽出方法・検証チェックの詳細: [release-notes.md](${CLAUDE_SKILL_DIR}/references/release-notes.md)
 
 ## Confirmation Gate
 
@@ -272,9 +273,8 @@ Release Plan: v<old> → v<new> (<bump>)
    [<new>] - YYYY-MM-DD として確定
    Compare link を追加
 
- GitHub Release notes preview:
-   <最初の 10 行>
-   ...
+ CHANGELOG release body preview (workflow が公開する本文):
+   <workflow が公開する本文の全行>
 
  Files to modify:
    - <version file>
@@ -327,14 +327,14 @@ Claude plugin project の場合、dry-run でも `python3 "${HARNESS_PLUGIN_ROOT
 | `HARNESS_RELEASE_BRANCH` | push 対象ブランチ (デフォルト: 現在のブランチ) |
 | `HARNESS_RELEASE_DEFAULT_BRANCH` | PR merge 先 default branch (デフォルト: `main`) |
 | `HARNESS_RELEASE_HEALTHCHECK_CMD` | Preflight で追加実行するコマンド |
-| `HARNESS_RELEASE_SKIP_GH` | `1` で GitHub Release 作成をスキップ |
+| `HARNESS_RELEASE_SKIP_GH` | `1` で GitHub publication verification をスキップ |
 
 ## CHANGELOG 書き方ルール
 
 `[Unreleased]` セクションは KaCL 標準サブセクション（`### Added`=minor / `### Changed`・`### Fixed`・`### Security`=patch / `### Deprecated`=minor / `### Removed`・`### Breaking Changes`=major）のいずれかを持つ必要がある。
 このスキルはこれらの見出しを機械的に解析するため、表記揺れ（`### Fix` / `### Bug Fixes` 等）は認識できない。
 
-GitHub Release notes の必須フォーマット・CHANGELOG の「今まで/今後」記法・merge 方式（squash 不採用）の詳細は
+CHANGELOG release body の preview 契約・CHANGELOG の書き方・merge 方式（squash 不採用）の詳細は
 [github-release.md](${CLAUDE_SKILL_DIR}/references/github-release.md) を参照。
 SemVer 判定基準・バッチリリース方針・Release Train Proposal の詳細は
 [versioning.md](${CLAUDE_SKILL_DIR}/references/versioning.md) を参照。
