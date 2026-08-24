@@ -9,7 +9,18 @@ import (
 	"time"
 
 	"github.com/Chachamaru127/claude-code-harness/go/internal/livemsg"
+	"github.com/Chachamaru127/claude-code-harness/go/pkg/config"
 )
+
+type livemsgVerificationDecision string
+
+const livemsgVerificationSend livemsgVerificationDecision = "SEND"
+
+// livemsgVerificationGate is the Phase 141.8 replacement seam. Phase 141.7 is
+// intentionally a no-op and always permits the send.
+var livemsgVerificationGate = func(inboxSendOpts) livemsgVerificationDecision {
+	return livemsgVerificationSend
+}
 
 type inboxSendOpts struct {
 	Team    string
@@ -38,6 +49,9 @@ func runInboxSendCommand(args []string, stdout, stderr io.Writer) int {
 	body := sanitizeLivemsgBodyForStore(opts.Body)
 	from := sanitizeAndCapLivemsgField(opts.From, 256)
 	to := sanitizeAndCapLivemsgField(opts.To, 256)
+	if config.ResolveLivemsgVerification(resolveRepoRoot(), os.Getenv("CLAUDE_PLUGIN_ROOT")) == config.LivemsgVerificationOn {
+		livemsgVerificationGate(opts)
+	}
 
 	ctx := context.Background()
 	id, err := store.Send(ctx, opts.Team, from, to, subject, body)

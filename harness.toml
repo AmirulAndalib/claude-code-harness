@@ -18,6 +18,9 @@ url = "https://github.com/Chachamaru127"
 [env]
 CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = "1"
 
+[livemsg]
+verification = "off"
+
 [safety.permissions]
 # main/master への直接 push の扱い。
 # ask: 実行前にユーザー確認（既定） / deny: 禁止 / allow: 確認なしで許可
