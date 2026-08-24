@@ -49,8 +49,13 @@ func runInboxSendCommand(args []string, stdout, stderr io.Writer) int {
 	body := sanitizeLivemsgBodyForStore(opts.Body)
 	from := sanitizeAndCapLivemsgField(opts.From, 256)
 	to := sanitizeAndCapLivemsgField(opts.To, 256)
+	// The verdict must decide the send. A gate whose return value is discarded
+	// is wiring that cannot ever hold anything back (D58: wired != working).
 	if config.ResolveLivemsgVerification(resolveRepoRoot(), os.Getenv("CLAUDE_PLUGIN_ROOT")) == config.LivemsgVerificationOn {
-		livemsgVerificationGate(opts)
+		if decision := livemsgVerificationGate(opts); decision != livemsgVerificationSend {
+			fmt.Fprintf(stderr, "harness inbox send: held by verification gate (%s)\n", decision)
+			return 1
+		}
 	}
 
 	ctx := context.Background()
