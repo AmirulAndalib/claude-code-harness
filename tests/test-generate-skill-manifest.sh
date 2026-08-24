@@ -79,7 +79,8 @@ EXPECTED_MODEL_INVOKABLE='[
   "harness-work",
   "japanese-writing-drafter",
   "maintenance",
-  "memory"
+  "memory",
+  "session-send"
 ]'
 
 jq -e --argjson expected "${EXPECTED_MODEL_INVOKABLE}" '
