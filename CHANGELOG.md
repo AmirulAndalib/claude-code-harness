@@ -27,7 +27,15 @@ Change history for claude-code-harness.
 
 ### Fixed
 
-- **検証 gate の verdict が捨てられていた**: 送信経路が gate を呼びながら戻り値を無視していたため、`HOLD` を返しても配送されてしまう状態だった。verdict で分岐し、理由を送信側へ返すよう修正 (D58「配線した != 効いている」)
+Phase 141 のレビューゲートが見つけた 5 件。いずれも「呼び出しは書かれているが、その結果が上の層で捨てられている」という同じ形をしていました (D58「配線した != 効いている」)。
+
+- **検証 gate の verdict が捨てられていた**: 送信経路が gate を呼びながら戻り値を無視していたため、`HOLD` を返しても配送されていた。verdict で分岐し、理由を送信側へ返す
+- **検証 on が通常のメッセージを弾いていた**: パス判定が「ドットを含むトークン」を全てファイル名とみなしていたため、`Go 1.24.0` や `alice@example.com` を含む完了通知が `HOLD` になっていた。スラッシュを含まない綴りは既知の拡張子を要求する
+- **hermes の delivery がどこにも出力されていなかった**: `harness gen` が enforcement hook の「生成保留」で先に return し、delivery 生成に到達していなかった。`hosts.toml` に宣言はあるのに実出力ゼロ。保留は enforcement だけに限定し、`requires_home_path` で未インストールのホストは明示的にスキップする
+- **メッセージの宛先を特定できなかった**: `session list` に `team` / `agent` 列が無く、`session-send` skill はそれを読めと案内していた。breezing 実行中は agent が `BREEZING_ROLE` で session_id と一致しないため、案内どおりに送ると**エラーも出ないまま未達**になっていた。presence card が解決済みの identity を持ち、名簿がそれを表示する
+- **presence card の新フィールドが serialize 時に落ちていた**: `encodePresenceCard` が Label / Task / Since しかコピーしておらず、追加した Team / Agent が黙って捨てられていた
+
+配線チェック `scripts/ci/check-session-pipeline-wiring.sh` は、上記 3 件目を検出できませんでした (設定文字列の存在しか見ていなかった)。実バイナリを走らせて実出力を検査する形に変更しています。
 
 ## [5.10.0] - 2026-08-22
 

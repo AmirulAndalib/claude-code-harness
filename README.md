@@ -113,6 +113,31 @@ Command text is never written; only a hash and a length, and for secret-read and
 billing not even that. You can count what actually blocked you instead of
 guessing.
 
+## Sessions that can see each other
+
+Open three agents on one repo and they normally work blind to each other. That
+is not a small inefficiency: on CooperBench, two agents editing the same file
+succeed about half as often as one agent working alone, and 63% of the failures
+trace to a false belief about what the other one changed.
+
+Harness keeps a roster and a message path between local sessions.
+
+| Piece | What it does |
+|---|---|
+| Roster | `bin/harness session list` shows every live session on this machine — including sessions in other worktrees, because the store resolves from `git --git-common-dir`. Each row carries the `team` and `agent` a sender needs. |
+| Send | `bin/harness inbox send --team <t> --from <a> --to <b> --subject <s> "<body>"`, or the `session-send` skill, which also documents what is worth sending. |
+| Receive | Messages arrive at the receiving session's turn boundary, wrapped as data with an explicit non-instruction envelope. A peer's message is a report to verify, never an order to follow. |
+
+The pipeline is the product; what you route through it is your call. Sending
+is unfiltered by default. Setting `[livemsg] verification = "on"` adds a gate
+that checks a message's factual claims — mentioned files exist, mentioned
+commits resolve, a "clean worktree" claim matches `git status` — and returns
+the reason to the sender instead of delivering a false one. While it is `off`,
+the send path does not call the gate at all.
+
+This is local-only and does not depend on harness-mem. If harness-mem is
+installed alongside, its roster entries are preserved untouched.
+
 ## Decision surfaces for non-engineers
 
 Three single-screen HTML views let a non-engineer sponsor judge without reading
@@ -137,7 +162,7 @@ a tool has an *entry path*, not a shared product promise.
 | Grok | `supported` | `scripts/setup-grok.sh` |
 | Codex app | `candidate` | Candidate smoke only; CLI proof is not reused |
 | OpenCode | `internal-compatible` | `scripts/setup-opencode.sh`; runtime parity not claimed |
-| Hermes Agent | `candidate` | Manual symlink research route |
+| Hermes Agent | `candidate` | Manual symlink research route. `harness gen` now writes its turn-delivery hook when `~/.hermes` exists; guardrail enforcement is still not wired, so the tier is unchanged |
 | GitHub Copilot CLI | `candidate` | Manual profile research |
 | Antigravity CLI | `future/unsupported` | No end-user install route yet |
 
