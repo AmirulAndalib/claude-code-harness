@@ -68,6 +68,11 @@ type Host struct {
 	DeliveryEventTurn    string `toml:"delivery_event_turn"`
 	DeliveryEventMonitor string `toml:"delivery_event_monitor"`
 	HookGeneration       string `toml:"hook_generation"`
+	// RequiresHomePath names a path under $HOME that must exist for this host
+	// to be considered installed. Empty means always generate. Hosts Harness
+	// does not fully manage use this so `gen` does not litter a repo with
+	// config for a tool the operator never installed.
+	RequiresHomePath string `toml:"requires_home_path"`
 }
 
 // Load parses hosts.toml and returns a map keyed by host name (claude, codex,

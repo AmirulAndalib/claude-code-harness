@@ -241,6 +241,33 @@ func isRepoRelativePath(value string) bool {
 		return false
 	}
 	cleaned := filepath.Clean(filepath.FromSlash(value))
-	return cleaned != "." && cleaned != ".." && !strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) &&
-		(strings.Contains(value, "/") || strings.Contains(filepath.Base(value), "."))
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return false
+	}
+	if strings.Contains(value, "/") {
+		return true
+	}
+	// Without a slash, "has a dot" is far too weak: it also matches version
+	// numbers (1.24.0) and email addresses (alice@example.com), which appear in
+	// ordinary completion notices. Treating those as paths made the gate HOLD
+	// normal traffic. Require a recognized file extension instead — anything
+	// else is left undetected, which costs a check but never a false reject.
+	return knownFileExtensions[strings.ToLower(filepath.Ext(value))]
+}
+
+// knownFileExtensions bounds bare (slash-free) path detection. Add to it rather
+// than loosening isRepoRelativePath: a missing extension yields no check, while
+// a loose rule yields a wrong HOLD.
+var knownFileExtensions = map[string]bool{
+	".go": true, ".mod": true, ".sum": true, ".rs": true, ".py": true,
+	".ts": true, ".tsx": true, ".js": true, ".jsx": true, ".mjs": true,
+	".java": true, ".rb": true, ".php": true, ".c": true, ".h": true,
+	".cc": true, ".cpp": true, ".hpp": true, ".cs": true, ".swift": true,
+	".kt": true, ".scala": true, ".md": true, ".txt": true, ".json": true,
+	".yaml": true, ".yml": true, ".toml": true, ".ini": true, ".cfg": true,
+	".conf": true, ".sh": true, ".bash": true, ".zsh": true, ".fish": true,
+	".sql": true, ".html": true, ".css": true, ".scss": true, ".svg": true,
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".pdf": true,
+	".lock": true, ".env": true, ".gitignore": true, ".dockerignore": true,
+	".xml": true, ".proto": true, ".graphql": true, ".tf": true, ".tfvars": true,
 }

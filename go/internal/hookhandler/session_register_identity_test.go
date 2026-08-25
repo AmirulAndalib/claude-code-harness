@@ -1,10 +1,12 @@
 package hookhandler
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Chachamaru127/claude-code-harness/go/internal/deliveryidentity"
 	"github.com/Chachamaru127/claude-code-harness/go/internal/gitport"
@@ -323,4 +325,61 @@ func exportValues(content, key string) []string {
 		}
 	}
 	return values
+}
+
+// TestPresenceCardCarriesDeliveryIdentity pins that peers can actually address
+// this session. Under Breezing the identity is BREEZING_SESSION_ID/ROLE, not
+// the session id, so a roster that showed only the session id let a sender
+// address a recipient that does not exist.
+func TestPresenceCardCarriesDeliveryIdentity(t *testing.T) {
+	root := initGitRepoForPresence(t)
+	t.Setenv("HARNESS_PROJECT_ROOT", root)
+	t.Setenv("CLAUDE_ENV_FILE", filepath.Join(t.TempDir(), "env"))
+	t.Setenv("HARNESS_LIVEMSG_TEAM", "")
+	t.Setenv("HARNESS_LIVEMSG_AGENT", "")
+	t.Setenv("BREEZING_SESSION_ID", "sprint-team")
+	t.Setenv("BREEZING_ROLE", "worker-7")
+
+	payload := `{"session_id":"presence-identity-session-01","cwd":"` + root + `"}`
+	var out bytes.Buffer
+	if err := HandleSessionRegisterWithIdentity(strings.NewReader(payload), &out); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	listing := FormatSessionTeamList(root, time.Now())
+	if !strings.Contains(listing, "sprint-team") || !strings.Contains(listing, "worker-7") {
+		t.Fatalf("session list must expose the delivery identity, got:\n%s", listing)
+	}
+}
+
+// TestPresenceIdentityPreservesDeclaredTask keeps the 141.2 guarantee: writing
+// the identity must not wipe what `session declare` recorded.
+func TestPresenceIdentityPreservesDeclaredTask(t *testing.T) {
+	root := initGitRepoForPresence(t)
+	dir := sharedLiveSessionsDirFromRoot(root)
+	if dir == "" {
+		t.Fatal("sharedLiveSessionsDirFromRoot returned empty")
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sessionID := "presence-identity-session-02"
+	card := encodePresenceCard(PresenceCard{Label: "lead", Task: "141.8", Since: "2026-08-24T00:00:00Z"})
+	if err := os.WriteFile(filepath.Join(dir, sessionID), card, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	recordPresenceIdentity(root, sessionID, "team-x", "agent-y")
+
+	data, err := os.ReadFile(filepath.Join(dir, sessionID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ParsePresenceCardBody(data)
+	if got.Task != "141.8" || got.Label != "lead" || got.Since != "2026-08-24T00:00:00Z" {
+		t.Fatalf("declare metadata was clobbered: %#v", got)
+	}
+	if got.Team != "team-x" || got.Agent != "agent-y" {
+		t.Fatalf("identity was not recorded: %#v", got)
+	}
 }

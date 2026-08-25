@@ -182,3 +182,39 @@ func isHolderAliveViaSharedPresence(sessionID string, cfg LeaseConfig, now time.
 	cutoff := now.Add(-registerStaleCutoff)
 	return !info.ModTime().Before(cutoff)
 }
+
+// recordPresenceIdentity stores the session's resolved delivery identity in its
+// own presence card, merging into whatever `session declare` already wrote.
+// Peers read this to address a message: the identity is not derivable from the
+// session id, because Breezing resolves it from BREEZING_SESSION_ID/ROLE.
+// Fail-open throughout — presence is a convenience, never a gate.
+func recordPresenceIdentity(projectRoot, sessionID, team, agent string) {
+	if !validPresenceSessionID(sessionID) || (team == "" && agent == "") {
+		return
+	}
+	dir := sharedLiveSessionsDirFromRoot(projectRoot)
+	if dir == "" {
+		return
+	}
+	path := filepath.Join(dir, sessionID)
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	existing, _ := os.ReadFile(path)
+	card := ParsePresenceCardBody(existing)
+	if card.Team == team && card.Agent == agent {
+		return
+	}
+	card.Team = team
+	card.Agent = agent
+	body := encodePresenceCard(card)
+	if body == nil {
+		return
+	}
+	if err := os.WriteFile(path, body, presenceFileMode); err != nil {
+		return
+	}
+	// Keep the freshness signal the caller already established.
+	_ = os.Chtimes(path, info.ModTime(), info.ModTime())
+}

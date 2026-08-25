@@ -259,3 +259,39 @@ func TestConfiguredReviewerInconclusiveHolds(t *testing.T) {
 		t.Fatalf("verdict = %q, want HOLD when a configured reviewer is inconclusive", result.Verdict)
 	}
 }
+
+// TestVersionNumbersAndEmailsAreNotPaths pins the false-reject fix. A bare
+// dotted token used to satisfy "path-like", so verification=on held ordinary
+// completion notices that merely mentioned a version or an address.
+func TestVersionNumbersAndEmailsAreNotPaths(t *testing.T) {
+	for _, body := range []string{
+		"Go 1.24.0 に上げました",
+		"alice@example.com に連絡しました",
+		"v5.10.0 をリリースしました",
+	} {
+		result := livemsggate.Evaluate(context.Background(), livemsggate.Options{
+			RepoRoot: t.TempDir(),
+			Body:     body,
+		})
+		if result.Verdict != livemsggate.VerdictSend {
+			t.Fatalf("body %q: verdict = %q, want SEND (%s)", body, result.Verdict, result.Reason)
+		}
+	}
+}
+
+// TestRealPathsAreStillDetected keeps the fix from becoming a hole: a genuine
+// missing file must still hold, with or without a directory component.
+func TestRealPathsAreStillDetected(t *testing.T) {
+	for _, body := range []string{
+		"go/internal/nope/x.go を直しました",
+		"`missing-notes.md` を作成しました",
+	} {
+		result := livemsggate.Evaluate(context.Background(), livemsggate.Options{
+			RepoRoot: t.TempDir(),
+			Body:     body,
+		})
+		if result.Verdict != livemsggate.VerdictHold {
+			t.Fatalf("body %q: verdict = %q, want HOLD", body, result.Verdict)
+		}
+	}
+}

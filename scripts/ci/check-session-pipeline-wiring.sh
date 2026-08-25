@@ -181,6 +181,28 @@ if grep -q '^\[hermes\]' "$ROOT_DIR/hosts.toml" 2>/dev/null; then
 else
   fail "hosts.toml に [hermes] がない (5 ツール目が未配線)"
 fi
+
+# hosts.toml に宣言があることと、`harness gen` が実際に出力することは別。
+# Phase 141 では hermes の delivery が宣言だけされ、enforcement hook の deferred
+# エラーで早期 return するため一度も出力されていなかった。宣言の grep では
+# 捕まらないので、ここは実バイナリを一時ディレクトリで走らせて実出力を見る。
+HARNESS_BIN="$ROOT_DIR/bin/harness"
+if [ ! -x "$HARNESS_BIN" ]; then
+  echo "  SKIP: bin/harness が無いため gen 実出力チェックを省略 (not_observed)"
+else
+  probe_root="$(mktemp -d)"
+  probe_home="$(mktemp -d)"
+  mkdir -p "$probe_home/.hermes"
+  sed -n '/^\[hermes\]/,/^$/p' "$ROOT_DIR/hosts.toml" > "$probe_root/hosts.toml"
+  if HOME="$probe_home" "$HARNESS_BIN" gen "$probe_root" >/dev/null 2>&1 \
+     && [ -s "$probe_root/.hermes/hooks.json" ] \
+     && grep -q 'inbox check' "$probe_root/.hermes/hooks.json"; then
+    ok "harness gen が hermes の delivery を実際に出力する"
+  else
+    fail "hermes の delivery が生成されない (hosts.toml の宣言だけで実出力が無い)"
+  fi
+  rm -rf "$probe_root" "$probe_home"
+fi
 echo ""
 
 # ---- 結果 ----

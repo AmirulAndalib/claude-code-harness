@@ -134,9 +134,15 @@ coordinate them to reduce file conflicts, but only under these rules.
   `harness.toml`, default). The default is `off`, and while it is off the gate
   is not merely permissive — the send path never calls it, so the pipeline
   carries no verification cost for operators who do not want one. Turning it
-  `on` routes each outbound message through a machine check plus a read-only
-  judge; a `HOLD` verdict returns the reason to the sender and delivers nothing
-  to the recipient.
+  `on` routes each outbound message through deterministic machine checks —
+  mentioned files exist, mentioned commits resolve, a clean-worktree claim
+  matches `git status`. A read-only judge for claims no machine can decide is
+  defined (`agents/livemsg-gate.md`, reached through a `Reviewer` seam) but is
+  **not connected to the send path**; until it is, an unconfigured judge records
+  `not_observed` and the machine checks stand alone. An absent judge is never a
+  verdict — holding on one would block the completion notices this pipeline
+  exists to carry. A `HOLD` verdict returns the reason to the sender and
+  delivers nothing to the recipient.
 - Coordination health uses the tri-state model in
   `.claude/rules/active-watching-test-policy.md`: `not-configured` is silent;
   only `unreachable` / `corrupted` warn.

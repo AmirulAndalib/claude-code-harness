@@ -15,7 +15,14 @@ description: "This skill should be used when the user asks to notify other sessi
 bin/harness session list
 ```
 
-表示された値から宛先を選ぶ。名前が似ていても推測で送らない。
+出力は `session_id / team / agent / label / task / since / elapsed` のタブ区切り。
+`--to` に入れるのは **`agent` 列**であって `session_id` 列ではない。
+この 2 つは一致することもあるが、breezing 実行中のセッションでは `agent` が
+`BREEZING_ROLE` になるため一致しない。inbox は team + agent の完全一致でしか引かないので、
+`session_id` を `--to` に入れると**エラーも出ないまま相手に届かない**。
+
+`team` / `agent` 列が空のセッションは、まだ身分証を publish していない。
+そのセッションには送らず、相手が名乗るのを待つ。名前が似ていても推測で送らない。
 
 自分の送信元は、Phase 141.3 の hook が書き出す環境変数から取得する。
 

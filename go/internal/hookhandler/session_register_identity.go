@@ -74,6 +74,8 @@ func HandleSessionRegisterWithIdentity(in io.Reader, out io.Writer) error {
 	if team == "" {
 		return nil
 	}
+	// Publish the identity peers must use to address this session.
+	recordPresenceIdentity(resolveProjectRoot(), sessionID, team, agent)
 	return writeLiveMessageIdentity(
 		envFile,
 		team,
