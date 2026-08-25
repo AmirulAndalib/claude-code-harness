@@ -36,6 +36,28 @@ Phase 141 のレビューゲートが見つけた 5 件。いずれも「呼び�
 - **presence card の新フィールドが serialize 時に落ちていた**: `encodePresenceCard` が Label / Task / Since しかコピーしておらず、追加した Team / Agent が黙って捨てられていた
 
 配線チェック `scripts/ci/check-session-pipeline-wiring.sh` は、上記 3 件目を検出できませんでした (設定文字列の存在しか見ていなかった)。実バイナリを走らせて実出力を検査する形に変更しています。
+## [5.12.0] - 2026-08-24
+
+### Added
+
+- **Codex Breezing の実装 Worker を `gpt-5.6-luna` / `max` に統一**。Codex-native の `breezing` は setup が配置する managed custom agent `worker.toml` を選び、`breezing --codex` は中央の worker route を解決する。公式 companion 1.0.6 が受け付けない `max` は Harness が raw `codex exec` の reasoning config へ変換する。reviewer / advisor / deep は従来どおり `gpt-5.6-sol` / `xhigh` のまま
+- **Codex review に Sol/xhigh を確実に適用し、中断時の残留 process を防止**。review ごとの local proxy が `model` / `review_model` / `model_reasoning_effort` を `codex app-server` へ渡し、official companion の結果形式を保持する。`review --commit` は provider dispatch 前に拒否し、成功した delegation だけを ledger に記録する。TERM/INT は companion と proxy へ同時転送し、最大 1 秒待機後に残存 child を KILL/reap する
+
+### Changed
+
+- **Codex setup と host distribution の安全境界を追加**。local/remote setup は preflight 後に、Harness 所有の legacy `[notify]` 2 形態だけを backup + atomic migration する。custom/ambiguous shape は no-mutation fail とし、`features.multi_agent` と `features.default_mode_request_user_input` を欠落時に追加する。Claude/Codex dist は worker/reviewer profile と review runtime-helper closure を同梱し、Codex dist は fingerprint 実行に必要な Harness platform binaries も含める。primary-environment guard が拒否した task は provider 起動前に止め、成功 delegation の ledger に数えない
+- **README の Codex 導入説明を実効経路に同期**。英語・日本語のトップ README と `codex/README.md` に、更新後の setup 再実行と Codex 再起動、Worker の Luna/max、Reviewer の Sol/xhigh、メインセッションと明示 backend は固定対象外という境界を追加する
+- **Harness release の公開手順を tag-triggered workflow に統一**。古い直接 Release 作成・編集例を削除し、CHANGELOG を本文として公開する workflow と公開後の検証コマンドを正本にする
+
+#### Verification boundary
+
+- Windows named-pipe path は fixture/static checks のみで、live Windows provider/app-server は未観測。今回の実装は provider/API 呼び出し、実 HOME 変更、live install を行わない
+
+## [5.11.0] - 2026-08-22
+
+### Changed
+
+- **guardrail R05: `destructive_delete` の既定値を `ask` → `warn` に変更** (operator 裁定 2026-08-22)。未設定のプロジェクトでも、静的に検証できない削除は「確認で停止」ではなく「allow + `R05_WARN` 警告 + `.claude/state/destructive-delete.jsonl` 記録」になる。root 外の綴り・`..`・未解決 `$VAR`・glob・素の `.` の常時 ask backstop と runtime floor は不変。従来挙動に戻すには repo の `harness.toml` の `[safety.permissions]` セクションに `destructiveDelete = "ask"` (または yaml `safety.destructive_delete: ask`)。明示された不正値は従来どおり ask に正規化 (fail-safe)。git 外の消えたら困るデータを root 配下に持つ repo と guardrail 開発時は ask への opt-out を推奨
 
 ## [5.10.0] - 2026-08-22
 
@@ -6109,7 +6131,9 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.10.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.12.0...HEAD
+[5.12.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.11.0...v5.12.0
+[5.11.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.10.0...v5.11.0
 [5.10.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.9.0...v5.10.0
 [5.9.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.8.0...v5.9.0
 [5.8.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.7.0...v5.8.0

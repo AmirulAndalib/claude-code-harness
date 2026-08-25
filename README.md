@@ -157,7 +157,7 @@ a tool has an *entry path*, not a shared product promise.
 | Tool | Tier | Route |
 |---|---|---|
 | Claude Code | `supported` | Plugin marketplace, then `/harness-setup` |
-| Codex CLI | `supported` | `scripts/setup-codex.sh --user` |
+| Codex CLI | `supported` | [`scripts/setup-codex.sh --user`](codex/README.md#option-1-script-recommended-user-based); rerun after Harness updates, then restart Codex |
 | Cursor | `supported` | `scripts/setup-cursor.sh` — containment is harness-side, see [notes](docs/CURSOR_INTEGRATION.md) |
 | Grok | `supported` | `scripts/setup-grok.sh` |
 | Codex app | `candidate` | Candidate smoke only; CLI proof is not reused |
@@ -220,6 +220,14 @@ Reach for these after the basic path is working.
 | **harness-mem** | Project-scoped memory and recall across sessions | Optional; purge stays explicit |
 | **OpenCode bootstrap** | Mirrors guidance into OpenCode-compatible surfaces | Runtime parity not claimed |
 | auto-approve *(experimental)* | `HARNESS_AUTO_APPROVE=on` records the gate result in the orchestration ledger | Default OFF. Approval prompts are **not** skipped yet |
+
+**Codex Breezing role routing.** After setup is rerun and Codex is restarted,
+Codex-native `$breezing` selects the managed Worker profile. `$breezing --codex`
+uses the companion Worker route. Both implementation Workers use
+`gpt-5.6-luna` / `max`; the routed Codex review route uses `gpt-5.6-sol` /
+`xhigh`. The main Codex session model stays unpinned, and explicit backends such
+as Cursor keep their own routing. See [activation and
+boundaries](codex/README.md#codex-breezing-role-routing).
 
 </details>
 

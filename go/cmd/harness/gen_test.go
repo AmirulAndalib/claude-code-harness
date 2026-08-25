@@ -116,6 +116,69 @@ func TestGeneratedHooks_MatchesGoldenFixtures(t *testing.T) {
 	}
 }
 
+func TestGeneratedAgentProfiles_MatchesCommittedArtifacts(t *testing.T) {
+	root := repoRootForTest(t)
+	profiles, err := generatedAgentProfiles(root)
+	if err != nil {
+		t.Fatalf("generatedAgentProfiles: %v", err)
+	}
+	for _, rel := range []string{"codex/.codex/agents/worker.toml", "codex/.codex/agents/reviewer.toml"} {
+		wantPath := filepath.FromSlash(rel)
+		want, ok := profiles[wantPath]
+		if !ok {
+			t.Fatalf("generatedAgentProfiles missing %s", rel)
+		}
+		committed, err := os.ReadFile(filepath.Join(root, wantPath))
+		if err != nil {
+			t.Fatalf("read committed managed profile %s: %v", rel, err)
+		}
+		if !bytes.Equal(committed, want) {
+			t.Errorf("managed profile %s drifted from hosts.toml:\n--- committed ---\n%s--- generated ---\n%s", rel, committed, want)
+		}
+	}
+}
+
+func TestRunGenWrite_WritesManagedAgentProfiles(t *testing.T) {
+	root := t.TempDir()
+	sourceRoot := repoRootForTest(t)
+	hosts, err := os.ReadFile(filepath.Join(sourceRoot, hostsDescriptorName))
+	if err != nil {
+		t.Fatalf("read hosts.toml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, hostsDescriptorName), hosts, 0o644); err != nil {
+		t.Fatalf("write hosts.toml: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".claude-plugin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	claudeHooks, err := os.ReadFile(filepath.Join(sourceRoot, ".claude-plugin/hooks.json"))
+	if err != nil {
+		t.Fatalf("read claude hooks: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".claude-plugin/hooks.json"), claudeHooks, 0o644); err != nil {
+		t.Fatalf("write claude hooks: %v", err)
+	}
+
+	if err := runGenWrite(root); err != nil {
+		t.Fatalf("runGenWrite: %v", err)
+	}
+	for _, tc := range []struct {
+		rel  string
+		want string
+	}{
+		{rel: "codex/.codex/agents/worker.toml", want: `model = "gpt-5.6-luna"`},
+		{rel: "codex/.codex/agents/reviewer.toml", want: `model = "gpt-5.6-sol"`},
+	} {
+		profile, err := os.ReadFile(filepath.Join(root, tc.rel))
+		if err != nil {
+			t.Fatalf("read generated profile %s: %v", tc.rel, err)
+		}
+		if !bytes.Contains(profile, []byte(tc.want)) {
+			t.Errorf("generated profile %s missing managed model %s:\n%s", tc.rel, tc.want, profile)
+		}
+	}
+}
+
 // TestGenDocs_CatalogMatchesSkills is the in-process equivalent of
 // `harness gen docs --check`: it guarantees the committed
 // docs/CLAUDE-skill-catalog.md managed region stays in sync with the actual

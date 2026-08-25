@@ -19,20 +19,23 @@ func bashInput(dir, command string) hookproto.HookInput {
 	}
 }
 
-func TestBuildContextDestructiveDeletePolicyDefaultsToAsk(t *testing.T) {
+// Product default since v5.11.0 is warn (operator decision 2026-08-22).
+func TestBuildContextDestructiveDeletePolicyDefaultsToWarn(t *testing.T) {
 	clearGuardrailKnobEnv(t)
 	ctx := BuildContext(bashInput(t.TempDir(), "rm -rf ./x"))
-	if ctx.DestructiveDeletePolicy != "ask" {
-		t.Fatalf("DestructiveDeletePolicy = %q, want ask", ctx.DestructiveDeletePolicy)
+	if ctx.DestructiveDeletePolicy != "warn" {
+		t.Fatalf("DestructiveDeletePolicy = %q, want warn (product default)", ctx.DestructiveDeletePolicy)
 	}
 }
 
+// Producer tests use "ask" (the non-default value) so they prove the source
+// actually drives the result instead of passing vacuously on the default.
 func TestBuildContextDestructiveDeletePolicyFromEnv(t *testing.T) {
 	clearGuardrailKnobEnv(t)
-	t.Setenv("HARNESS_DESTRUCTIVE_DELETE_POLICY", "warn")
+	t.Setenv("HARNESS_DESTRUCTIVE_DELETE_POLICY", "ask")
 	ctx := BuildContext(bashInput(t.TempDir(), "rm -rf ./x"))
-	if ctx.DestructiveDeletePolicy != "warn" {
-		t.Fatalf("DestructiveDeletePolicy = %q, want warn", ctx.DestructiveDeletePolicy)
+	if ctx.DestructiveDeletePolicy != "ask" {
+		t.Fatalf("DestructiveDeletePolicy = %q, want ask (env opt-out over warn default)", ctx.DestructiveDeletePolicy)
 	}
 }
 
@@ -40,12 +43,12 @@ func TestBuildContextDestructiveDeletePolicyFromProjectYAML(t *testing.T) {
 	clearGuardrailKnobEnv(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".claude-code-harness.config.yaml"),
-		[]byte("safety:\n  protected_branch_push: ask\n  destructive_delete: warn\n"), 0o644); err != nil {
+		[]byte("safety:\n  protected_branch_push: ask\n  destructive_delete: ask\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	ctx := BuildContext(bashInput(dir, "rm -rf ./x"))
-	if ctx.DestructiveDeletePolicy != "warn" {
-		t.Fatalf("DestructiveDeletePolicy = %q, want warn (from YAML)", ctx.DestructiveDeletePolicy)
+	if ctx.DestructiveDeletePolicy != "ask" {
+		t.Fatalf("DestructiveDeletePolicy = %q, want ask (from YAML, opt-out over warn default)", ctx.DestructiveDeletePolicy)
 	}
 	if ctx.ProtectedBranchPushPolicy != "ask" {
 		t.Fatalf("ProtectedBranchPushPolicy = %q, want ask (shared YAML reader must not cross keys)", ctx.ProtectedBranchPushPolicy)
@@ -57,14 +60,14 @@ func TestBuildContextDestructiveDeletePolicyFromPluginTOMLFallback(t *testing.T)
 	project := t.TempDir()
 	plugin := t.TempDir()
 	if err := os.WriteFile(filepath.Join(plugin, "harness.toml"),
-		[]byte("[safety.permissions]\ndestructiveDelete = \"warn\"\n"), 0o644); err != nil {
+		[]byte("[safety.permissions]\ndestructiveDelete = \"ask\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	input := bashInput(project, "rm -rf ./x")
 	input.PluginRoot = plugin
 	ctx := BuildContext(input)
-	if ctx.DestructiveDeletePolicy != "warn" {
-		t.Fatalf("DestructiveDeletePolicy = %q, want warn (from plugin harness.toml)", ctx.DestructiveDeletePolicy)
+	if ctx.DestructiveDeletePolicy != "ask" {
+		t.Fatalf("DestructiveDeletePolicy = %q, want ask (from plugin harness.toml, opt-out over warn default)", ctx.DestructiveDeletePolicy)
 	}
 }
 
@@ -113,15 +116,37 @@ func TestEvaluatePreTool_DestructiveDeleteWarnApprovesAndRecords(t *testing.T) {
 	}
 }
 
-func TestEvaluatePreTool_DestructiveDeleteDefaultAsksAndDoesNotRecord(t *testing.T) {
+// v5.11.0: the unconfigured default is warn — same approve+record contract as
+// an explicit warn.
+func TestEvaluatePreTool_DestructiveDeleteDefaultWarnsAndRecords(t *testing.T) {
 	clearGuardrailKnobEnv(t)
 	dir := t.TempDir()
 	result := EvaluatePreTool(bashInput(dir, "cd "+dir+" && echo hi && rm -rf tmp/pdfs/s0-progress"))
+	if result.Decision != hookproto.DecisionApprove {
+		t.Fatalf("expected approve by default (warn), got %s: %s", result.Decision, result.Reason)
+	}
+	if !strings.HasPrefix(result.SystemMessage, "R05_WARN:") {
+		t.Fatalf("expected R05_WARN warning by default, got %q", result.SystemMessage)
+	}
+	if records := readDestructiveDeleteRecords(t, dir); len(records) != 1 {
+		t.Fatalf("default warn must write exactly 1 record, got %d", len(records))
+	}
+}
+
+// A repo can opt back out to the pre-v5.11.0 behaviour with an explicit ask.
+func TestEvaluatePreTool_DestructiveDeleteExplicitAskOptOutAsksAndDoesNotRecord(t *testing.T) {
+	clearGuardrailKnobEnv(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "harness.toml"),
+		[]byte("[safety.permissions]\ndestructiveDelete = \"ask\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := EvaluatePreTool(bashInput(dir, "cd "+dir+" && echo hi && rm -rf tmp/pdfs/s0-progress"))
 	if result.Decision != hookproto.DecisionAsk {
-		t.Fatalf("expected ask by default, got %s", result.Decision)
+		t.Fatalf("expected ask with explicit opt-out, got %s", result.Decision)
 	}
 	if records := readDestructiveDeleteRecords(t, dir); len(records) != 0 {
-		t.Fatalf("default ask must not write a warn record, got %d", len(records))
+		t.Fatalf("opt-out ask must not write a warn record, got %d", len(records))
 	}
 }
 

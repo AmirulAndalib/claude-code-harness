@@ -56,17 +56,60 @@ assert_absent "$CLAUDE_OUT" ".cursor-plugin"
 assert_absent "$CLAUDE_OUT" ".grok-plugin"
 assert_absent "$CLAUDE_OUT" "codex"
 assert_absent "$CLAUDE_OUT" ".cursor"
+assert_present "$CLAUDE_OUT" "scripts/codex-companion.sh"
+assert_present "$CLAUDE_OUT" "scripts/codex-review-app-server-proxy.mjs"
+assert_present "$CLAUDE_OUT" "scripts/lib/orchestration-ledger.sh"
+assert_present "$CLAUDE_OUT" "scripts/model-routing.sh"
 
 assert_present "$CODEX_OUT" ".codex-plugin/plugin.json"
 assert_present "$CODEX_OUT" "skills/harness-plan/SKILL.md"
 assert_present "$CODEX_OUT" "scripts/codex-companion.sh"
+assert_present "$CODEX_OUT" "scripts/codex-review-app-server-proxy.mjs"
+assert_present "$CODEX_OUT" "scripts/lib/orchestration-ledger.sh"
 assert_present "$CODEX_OUT" "scripts/cursor-companion.sh"
 assert_present "$CODEX_OUT" "scripts/resolve-impl-backend.sh"
 assert_present "$CODEX_OUT" "scripts/model-routing.sh"
+assert_present "$CODEX_OUT" "VERSION"
+for bin in harness harness-darwin-amd64 harness-darwin-arm64 harness-linux-amd64 harness-windows-amd64.exe; do
+  assert_present "$CODEX_OUT" "bin/$bin"
+  if ! cmp -s "$ROOT_DIR/bin/$bin" "$CODEX_OUT/bin/$bin"; then
+    fail "Codex dist runtime binary must match the canonical artifact: $bin"
+  fi
+done
+for profile in worker.toml reviewer.toml; do
+  assert_present "$CODEX_OUT" "agents/$profile"
+  if ! cmp -s "$ROOT_DIR/codex/.codex/agents/$profile" "$CODEX_OUT/agents/$profile"; then
+    fail "Codex dist agent profile must be the generated canonical artifact: $profile"
+  fi
+done
 assert_absent "$CODEX_OUT" ".claude-plugin"
 assert_absent "$CODEX_OUT" ".cursor-plugin"
 assert_absent "$CODEX_OUT" ".grok-plugin"
 assert_absent "$CODEX_OUT" ".cursor"
+
+# A Codex dist is a runtime package, not a presence-only bundle. Exercise the
+# routed Luna/max task path with a fake provider binary and an isolated HOME;
+# the real bundled harness binary performs both fingerprint captures.
+mkdir -p "${TMP_ROOT}/codex-fake-bin" "${TMP_ROOT}/codex-home" "${TMP_ROOT}/codex-consumer"
+cat >"${TMP_ROOT}/codex-fake-bin/codex" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >"${FAKE_CODEX_ARGS:?}"
+cat >/dev/null
+EOF
+chmod +x "${TMP_ROOT}/codex-fake-bin/codex"
+if ! (cd "${TMP_ROOT}/codex-consumer" && \
+  HOME="${TMP_ROOT}/codex-home" \
+    CODEX_HOME="${TMP_ROOT}/codex-home" \
+    PATH="${TMP_ROOT}/codex-fake-bin:${PATH}" \
+    FAKE_CODEX_ARGS="${TMP_ROOT}/codex-args.txt" \
+    HARNESS_PLUGIN_ROOT="$CODEX_OUT" \
+    CODEX_MODEL_TIER=worker \
+    bash "$CODEX_OUT/scripts/codex-companion.sh" task --write "dist closure smoke"); then
+  fail "Codex dist routed task must start with its bundled runtime closure"
+fi
+if ! grep -Fq 'model_reasoning_effort="max"' "${TMP_ROOT}/codex-args.txt"; then
+  fail "Codex dist routed task did not preserve worker max effort"
+fi
 
 assert_present "$CURSOR_OUT" ".cursor-plugin/plugin.json"
 assert_present "$CURSOR_OUT" "skills/harness-work/SKILL.md"

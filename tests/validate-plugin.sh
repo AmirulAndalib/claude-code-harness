@@ -836,6 +836,18 @@ else
     fail_test "Claude/Codex model routing の契約テストに失敗 — 'bash tests/test-model-routing.sh' で詳細確認"
 fi
 
+if bash "$PLUGIN_ROOT/tests/test-breezing-codex-worker-route.sh" > /dev/null 2>&1; then
+    pass_test "D70: Codex Breezing managed worker profile・spawn shape・worker-tier pin が維持されています (test-breezing-codex-worker-route.sh)"
+else
+    fail_test "D70: Codex Breezing worker route の契約テストに失敗 — 'bash tests/test-breezing-codex-worker-route.sh' で詳細確認"
+fi
+
+if bash "$PLUGIN_ROOT/tests/test-codex-reviewer-route.sh" > /dev/null 2>&1; then
+    pass_test "Codex reviewer は Sol/xhigh を per-run app-server config 経由で official envelope に適用します (test-codex-reviewer-route.sh)"
+else
+    fail_test "Codex reviewer の実効 model/effort 配線テストに失敗 — 'bash tests/test-codex-reviewer-route.sh' で詳細確認"
+fi
+
 if bash "$PLUGIN_ROOT/tests/test-impl-backend.sh" > /dev/null 2>&1; then
     pass_test "実装バックエンド選択 (set/resolve-impl-backend) の precedence・スコープ契約が維持されています (test-impl-backend.sh)"
 else

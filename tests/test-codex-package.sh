@@ -24,6 +24,8 @@ log_test "Required files exist"
 required_files=(
   "codex/AGENTS.md"
   "codex/README.md"
+  "codex/.codex/agents/worker.toml"
+  "codex/.codex/agents/reviewer.toml"
   "codex/.codex/rules/harness.rules"
   ".codex-plugin/plugin.json"
 )
@@ -183,12 +185,16 @@ if bash scripts/build-host-plugin-dist.sh --host codex --out "${codex_dist_tmp}"
     "skills/cursor-setup/SKILL.md"
     "scripts/build-host-plugin-dist.sh"
     "scripts/codex-companion.sh"
+    "scripts/codex-review-app-server-proxy.mjs"
+    "scripts/lib/orchestration-ledger.sh"
     "scripts/codex-primary-environment-guard.sh"
     "scripts/cursor-companion.sh"
     "scripts/model-routing.sh"
     "scripts/resolve-impl-backend.sh"
     "scripts/set-impl-backend.sh"
     "scripts/setup-cursor.sh"
+    "agents/worker.toml"
+    "agents/reviewer.toml"
   )
   for path in "${required_codex_dist_paths[@]}"; do
     if [ ! -e "${codex_dist_tmp}/${path}" ]; then
@@ -405,10 +411,18 @@ else
   log_fail "Harness workflow surface checks failed"
 fi
 
-log_test "codex/.codex/config.toml has multi_agent + harness roles"
+log_test "codex/.codex/config.toml has current interaction + multi-agent defaults"
 config_ok=true
 if ! rg -q --fixed-strings "multi_agent = true" "codex/.codex/config.toml"; then
   echo "  missing: multi_agent = true"
+  config_ok=false
+fi
+if ! rg -q --fixed-strings "default_mode_request_user_input = true" "codex/.codex/config.toml"; then
+  echo "  missing: default_mode_request_user_input = true"
+  config_ok=false
+fi
+if rg -q '^\[notify\]$' "codex/.codex/config.toml"; then
+  echo "  stale [notify] table makes the Codex 0.148 config invalid"
   config_ok=false
 fi
 for role in "implementer" "reviewer" "claude_implementer" "claude_reviewer"; do
@@ -418,9 +432,62 @@ for role in "implementer" "reviewer" "claude_implementer" "claude_reviewer"; do
   fi
 done
 if $config_ok; then
-  log_pass "config.toml has required multi-agent defaults"
+  log_pass "config.toml has required interaction and multi-agent defaults"
 else
-  log_fail "config.toml missing required multi-agent defaults"
+  log_fail "config.toml missing required interaction or multi-agent defaults"
+fi
+
+log_test "Codex loads distributed config; managed agent TOMLs parse without a provider"
+loader_ok=true
+loader_tmp="$(mktemp -d)"
+mkdir -p "${loader_tmp}/home/agents"
+cp "codex/.codex/config.toml" "${loader_tmp}/home/config.toml"
+cp "codex/.codex/agents/worker.toml" "${loader_tmp}/home/agents/worker.toml"
+cp "codex/.codex/agents/reviewer.toml" "${loader_tmp}/home/agents/reviewer.toml"
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import tomllib' >/dev/null 2>&1; then
+  for agent_file in "codex/.codex/agents/worker.toml" "codex/.codex/agents/reviewer.toml"; do
+    if ! python3 - "$agent_file" <<'PY'
+import sys
+import tomllib
+
+with open(sys.argv[1], "rb") as stream:
+    document = tomllib.load(stream)
+if not document.get("name") or not document.get("model"):
+    raise SystemExit("managed agent TOML must define name and model")
+PY
+    then
+      echo "  invalid managed agent TOML: ${agent_file}"
+      loader_ok=false
+    fi
+  done
+else
+  echo "  skipped Python TOML validation: python3/tomllib unavailable"
+fi
+if command -v codex >/dev/null 2>&1; then
+  if ! HOME="${loader_tmp}/home" CODEX_HOME="${loader_tmp}/home" codex --strict-config features list \
+    >"${loader_tmp}/features.out" 2>"${loader_tmp}/features.err"; then
+    if rg -q --fixed-strings '`--strict-config` is not supported for `codex features`' \
+      "${loader_tmp}/features.err"; then
+      if ! HOME="${loader_tmp}/home" CODEX_HOME="${loader_tmp}/home" codex features list \
+        >"${loader_tmp}/features.out" 2>"${loader_tmp}/features.err"; then
+        echo "  Codex rejected the distributed config"
+        sed 's/^/    /' "${loader_tmp}/features.err" | head -40
+        loader_ok=false
+      fi
+    else
+      echo "  Codex rejected the distributed config"
+      sed 's/^/    /' "${loader_tmp}/features.err" | head -40
+      loader_ok=false
+    fi
+  fi
+else
+  echo "  skipped Codex config loader: codex CLI unavailable"
+fi
+rm -rf "${loader_tmp}"
+if $loader_ok; then
+  log_pass "Distributed config loads; managed agent TOMLs parse without provider/API access"
+else
+  log_fail "Distributed Codex config load or managed agent TOML parse check failed"
 fi
 
 # Test 1.7: setup scripts should not create duplicate skill listings
@@ -464,6 +531,10 @@ for script in "${setup_scripts[@]}"; do
     echo "  missing cleanup_removed_harness_skill_entries: $script"
     scripts_ok=false
   fi
+  if ! rg -q 'sync_named_children .*agents' "$script"; then
+    echo "  managed Codex agents are not synchronized: $script"
+    scripts_ok=false
+  fi
   if ! rg -q --fixed-strings '_archived|*.backup.*' "$script"; then
     echo "  missing legacy skip rule (_archived|*.backup.*): $script"
     scripts_ok=false
@@ -489,6 +560,15 @@ else
 fi
 rm -f /tmp/codex-setup-symlink.$$ || true
 
+log_test "setup-codex synchronizes managed agents with a fake remote clone"
+if bash tests/test-codex-setup-remote.sh >/tmp/codex-setup-remote.$$ 2>&1; then
+  log_pass "Remote setup managed-agent sync is safe"
+else
+  cat /tmp/codex-setup-remote.$$ | sed 's/^/  /'
+  log_fail "setup-codex managed-agent sync test failed"
+fi
+rm -f /tmp/codex-setup-remote.$$ || true
+
 # Test 1.7b: setup-codex should not inject stale notify config
 log_test "setup-codex.sh avoids stale notify config"
 if rg -q '^\[notify\]' "scripts/setup-codex.sh"; then
@@ -509,10 +589,55 @@ if ! rg -q --fixed-strings 'rerun the same script to sync `~/.codex/skills`' "co
   echo "  missing rerun update guidance"
   readme_update_path_ok=false
 fi
+if ! rg -q --fixed-strings 'claude-code-harness/codex/.codex/agents/worker.toml' "codex/README.md" || \
+  ! rg -q --fixed-strings 'claude-code-harness/codex/.codex/agents/reviewer.toml' "codex/README.md"; then
+  echo "  missing manual managed-agent sync guidance"
+  readme_update_path_ok=false
+fi
+if ! rg -q --fixed-strings 'Manual (fresh managed surfaces only)' "codex/README.md" || \
+  ! rg -q --fixed-strings 'existing Codex configuration detected; use Option 1' "codex/README.md" || \
+  ! rg -q --fixed-strings '[ ! -L "$target" ]' "codex/README.md" || \
+  ! rg -q --fixed-strings '[ ! -L "$target_dir" ]' "codex/README.md" || \
+  rg -q --fixed-strings 'rm -rf "$CODEX_HOME/skills/$name"' "codex/README.md"; then
+  echo "  manual path must fail before overwriting an existing managed install"
+  readme_update_path_ok=false
+fi
 if $readme_update_path_ok; then
   log_pass "codex README points users to the reliable update path"
 else
   log_fail "codex README update-path guidance is incomplete"
+fi
+
+log_test "codex README documents Breezing role routing and activation boundaries"
+readme_role_routing_ok=true
+for required_text in \
+  '## Codex Breezing Role Routing' \
+  'Path-based skill loading does not install the managed worker/reviewer profiles' \
+  'restart Codex after setup completes' \
+  '/harness-setup codex' \
+  'Files other than the managed' \
+  'Those two filenames are backed up and replaced even when the existing' \
+  '| Codex-native `$breezing` implementation Worker |' \
+  '| `$breezing --codex` implementation Worker |' \
+  '| Routed Codex review / managed Reviewer |' \
+  '`gpt-5.6-luna` / `max`' \
+  '`gpt-5.6-sol` / `xhigh`' \
+  '`features.default_mode_request_user_input = true`' \
+  'Explicit `true` or `false` values already present in the user config are preserved' \
+  'top-level `model` unset for the main Codex session'; do
+  if ! rg -q --fixed-strings "$required_text" "codex/README.md"; then
+    echo "  missing: ${required_text}"
+    readme_role_routing_ok=false
+  fi
+done
+if rg -q --fixed-strings '/setup codex' "codex/README.md"; then
+  echo "  stale: /setup codex alias remains"
+  readme_role_routing_ok=false
+fi
+if $readme_role_routing_ok; then
+  log_pass "codex README explains role routing and setup activation"
+else
+  log_fail "codex README role-routing guidance is incomplete"
 fi
 
 log_test "Codex 0.130.0 stable provider and workflow policy is documented"

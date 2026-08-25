@@ -81,7 +81,7 @@ Codex `0.123.0` fixed `codex exec` so root-level shared flags, such as sandbox a
 Before this upstream fix, a command shaped like this could be misleading:
 
 ```bash
-codex --sandbox read-only --model gpt-5.4 exec -
+codex --sandbox read-only --model gpt-5.6-terra exec -
 ```
 
 The root CLI parsed the shared options, but the `exec` command could still start with stale or default sandbox / model settings.

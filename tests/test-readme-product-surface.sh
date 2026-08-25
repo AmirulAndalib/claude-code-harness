@@ -27,6 +27,7 @@ for file in "$ROOT_DIR/README.md" "$ROOT_DIR/README_ja.md"; do
   assert_contains "$file" "docs/onboarding/index.md"
   assert_contains "$file" "docs/onboarding/migration.md"
   assert_contains "$file" "docs/onboarding/skill-trigger-acceptance.md"
+  assert_contains "$file" "codex/README.md#codex-breezing-role-routing"
   assert_contains "$file" "Claude Code | \`supported\`"
   assert_contains "$file" "Codex CLI | \`supported\`"
   assert_contains "$file" "Codex app | \`candidate\`"
@@ -59,6 +60,12 @@ assert_contains "$ROOT_DIR/README.md" "it is to approve or correct it"
 assert_contains "$ROOT_DIR/README.md" "Harness drafts \`spec.md\` and \`Plans.md\` for you"
 assert_contains "$ROOT_DIR/README.md" "Runtime floor"
 assert_contains "$ROOT_DIR/README.md" "Guardrails"
+assert_contains "$ROOT_DIR/README.md" "Codex Breezing role routing"
+assert_contains "$ROOT_DIR/README.md" 'Both implementation Workers use'
+assert_contains "$ROOT_DIR/README.md" '`gpt-5.6-luna` / `max`'
+assert_contains "$ROOT_DIR/README.md" 'the routed Codex review route uses'
+assert_contains "$ROOT_DIR/README.md" '`gpt-5.6-sol` /'
+assert_contains "$ROOT_DIR/README.md" "main Codex session model stays unpinned"
 
 assert_contains "$ROOT_DIR/README_ja.md" "## 何を解決するか"
 assert_contains "$ROOT_DIR/README_ja.md" "## 30 秒で導入"
@@ -75,6 +82,12 @@ assert_contains "$ROOT_DIR/README_ja.md" "あなたの仕事は計画を書く�
 assert_contains "$ROOT_DIR/README_ja.md" "実行が進む前に、出てきた内容を承認するか直すことです"
 assert_contains "$ROOT_DIR/README_ja.md" "実行時フロア"
 assert_contains "$ROOT_DIR/README_ja.md" "ガードレール"
+assert_contains "$ROOT_DIR/README_ja.md" "Codex Breezing の役割別ルーティング"
+assert_contains "$ROOT_DIR/README_ja.md" 'どちらの実装 Worker も'
+assert_contains "$ROOT_DIR/README_ja.md" '`gpt-5.6-luna` / `max`'
+assert_contains "$ROOT_DIR/README_ja.md" 'Codex review route は'
+assert_contains "$ROOT_DIR/README_ja.md" '`gpt-5.6-sol` /'
+assert_contains "$ROOT_DIR/README_ja.md" "メイン Codex セッションのモデルは固定しません"
 assert_not_contains "$ROOT_DIR/README_ja.md" "## The loop"
 assert_not_contains "$ROOT_DIR/README_ja.md" "## Install by tool"
 assert_not_contains "$ROOT_DIR/README_ja.md" "## The safety layer"

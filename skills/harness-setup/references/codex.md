@@ -16,10 +16,11 @@ TIMEOUT=$(command -v timeout || command -v gtimeout || echo "")
 > **注意**: Harness v4.0 本体（`harness` コマンド）は Node.js 不要の Go バイナリ。
 > Codex CLI（`codex` コマンド）は別ツールであり、引き続き Node.js が必要。
 
-### Codex provider / model metadata policy (0.123.0+ / 0.130.0)
+### Codex provider / model metadata policy (0.123.0+ / 0.130.0 / current models)
 
 Codex `0.123.0` 以降の provider / model guidance と、Codex `0.130.0` stable の Bedrock `aws login` guidance は
 `docs/codex-provider-setup-policy.md` を正本として扱う。
+公式の current model guidance は `https://developers.openai.com/codex/models` を参照する。
 
 要点:
 
@@ -27,9 +28,12 @@ Codex `0.123.0` 以降の provider / model guidance と、Codex `0.130.0` stable
 - AWS profile は user / project の Codex config で `[model_providers.amazon-bedrock.aws]` に置く。
 - AWS console-login credentials from `aws login` profiles は AWS 側の profile material として扱う。
 - Harness は AWS credential、console-login cache、provider endpoint を書き込まない。
-- Harness の配布用 Codex config には `model = "gpt-5.4"` を setup default として固定しない。
+- Harness の配布用 Codex config は `model` を unset にし、provider/account/CLI recommended model を継承する。固定の gpt-5.4 default は仮定しない。
 - Harness の配布用 Codex config には `model_provider = "amazon-bedrock"` も setup default として固定しない。
-- `gpt-5.4` は Codex 本体の current model metadata として扱い、古い `gpt-5.2-codex` などを推奨 sample として残さない。
+- GPT-5.4 and GPT-5.4 mini retire from Codex with ChatGPT sign-in on August 31, 2026.
+- If you sign in with ChatGPT, replace `gpt-5.4` with `gpt-5.6-terra` and `gpt-5.4-mini` with `gpt-5.6-luna`.
+- The OpenAI API and Codex authenticated with your own API key aren't affected.
+- 古い `gpt-5.2-codex` などを推奨 sample として残さない。
 - Claude Code 側の `CLAUDE_CODE_USE_BEDROCK` / `ANTHROPIC_DEFAULT_*` / `modelOverrides` guidance と、Codex の `model_provider = "amazon-bedrock"` は混ぜない。
 
 Bedrock を使う user / project だけが、必要に応じて次を追加する:
@@ -135,4 +139,3 @@ bash scripts/codex-companion.sh task --write "タスク内容"
 # または stdin 経由
 cat /tmp/prompt.md | bash scripts/codex-companion.sh task --write
 ```
-

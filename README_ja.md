@@ -150,7 +150,7 @@ Harness はローカルのセッション間に名簿と連絡路を持つ。
 | Tool | Tier | 経路 |
 |---|---|---|
 | Claude Code | `supported` | プラグイン marketplace のあと `/harness-setup` |
-| Codex CLI | `supported` | `scripts/setup-codex.sh --user` |
+| Codex CLI | `supported` | [`scripts/setup-codex.sh --user`](codex/README.md#option-1-script-recommended-user-based)。Harness 更新後に再実行し、Codex を再起動 |
 | Cursor | `supported` | `scripts/setup-cursor.sh`。閉じ込めは Harness 側で行う（[詳細](docs/CURSOR_INTEGRATION.md)） |
 | Grok | `supported` | `scripts/setup-grok.sh` |
 | Codex app | `candidate` | 簡易検証のみ。CLI 版の実績は流用しない |
@@ -214,6 +214,15 @@ bin/harness doctor --migration-report
 | **harness-mem** | プロジェクト単位の記憶と、セッションをまたいだ想起 | 任意。削除は明示的に行う |
 | **OpenCode 連携** | 案内を OpenCode 互換の形に出力する | 実行時の同等性は主張しない |
 | auto-approve（実験中） | `HARNESS_AUTO_APPROVE=on` で判定結果を台帳に記録する | 既定は無効。確認そのものは**まだ省略されない** |
+
+**Codex Breezing の役割別ルーティング。** setup の再実行後に Codex を
+再起動すると、Codex-native `$breezing` は managed Worker profile（Worker 専用の
+設定ファイル）を選びます。`$breezing --codex` は companion（Harness から Codex CLI を
+呼ぶ仲介経路）の Worker route を使います。どちらの実装 Worker も
+`gpt-5.6-luna` / `max` です。Codex review route は `gpt-5.6-sol` / `xhigh` です。
+メイン Codex セッションのモデルは固定しません。Cursor など別の実装担当 CLI を
+明示した場合は、その CLI の役割別の振り分けを維持します。
+[有効化条件と境界](codex/README.md#codex-breezing-role-routing) を参照してください。
 
 </details>
 

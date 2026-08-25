@@ -1,6 +1,6 @@
 #!/bin/bash
 # tests/test-r05-destructive-delete-policy.sh
-# 実効性契約テスト: R05 の destructive_delete=warn (HOTL opt-in) が、実際に
+# 実効性契約テスト: R05 の destructive_delete (v5.11.0〜 既定 warn) が、実際に
 # `go build` した bin/harness へ Claude Code の PreToolUse stdin payload をそのまま
 # 投入したときに効くことを確認する。
 #
@@ -8,10 +8,11 @@
 # EvaluatePreTool() を直接呼ぶが、「main.go の hook pre-tool エントリポイントまで
 # 配線されているか」(D58: 配線した ≠ 効いている) はプロセス境界を越えて確認する。
 #
-# 3 点を固定する:
-#   1. 既定 (設定なし): `cd <root> && echo && rm -rf tmp/x` は ask のまま (後方互換)
-#   2. warn (harness.toml): 同じコマンドが allow になり、
+# 4 点を固定する:
+#   1. 既定 (設定なし) = warn: `cd <root> && echo && rm -rf tmp/x` が allow になり、
 #      .claude/state/destructive-delete.jsonl に 1 行記録される
+#   2. opt-out (harness.toml destructiveDelete=ask): 同じコマンドが ask に戻り、記録されない
+#   2b. env HARNESS_DESTRUCTIVE_DELETE_POLICY=ask も既定 warn より優先される
 #   3. warn でも root 外の絶対パスは allow にならず、記録もされない
 #
 # Usage: bash tests/test-r05-destructive-delete-policy.sh
@@ -99,51 +100,51 @@ record_count() {
   if [ -f "$f" ]; then wc -l < "$f" | tr -d ' '; else echo 0; fi
 }
 
-# 1. 既定は ask のまま
+# 1. 既定 (設定なし) = warn: allow + 記録
 DEFAULT_DIR="$(fixture_project default "")"
 CMD="cd $DEFAULT_DIR && echo hi && rm -rf tmp/x"
 decision="$(run_hook "$DEFAULT_DIR" "$CMD")"
-if [ "$decision" = "ask" ]; then
-  pass "既定 (設定なし): 前置コマンド付き相対 rm -rf は ask のまま"
-else
-  fail "既定 (設定なし): ask を期待したが $decision"
-fi
-if [ "$(record_count "$DEFAULT_DIR")" = "0" ]; then
-  pass "既定: destructive-delete.jsonl は書かれない"
-else
-  fail "既定: 記録が書かれてしまった"
-fi
-
-# 2. warn は allow + 記録
-WARN_DIR="$(fixture_project warn warn)"
-CMD="cd $WARN_DIR && echo hi && rm -rf tmp/x"
-decision="$(run_hook "$WARN_DIR" "$CMD")"
 if [ "$decision" = "allow" ]; then
-  pass "warn (harness.toml destructiveDelete): 同じコマンドが allow になる"
+  pass "既定 (設定なし, v5.11.0〜 warn): 前置コマンド付き相対 rm -rf が allow になる"
 else
-  fail "warn: allow を期待したが $decision"
+  fail "既定: allow を期待したが $decision"
 fi
-if [ "$(record_count "$WARN_DIR")" = "1" ]; then
-  pass "warn: .claude/state/destructive-delete.jsonl に 1 行記録される"
+if [ "$(record_count "$DEFAULT_DIR")" = "1" ]; then
+  pass "既定 warn: .claude/state/destructive-delete.jsonl に 1 行記録される"
   if jq -e --arg cmd "$CMD" --arg sid "$SESSION_ID" \
        'select(.command == $cmd and .policy == "warn" and .session_id == $sid and .rule_id == "R05:confirm-rm-rf")' \
-       "$WARN_DIR/.claude/state/destructive-delete.jsonl" >/dev/null; then
-    pass "warn: 記録に command / policy / session_id / rule_id が入っている"
+       "$DEFAULT_DIR/.claude/state/destructive-delete.jsonl" >/dev/null; then
+    pass "既定 warn: 記録に command / policy / session_id / rule_id が入っている"
   else
-    fail "warn: 記録の内容が期待と違う: $(cat "$WARN_DIR/.claude/state/destructive-delete.jsonl")"
+    fail "既定 warn: 記録の内容が期待と違う: $(cat "$DEFAULT_DIR/.claude/state/destructive-delete.jsonl")"
   fi
 else
-  fail "warn: 記録が 1 行でない ($(record_count "$WARN_DIR"))"
+  fail "既定 warn: 記録が 1 行でない ($(record_count "$DEFAULT_DIR"))"
 fi
 
-# 2b. env override でも同じ
+# 2. opt-out (harness.toml destructiveDelete=ask) は ask に戻り、記録されない
+ASK_DIR="$(fixture_project askout ask)"
+CMD="cd $ASK_DIR && echo hi && rm -rf tmp/x"
+decision="$(run_hook "$ASK_DIR" "$CMD")"
+if [ "$decision" = "ask" ]; then
+  pass "opt-out (harness.toml destructiveDelete=ask): 同じコマンドが ask に戻る"
+else
+  fail "opt-out: ask を期待したが $decision"
+fi
+if [ "$(record_count "$ASK_DIR")" = "0" ]; then
+  pass "opt-out: destructive-delete.jsonl は書かれない"
+else
+  fail "opt-out: 記録が書かれてしまった"
+fi
+
+# 2b. env override (ask) は既定 warn より優先
 ENV_DIR="$(fixture_project env "")"
 CMD="cd $ENV_DIR && rm -rf tmp/x"
-decision="$(HARNESS_DESTRUCTIVE_DELETE_POLICY=warn run_hook "$ENV_DIR" "$CMD")"
-if [ "$decision" = "allow" ]; then
-  pass "warn (env HARNESS_DESTRUCTIVE_DELETE_POLICY): allow になる"
+decision="$(HARNESS_DESTRUCTIVE_DELETE_POLICY=ask run_hook "$ENV_DIR" "$CMD")"
+if [ "$decision" = "ask" ]; then
+  pass "env HARNESS_DESTRUCTIVE_DELETE_POLICY=ask が既定 warn より優先される"
 else
-  fail "warn (env): allow を期待したが $decision"
+  fail "env opt-out: ask を期待したが $decision"
 fi
 
 # 3. warn でも root 外は allow にならない

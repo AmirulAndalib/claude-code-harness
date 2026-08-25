@@ -1,144 +1,38 @@
-# GitHub Release Notes Rules
+# GitHub Release Body Rules
 
-Formatting rules applied when creating GitHub Release notes.
+GitHub Release の本文は `.github/workflows/release.yml` が CHANGELOG の該当 version
+section から抽出する。Harness は別の release notes を生成しない。Confirmation Gate では
+実際に公開される CHANGELOG-derived release body をそのまま提示する。
 
-## Required Format
+## CHANGELOG フォーマット
 
-### Structure
-
-```markdown
-## What's Changed
-
-**One-line description of the change's value**
-
-### Before / After
-
-| Before | After |
-|--------|-------|
-| Previous state | New state |
-| ... | ... |
-
----
-
-## Added
-
-- **Feature name**: Description
-  - Detail 1
-  - Detail 2
-
-## Changed
-
-- **Change**: Description
-
-## Fixed
-
-- **Fix**: Description
-
-## Requirements (if applicable)
-
-- **Claude Code vX.X.X+** (recommended)
-- Link: [Documentation](URL)
-
----
-
-Generated with [Claude Code](https://claude.com/claude-code)
-```
-
-### Required Elements
-
-| Element | Required | Description |
-|---------|----------|-------------|
-| `## What's Changed` | Yes | Section heading |
-| **Bold summary** | Yes | One-line value description |
-| `Before / After` table | Yes | User-facing changes |
-| `Added/Changed/Fixed` | When applicable | Detailed changes |
-| Footer | Yes | `Generated with [Claude Code](...)` |
-
-### Language
-
-- **GitHub Release**: English required（公開リポジトリのため）
-- **CHANGELOG.md**: **日本語**で詳細な Before/After 形式（後述）
-- Keep descriptions user-focused
-
-## CHANGELOG フォーマット（日本語・詳細 Before/After）
-
-CHANGELOG は各機能を「今まで → 今後」形式で具体的に記述する:
+Keep a Changelog の標準見出しを使い、各項目はユーザー価値が判断できる粒度で書く。
+「今まで → 今後」は理解を助ける場合に使えるが、固定 table や英訳、フッターは必須ではない。
 
 ```markdown
 ## [X.Y.Z] - YYYY-MM-DD
 
-### テーマ: [変更全体を一言で]
+### Added
 
-**[ユーザーにとっての価値を1〜2文で]**
+- **機能名**。何が使えるようになり、誰の操作がどう変わるか
 
----
+### Changed
 
-#### 1. [機能名]
-
-**今まで**: [旧動作。ユーザーが体験していた不便を具体的に描写]
-
-**今後**: [新動作。何が解決するか + 具体例]
-
-```出力例やコマンド例```
-
-#### 2. [次の機能名]
-
-**今まで**: ...
-**今後**: ...
+- **変更名**。以前の挙動と新しい挙動、移行条件
 ```
 
 **書き方ルール**:
-- 各機能を `#### N. 機能名` で独立セクションにする
-- 「今まで」は**課題描写**（「〜する必要がありました」形式）
-- 「今後」は**解決の具体像**（コマンド例・出力例を含める）
-- 長くてOK。読みやすさが最優先
-- テクニカル詳細（ファイル名、ステップ番号）は「今後」の補足として最小限に
+- KaCL の `Added` / `Changed` / `Fixed` / `Security` 等を使う
+- 最初に利用者の変化を書き、内部ファイル名は必要な場合だけ補足する
+- 後戻り条件、再起動、再 setup などの移行条件を省略しない
+- 未観測の provider/runtime 結果は保証として書かない
 
 ## Prohibited
 
-- No skipping the Before / After (CHANGELOG) or Before / After table (GitHub Release)
-- No skipping the footer (GitHub Release)
-- No technical-only descriptions (user perspective required)
-- No bare change lists without value explanation
-
-## Good Example (GitHub Release — English)
-
-```markdown
-## What's Changed
-
-**`/work --full` now automates implement -> self-review -> improve -> commit in parallel**
-
-### Before / After
-
-| Before | After |
-|--------|-------|
-| `/work` executes tasks one at a time | `/work --full --parallel 3` runs in parallel |
-| Reviews required separate manual step | Each task-worker self-reviews autonomously |
-```
-
-## Good Example (CHANGELOG — Japanese)
-
-```markdown
-#### 1. 失敗タスクの自動再チケット化
-
-**今まで**: テスト/CI が失敗すると3回リトライして止まるだけでした。
-止まった後は「何が原因だったか」を自分で調べ、Plans.md に手動で修正タスクを追加する必要がありました。
-
-**今後**: 3回失敗で止まるとき、Harness が失敗原因を分類し、修正タスク案を自動生成します。
-承認すると Plans.md に `.fix` タスクとして自動追加されます。
-```
-
-## Bad Example
-
-```markdown
-## What's New
-
-### Added
-- Added task-worker.md
-- Added --full option
-```
-
--> Doesn't communicate user value
+- workflow が使わない別本文を作らない
+- CHANGELOG にない価値・実測・保証を release preview へ追加しない
+- 技術的な変更一覧だけで、利用者への影響を落とさない
+- preview を省略・翻訳・要約して、実際の公開本文とずらさない
 
 ## マージ方式（merge commit 固定 / squash 不採用）
 
@@ -162,26 +56,21 @@ upgrade smoke（旧 version → 新 version の実測）や release gate の実�
 Plans.md の cc:done マーカーが「実測した」と主張する項目には、対応するログファイルか
 コマンド出力の記録が存在しなければならない（SA-13 completeness 監査 2026-07-16 の指摘）。
 
-## Release Creation Command
+## Workflow-owned Release Creation
+
+GitHub Release の作成は `.github/workflows/release.yml` に委譲する。Harness は
+default branch 到達済み commit に tag を付けて push し、workflow が CHANGELOG の
+該当 section を release body として公開する。Harness から直接 Release を作成・編集しない。
 
 ```bash
-gh release create vX.X.X \
-  --title "vX.X.X - Title" \
-  --notes "$(cat <<'EOF'
-## What's Changed
-...
-EOF
-)"
+git push origin vX.X.X
+gh run list --workflow release.yml --limit 5
+bash scripts/release-verify-publish.sh vX.X.X OWNER/REPO
 ```
 
-## Editing Past Releases
-
-```bash
-gh release edit vX.X.X --notes "$(cat <<'EOF'
-...
-EOF
-)"
-```
+公開済み Release の本文訂正が必要な場合は、通常リリースとは別の外部変更 Risk Gate
+として扱う。まず CHANGELOG と workflow の正本を修正し、operator の明示承認なしに
+公開済み本文を変更しない。
 
 ## CC バージョン統合時の CHANGELOG パターン
 

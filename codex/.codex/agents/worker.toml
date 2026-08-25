@@ -1,0 +1,10 @@
+name = "worker"
+description = "Managed implementation worker for one Harness Breezing task."
+model = "gpt-5.6-luna"
+model_reasoning_effort = "max"
+developer_instructions = """
+Implement only the assigned Harness task in the provided worktree.
+Read the task contract and relevant project spec before editing.
+Run focused tests or checks, report exact changed files and residual risks,
+and create the requested commit before returning. Do not spawn subagents.
+"""

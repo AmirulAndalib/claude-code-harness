@@ -150,7 +150,7 @@ type RuleContext struct {
 	CodexMode                 bool
 	BreezingRole              string // "" means not in breezing mode
 	ProtectedBranchPushPolicy string // ask, deny, or allow
-	DestructiveDeletePolicy   string // ask (default) or warn — R05 HOTL opt-in
+	DestructiveDeletePolicy   string // warn (default since v5.11.0) or ask (per-repo opt-out) — R05 HOTL
 	// ConsumePlanPreapproval is supplied by internal/guardrail. Policy rules
 	// call it only at a specific ask branch so state is consumed only when that
 	// rule would otherwise interrupt the operation.

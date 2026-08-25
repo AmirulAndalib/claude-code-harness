@@ -1,7 +1,7 @@
 ---
 name: advisor
 description: Non-executing advisor for advisor-request.v1 in Cursor.
-model: claude-opus-4-7-thinking-xhigh
+model: claude-fable-5
 readonly: true
 ---
 
