@@ -3,11 +3,15 @@ package hookhandler
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHandleSessionAutoBroadcast_NoInput(t *testing.T) {
@@ -619,6 +623,209 @@ func TestAutoBroadcast_SubdirectoryStillReachesPeer(t *testing.T) {
 	subdirBroadcast := filepath.Join(subdir, ".claude", "sessions", "broadcast.md")
 	if _, err := os.Stat(subdirBroadcast); err == nil {
 		t.Errorf("broadcast.md unexpectedly written under subdir at %s", subdirBroadcast)
+	}
+}
+
+// TestAutoBroadcast_CrossWorktreeReachesInbox pins the shared broadcast
+// scope: a write from a linked worktree must be visible to inbox-check from
+// the main checkout through the git-common-dir parent's .claude/sessions/.
+func TestAutoBroadcast_CrossWorktreeReachesInbox(t *testing.T) {
+	mainRoot, worktreeRoot := initMainRepoAndLinkedWorktree(t)
+
+	t.Setenv("HARNESS_PROJECT_ROOT", worktreeRoot)
+	t.Chdir(worktreeRoot)
+	writePayload := `{"session_id":"peer-a","cwd":` + strconv.Quote(worktreeRoot) + `,"tool_input":{"file_path":"go/internal/shared.go"}}`
+	var writeOut bytes.Buffer
+	if err := HandleSessionAutoBroadcast(strings.NewReader(writePayload), &writeOut); err != nil {
+		t.Fatalf("broadcast from linked worktree: %v", err)
+	}
+
+	sharedBroadcast := filepath.Join(mainRoot, ".claude", "sessions", "broadcast.md")
+	data, err := os.ReadFile(sharedBroadcast)
+	if err != nil {
+		t.Fatalf("shared broadcast.md not created: %v", err)
+	}
+	if !strings.Contains(string(data), "go/internal/shared.go") {
+		t.Fatalf("shared broadcast.md missing linked-worktree path: %s", data)
+	}
+	localBroadcast := filepath.Join(worktreeRoot, ".claude", "sessions", "broadcast.md")
+	if _, err := os.Stat(localBroadcast); err == nil {
+		t.Fatalf("broadcast.md unexpectedly remained worktree-local: %s", localBroadcast)
+	}
+
+	t.Setenv("HARNESS_PROJECT_ROOT", mainRoot)
+	t.Chdir(mainRoot)
+	readPayload := `{"session_id":"peer-b","cwd":` + strconv.Quote(mainRoot) + `}`
+	var readOut bytes.Buffer
+	if err := HandleInboxCheck(strings.NewReader(readPayload), &readOut); err != nil {
+		t.Fatalf("inbox-check from main checkout: %v", err)
+	}
+	if body := readOut.String(); !strings.Contains(body, "go/internal/shared.go") {
+		t.Fatalf("inbox-check did not read linked-worktree broadcast: %s", body)
+	}
+}
+
+// TestAutoBroadcast_NonGitUsesWorktreeLocalFallback pins fail-open behavior:
+// without git metadata, broadcast.md remains under the caller's local
+// .claude/sessions/ directory.
+func TestAutoBroadcast_NonGitUsesWorktreeLocalFallback(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HARNESS_PROJECT_ROOT", dir)
+	t.Chdir(dir)
+	if got := sharedLiveSessionsDirFromRoot(dir); got != "" {
+		t.Fatalf("non-git project unexpectedly resolved shared presence dir: %s", got)
+	}
+
+	payload := `{"session_id":"non-git-peer","cwd":` + strconv.Quote(dir) + `,"tool_input":{"file_path":"go/internal/local.go"}}`
+	var out bytes.Buffer
+	if err := HandleSessionAutoBroadcast(strings.NewReader(payload), &out); err != nil {
+		t.Fatalf("broadcast in non-git project: %v", err)
+	}
+
+	localBroadcast := filepath.Join(dir, ".claude", "sessions", "broadcast.md")
+	data, err := os.ReadFile(localBroadcast)
+	if err != nil {
+		t.Fatalf("local fallback broadcast.md not created: %v", err)
+	}
+	if !strings.Contains(string(data), "go/internal/local.go") {
+		t.Fatalf("local fallback broadcast.md missing path: %s", data)
+	}
+}
+
+// TestBroadcastWriterHelperProcess is the child used by
+// TestBroadcastWriter_CrossProcessLockProtectsAppendAndRotation.
+func TestBroadcastWriterHelperProcess(t *testing.T) {
+	if os.Getenv("HARNESS_BROADCAST_HELPER") != "1" {
+		return
+	}
+
+	readyPath := os.Getenv("HARNESS_BROADCAST_READY")
+	enteredPath := os.Getenv("HARNESS_BROADCAST_ENTERED")
+	startPath := os.Getenv("HARNESS_BROADCAST_START")
+	donePath := os.Getenv("HARNESS_BROADCAST_DONE")
+	broadcastDir := os.Getenv("HARNESS_BROADCAST_DIR")
+	sessionID := os.Getenv("HARNESS_BROADCAST_SESSION")
+	if readyPath == "" || enteredPath == "" || startPath == "" || donePath == "" || broadcastDir == "" || sessionID == "" {
+		t.Fatal("broadcast helper environment is incomplete")
+	}
+
+	if err := os.WriteFile(readyPath, nil, 0o600); err != nil {
+		t.Fatalf("helper ready: %v", err)
+	}
+	if !waitForBroadcastTestFile(startPath, 5*time.Second) {
+		t.Fatal("helper did not receive start signal")
+	}
+	if err := os.WriteFile(enteredPath, nil, 0o600); err != nil {
+		t.Fatalf("helper entered: %v", err)
+	}
+
+	if err := writeBroadcastNotification(broadcastDir, "go/"+sessionID+".go", "*.go", sessionID); err != nil {
+		t.Fatalf("helper broadcast: %v", err)
+	}
+	if err := os.WriteFile(donePath, nil, 0o600); err != nil {
+		t.Fatalf("helper done: %v", err)
+	}
+}
+
+func waitForBroadcastTestFile(path string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// TestBroadcastWriter_CrossProcessLockProtectsAppendAndRotation is a
+// deterministic cross-process regression: a parent holds the broadcast lock
+// while a child reaches the writer. The child must not complete its append and
+// >500-entry rotation until the parent releases the same lock.
+func TestBroadcastWriter_CrossProcessLockProtectsAppendAndRotation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("repository fileLock is unsupported on Windows")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "broadcast.md")
+	var seed strings.Builder
+	for i := 0; i < 500; i++ {
+		fmt.Fprintf(&seed, "\n## 2026-05-30T00:00:%02dZ [seed-%03d]\n📁 `go/seed-%03d.go` matched\n", i%60, i, i)
+	}
+	if err := os.WriteFile(path, []byte(seed.String()), 0o600); err != nil {
+		t.Fatalf("seed broadcast: %v", err)
+	}
+
+	readyPath := filepath.Join(dir, "ready")
+	enteredPath := filepath.Join(dir, "entered")
+	startPath := filepath.Join(dir, "start")
+	donePath := filepath.Join(dir, "done")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestBroadcastWriterHelperProcess$")
+	cmd.Env = append(os.Environ(),
+		"HARNESS_BROADCAST_HELPER=1",
+		"HARNESS_BROADCAST_READY="+readyPath,
+		"HARNESS_BROADCAST_ENTERED="+enteredPath,
+		"HARNESS_BROADCAST_START="+startPath,
+		"HARNESS_BROADCAST_DONE="+donePath,
+		"HARNESS_BROADCAST_DIR="+dir,
+		"HARNESS_BROADCAST_SESSION=concurrent",
+	)
+
+	var childErr error
+	childStarted := false
+	withFileLock(path+".lock", func() {
+		if childErr = cmd.Start(); childErr != nil {
+			return
+		}
+		childStarted = true
+		if !waitForBroadcastTestFile(readyPath, 5*time.Second) {
+			childErr = fmt.Errorf("child did not become ready")
+			return
+		}
+		if err := os.WriteFile(startPath, nil, 0o600); err != nil {
+			childErr = fmt.Errorf("write start signal: %w", err)
+			return
+		}
+		if !waitForBroadcastTestFile(enteredPath, 5*time.Second) {
+			childErr = fmt.Errorf("child did not enter writer")
+			return
+		}
+		if waitForBroadcastTestFile(donePath, time.Second) {
+			childErr = fmt.Errorf("child completed while broadcast lock was held")
+		}
+	})
+
+	if childStarted {
+		if childErr != nil && cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		waitErr := cmd.Wait()
+		if childErr != nil {
+			t.Fatal(childErr)
+		}
+		if waitErr != nil {
+			t.Fatalf("broadcast helper: %v", waitErr)
+		}
+	} else if childErr != nil {
+		t.Fatal(childErr)
+	}
+
+	if _, err := os.Stat(donePath); err != nil {
+		t.Fatalf("child did not finish after lock release: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read broadcast after child: %v", err)
+	}
+	body := string(data)
+	if !strings.Contains(body, "go/concurrent.go") {
+		t.Fatalf("child broadcast was lost: %s", body)
+	}
+	if got := strings.Count(body, "\n## "); got != 400 {
+		t.Fatalf("rotation entry count = %d, want 400", got)
 	}
 }
 

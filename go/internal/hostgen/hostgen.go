@@ -73,6 +73,11 @@ type Host struct {
 	DeliveryEventMonitor string                  `toml:"delivery_event_monitor"`
 	HookGeneration       string                  `toml:"hook_generation"`
 	AgentProfiles        map[string]AgentProfile `toml:"agent_profiles"`
+	// RequiresHomePath names a path under $HOME that must exist for this host
+	// to be considered installed. Empty means always generate. Hosts Harness
+	// does not fully manage use this so `gen` does not litter a repo with
+	// config for a tool the operator never installed.
+	RequiresHomePath string `toml:"requires_home_path"`
 }
 
 // AgentProfile is a managed Codex custom-agent declaration. OutputPath is the
@@ -252,7 +257,7 @@ func buildDeliveryDoc(h Host) (interface{}, bool) {
 			"version": 1,
 			"hooks":   hooks,
 		}, true
-	case "codex", "claude", "grok":
+	case "codex", "claude", "grok", "hermes":
 		// grok reads the Claude document shape (133.8, verified against
 		// grok 1.0.3). It was previously dropped by the default branch even
 		// though hosts.toml declares delivery_strategy/delivery_event_turn for
@@ -292,8 +297,13 @@ func GenerateHooksJSON(h Host) ([]byte, error) {
 		doc = claudeDoc(h)
 	case "grok":
 		doc = grokDoc(h)
+	case "hermes":
+		// Hermes hooks are declared in ~/.hermes/config.yaml. Keep it out of
+		// native hook-file generation while allowing delivery metadata above to
+		// be generated and validated independently.
+		return nil, fmt.Errorf("hostgen: native hook file is managed by ~/.hermes/config.yaml for host %q: %w", h.Name, ErrHookGenerationDeferred)
 	default:
-		return nil, fmt.Errorf("hostgen: unknown host %q (expected claude, codex, cursor, or grok)", h.Name)
+		return nil, fmt.Errorf("hostgen: unknown host %q (expected claude, codex, cursor, grok, or hermes)", h.Name)
 	}
 	return marshalStable(doc)
 }

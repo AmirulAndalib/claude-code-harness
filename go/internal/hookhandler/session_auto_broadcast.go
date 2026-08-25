@@ -123,13 +123,18 @@ func HandleSessionAutoBroadcast(in io.Reader, out io.Writer) error {
 		return emptyPostToolOutput(out)
 	}
 
-	// Phase 85.1.7 fix (S3): resolve sessionsDir from the project root, not
-	// from cwd. inbox-check uses resolveProjectRoot() (git toplevel) so the
-	// producer (this writer) and consumer (inbox-check reader) must agree
-	// on the same path even when the hook fires from a subdirectory like
-	// /repo/go/ while editing go/foo.go.
-	sessionsDir := filepath.Join(resolveProjectRoot(), ".claude", "sessions")
+	// Phase 85.1.7 fix (S3): resolve the local config from the project root,
+	// not from cwd. The broadcast itself uses the git-common-dir parent's
+	// .claude/sessions so linked worktrees share one producer/consumer path;
+	// when git is unavailable, sharedSessionsDirFromRoot returns empty and the
+	// worktree-local path remains the fail-open fallback.
+	projectRoot := resolveProjectRoot()
+	sessionsDir := filepath.Join(projectRoot, ".claude", "sessions")
 	configFile := filepath.Join(sessionsDir, "auto-broadcast.json")
+	broadcastDir := sessionsDir
+	if sharedDir := sharedSessionsDirFromRoot(projectRoot); sharedDir != "" {
+		broadcastDir = sharedDir
+	}
 	enabled := true
 	var customPatterns []string
 
@@ -194,7 +199,7 @@ func HandleSessionAutoBroadcast(in io.Reader, out io.Writer) error {
 
 	// ブロードキャスト実行: .claude/sessions/broadcast.md に書き込む
 	fileName := filepath.Base(filePath)
-	if broadcastErr := writeBroadcastNotification(sessionsDir, filePath, matchedPattern, input.SessionID); broadcastErr != nil {
+	if broadcastErr := writeBroadcastNotification(broadcastDir, filePath, matchedPattern, input.SessionID); broadcastErr != nil {
 		// 書き込み失敗は無視（フォールバックとして空レスポンスを返す）
 		return emptyPostToolOutput(out)
 	}
@@ -249,23 +254,31 @@ func writeBroadcastNotification(sessionsDir, filePath, matchedPattern, sessionID
 		"\n## %s [%s]\n📁 `%s` が変更されました: パターン '%s' にマッチ\n"),
 		ts, senderTag, filePath, matchedPattern)
 
-	f, err := os.OpenFile(broadcastFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("open broadcast file: %w", err)
-	}
-	defer f.Close()
+	// Append and rotation must share one cross-process critical section. The
+	// broadcast path is shared by linked worktrees, so a read/trim/rename from
+	// one writer must not race another writer's append or rotation snapshot.
+	return withBroadcastFileLock(broadcastFile+".lock", func() error {
+		f, err := os.OpenFile(broadcastFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			return fmt.Errorf("open broadcast file: %w", err)
+		}
 
-	if _, err := f.WriteString(entry); err != nil {
-		return fmt.Errorf("write broadcast entry: %w", err)
-	}
+		if _, err := f.WriteString(entry); err != nil {
+			_ = f.Close()
+			return fmt.Errorf("write broadcast entry: %w", err)
+		}
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("close broadcast file: %w", err)
+		}
 
-	// Best-effort rotation. Errors are swallowed because losing the
-	// rotation pass would only mean the file keeps growing for one more
-	// edit; the next successful append will retry. Mirrors the swallow
-	// pattern used by elicitation_handler.go and notification_handler.go
-	// for their JSONL rotations.
-	_ = rotateBroadcastMD(broadcastFile, 500, 400)
-	return nil
+		// Best-effort rotation. Errors are swallowed because losing the
+		// rotation pass would only mean the file keeps growing for one more
+		// edit; the next successful append will retry. Mirrors the swallow
+		// pattern used by elicitation_handler.go and notification_handler.go
+		// for their JSONL rotations.
+		_ = rotateBroadcastMD(broadcastFile, 500, 400)
+		return nil
+	})
 }
 
 // isSensitiveBroadcastPath returns true when filePath obviously carries

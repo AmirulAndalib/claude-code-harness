@@ -109,18 +109,22 @@ func writeWorktreeActiveJSON(t *testing.T, worktreeRoot string, sessionIDs ...st
 		t.Fatal(err)
 	}
 	now := time.Now().Unix()
-	body := make(map[string]ActiveSession, len(sessionIDs))
+	body := make(map[string]json.RawMessage, len(sessionIDs))
 	for _, id := range sessionIDs {
 		short := id
 		if len(short) > 12 {
 			short = short[:12]
 		}
-		body[id] = ActiveSession{
+		entry, err := json.Marshal(ActiveSession{
 			ShortID:  short,
 			LastSeen: now,
 			PID:      "1",
 			Status:   "active",
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
+		body[id] = entry
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {

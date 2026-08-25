@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://claude-code-harness.local/schemas/livemsg-gate.v1.json",
+  "title": "livemsg-gate.v1",
+  "description": "Verdict for one outbound cross-session message. Produced only when [livemsg] verification is on; while it is off the gate is never called and no artifact exists.",
+  "type": "object",
+  "required": ["schema_version", "verdict", "reason", "checked"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "livemsg-gate.v1"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["SEND", "HOLD"],
+      "description": "SEND delivers the message. HOLD delivers nothing and returns reason to the sender."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why the verdict was reached. Required on HOLD so the sender can correct and retry; on SEND it may be a short confirmation.",
+      "maxLength": 2048
+    },
+    "checked": {
+      "type": "array",
+      "description": "Every check that ran, in order. An empty array means no check ran and the verdict is not evidence-backed.",
+      "items": {
+        "type": "object",
+        "required": ["check", "result"],
+        "additionalProperties": false,
+        "properties": {
+          "check": {
+            "type": "string",
+            "enum": [
+              "file_exists",
+              "commit_exists",
+              "git_status_matches",
+              "agent_review"
+            ],
+            "description": "file_exists / commit_exists / git_status_matches are deterministic machine checks. agent_review is the read-only judge, used only for claims a machine cannot decide."
+          },
+          "result": {
+            "type": "string",
+            "enum": ["pass", "fail", "not_applicable", "not_observed"],
+            "description": "not_observed means the check could not run. It is not the same as fail, and must never be reported as absence of a problem."
+          },
+          "subject": {
+            "type": "string",
+            "description": "What the check was about: a repo-relative path, a commit-ish, or a short claim excerpt.",
+            "maxLength": 512
+          },
+          "detail": {
+            "type": "string",
+            "description": "Short machine-readable evidence for the result.",
+            "maxLength": 1024
+          }
+        }
+      }
+    }
+  }
+}

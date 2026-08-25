@@ -170,6 +170,9 @@ func generatedHooks(root string) (map[string][]byte, error) {
 	}
 	out := make(map[string][]byte, len(hosts))
 	for _, name := range hostgen.SortedNames(hosts) {
+		if !hostIsInstalled(hosts[name]) || hosts[name].HookPath == "" {
+			continue
+		}
 		b, genErr := generateHostHooksJSON(hosts[name])
 		if genErr != nil {
 			if errors.Is(genErr, hostgen.ErrHookGenerationDeferred) {
@@ -180,6 +183,21 @@ func generatedHooks(root string) (map[string][]byte, error) {
 		out[name] = b
 	}
 	return out, nil
+}
+
+// hostIsInstalled reports whether a host that declares an install marker is
+// actually present. Without this, `gen` would write delivery wiring for a tool
+// the operator never installed. A host with no marker is always generated.
+func hostIsInstalled(h hostgen.Host) bool {
+	if h.RequiresHomePath == "" {
+		return true
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	_, statErr := os.Stat(filepath.Join(home, filepath.FromSlash(h.RequiresHomePath)))
+	return statErr == nil
 }
 
 // generatedAgentProfiles loads the canonical profile declarations from
@@ -218,6 +236,19 @@ func generatedAgentProfiles(root string) (map[string][]byte, error) {
 func generateHostHooksJSON(h hostgen.Host) ([]byte, error) {
 	enforcement, err := hostgen.GenerateHooksJSON(h)
 	if err != nil {
+		// A host may defer its enforcement hook and still declare delivery.
+		// Returning the deferral here drops that declaration on the floor —
+		// which is how hermes' turn delivery sat in hosts.toml while `gen`
+		// emitted it nowhere. Deferring enforcement is not deferring delivery.
+		if errors.Is(err, hostgen.ErrHookGenerationDeferred) {
+			delivery, ok, deliveryErr := hostgen.GenerateDeliveryHooksJSON(h)
+			if deliveryErr != nil {
+				return nil, deliveryErr
+			}
+			if ok {
+				return delivery, nil
+			}
+		}
 		return nil, err
 	}
 	delivery, ok, err := hostgen.GenerateDeliveryHooksJSON(h)
@@ -292,6 +323,10 @@ func runGenWrite(root string) error {
 		dest := filepath.Join(root, filepath.FromSlash(h.HookPath))
 		if name == "claude" {
 			fmt.Printf("gen: %-7s %s  skipped (tracked, hand-maintained; PreToolUse drift-checked)\n", name, h.HookPath)
+			continue
+		}
+		if !hostIsInstalled(h) || h.HookPath == "" {
+			fmt.Printf("gen: %-7s %s  skipped (host not installed)\n", name, h.HookPath)
 			continue
 		}
 		data, genErr := generateHostHooksJSON(h)

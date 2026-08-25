@@ -82,10 +82,11 @@ type preToolAllowOutput struct {
 
 // HandleInboxCheck ports pretooluse-inbox-check.sh.
 //
-// Reads .claude/sessions/broadcast.md (same source as the bash version),
-// filters messages newer than the session's last-read timestamp, and if there
-// are any injects them as additionalContext. A 5-minute throttle is enforced
-// via .claude/sessions/.last_inbox_check.
+// Reads the shared git-common-dir parent's .claude/sessions/broadcast.md,
+// falling back to the project-local path when git is unavailable. It filters
+// messages newer than the session's last-read timestamp, and if there are any
+// injects them as additionalContext. A 5-minute throttle remains local under
+// .claude/sessions/.last_inbox_check.
 //
 // Session-specific read state is stored in
 // .claude/sessions/.last_inbox_read_<session_id> — mirroring the bash
@@ -103,6 +104,9 @@ func HandleInboxCheck(in io.Reader, out io.Writer) error {
 	sessionsDir := projectRoot + "/.claude/sessions"
 	checkIntervalFile := sessionsDir + "/.last_inbox_check"
 	broadcastFile := sessionsDir + "/broadcast.md"
+	if sharedDir := sharedSessionsDirFromRoot(projectRoot); sharedDir != "" {
+		broadcastFile = sharedDir + "/broadcast.md"
+	}
 
 	// Throttle: exit 0 (no output) if last check was < 5 minutes ago.
 	if !throttleAllowed(checkIntervalFile) {

@@ -16,6 +16,13 @@ type PresenceCard struct {
 	Label string `json:"label,omitempty"`
 	Task  string `json:"task,omitempty"`
 	Since string `json:"since,omitempty"`
+	// Team and Agent are the session's resolved delivery identity — the values
+	// `harness inbox send --team/--to` must use. They are recorded because they
+	// are NOT derivable from the session id: under Breezing the identity comes
+	// from BREEZING_SESSION_ID/BREEZING_ROLE, so addressing a peer by its
+	// session id would deliver to a recipient that does not exist.
+	Team  string `json:"team,omitempty"`
+	Agent string `json:"agent,omitempty"`
 }
 
 // ParsePresenceCardBody decodes presence file bytes fail-open.
@@ -33,8 +40,11 @@ func encodePresenceCard(card PresenceCard) []byte {
 		Label: strings.TrimSpace(card.Label),
 		Task:  strings.TrimSpace(card.Task),
 		Since: strings.TrimSpace(card.Since),
+		Team:  strings.TrimSpace(card.Team),
+		Agent: strings.TrimSpace(card.Agent),
 	}
-	if trimmed.Label == "" && trimmed.Task == "" && trimmed.Since == "" {
+	if trimmed.Label == "" && trimmed.Task == "" && trimmed.Since == "" &&
+		trimmed.Team == "" && trimmed.Agent == "" {
 		return nil
 	}
 	out, err := json.Marshal(trimmed)
@@ -172,7 +182,7 @@ func FormatSessionTeamList(projectRoot string, now time.Time) string {
 		projectRoot = resolveProjectRoot()
 	}
 	var b strings.Builder
-	b.WriteString("session_id\tlabel\ttask\tsince\telapsed\n")
+	b.WriteString("session_id\tteam\tagent\tlabel\ttask\tsince\telapsed\n")
 	seen := make(map[string]struct{})
 	cutoff := now.Add(-registerStaleCutoff)
 
@@ -197,7 +207,7 @@ func FormatSessionTeamList(projectRoot string, now time.Time) string {
 				card := ParsePresenceCardBody(data)
 				label := displayLabel(card, name)
 				elapsed := formatElapsedSince(card.Since, now)
-				fmt.Fprintf(&b, "%s\t%s\t%s\t%s\t%s\n", name, label, card.Task, card.Since, elapsed)
+				fmt.Fprintf(&b, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", name, card.Team, card.Agent, label, card.Task, card.Since, elapsed)
 			}
 		}
 	}
@@ -206,8 +216,12 @@ func FormatSessionTeamList(projectRoot string, now time.Time) string {
 	sessions := readActiveJSON(activePath)
 	lastSeenCutoff := now.Unix() - int64(registerStaleCutoff.Seconds())
 	var rosterOnly []string
-	for id, s := range sessions {
+	for id, raw := range sessions {
 		if _, listed := seen[id]; listed {
+			continue
+		}
+		s, ok := decodeOwnedActiveSession(raw)
+		if !ok {
 			continue
 		}
 		if !validPresenceSessionID(id) {
@@ -221,7 +235,7 @@ func FormatSessionTeamList(projectRoot string, now time.Time) string {
 	sort.Strings(rosterOnly)
 	for _, id := range rosterOnly {
 		label := sessionShortID(id)
-		fmt.Fprintf(&b, "%s\t%s\t\t\t\n", id, label)
+		fmt.Fprintf(&b, "%s\t\t\t%s\t\t\t\n", id, label)
 	}
 	return b.String()
 }

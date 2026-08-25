@@ -33,6 +33,7 @@ skills/
 ---
 name: skill-name
 description: "English description for auto-loading. Include trigger phrases."
+description-en: "Same text as description. check-consistency.sh requires this field."
 description-ja: "日本語の説明。トリガーフレーズを含む。"
 allowed-tools: ["Read", "Write", "Edit", "Bash", ...]
 ---
@@ -44,7 +45,8 @@ allowed-tools: ["Read", "Write", "Edit", "Bash", ...]
 |-------|----------|-------------|
 | `name` | Yes | Skill identifier (matches directory name) |
 | `description` | Yes | English description for auto-loading (include trigger phrases). Token-efficient. |
-| `description-ja` | Recommended | Japanese description for i18n. Use `scripts/set-locale.sh ja` to swap into `description`. |
+| `description-en` | Yes | English description, normally identical to `description`. `scripts/ci/check-consistency.sh` fails the build when it is missing — `description` alone is not enough. |
+| `description-ja` | Yes | Japanese description for i18n. Use `scripts/set-locale.sh ja` to swap into `description`. The same consistency gate requires it. |
 | `allowed-tools` | No | Tools the skill can use (allowlist — not a restriction list) |
 | `disallowed-tools` | No | CC 2.1.152+: tools to remove from the model while the skill is active |
 | `argument-hint` | No | Usage hint (e.g., `"[option1|option2]"`) |

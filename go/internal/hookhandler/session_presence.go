@@ -53,6 +53,17 @@ func sharedLiveSessionsDirFromRoot(projectRoot string) string {
 	return filepath.Join(repoRoot, ".claude", "sessions", "live-sessions")
 }
 
+// sharedSessionsDirFromRoot resolves the shared .claude/sessions directory by
+// reusing the same git-common-dir resolution as the presence directory. Empty
+// string means git is unavailable, so callers can keep their local fallback.
+func sharedSessionsDirFromRoot(projectRoot string) string {
+	liveDir := sharedLiveSessionsDirFromRoot(projectRoot)
+	if liveDir == "" {
+		return ""
+	}
+	return filepath.Dir(liveDir)
+}
+
 // sharedLiveSessionsDirFromLeaseCfg resolves the presence dir using the same
 // git-common-dir inputs as leaseStore so worktree callers observe the shared
 // tree on the main checkout.
@@ -170,4 +181,40 @@ func isHolderAliveViaSharedPresence(sessionID string, cfg LeaseConfig, now time.
 	}
 	cutoff := now.Add(-registerStaleCutoff)
 	return !info.ModTime().Before(cutoff)
+}
+
+// recordPresenceIdentity stores the session's resolved delivery identity in its
+// own presence card, merging into whatever `session declare` already wrote.
+// Peers read this to address a message: the identity is not derivable from the
+// session id, because Breezing resolves it from BREEZING_SESSION_ID/ROLE.
+// Fail-open throughout — presence is a convenience, never a gate.
+func recordPresenceIdentity(projectRoot, sessionID, team, agent string) {
+	if !validPresenceSessionID(sessionID) || (team == "" && agent == "") {
+		return
+	}
+	dir := sharedLiveSessionsDirFromRoot(projectRoot)
+	if dir == "" {
+		return
+	}
+	path := filepath.Join(dir, sessionID)
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	existing, _ := os.ReadFile(path)
+	card := ParsePresenceCardBody(existing)
+	if card.Team == team && card.Agent == agent {
+		return
+	}
+	card.Team = team
+	card.Agent = agent
+	body := encodePresenceCard(card)
+	if body == nil {
+		return
+	}
+	if err := os.WriteFile(path, body, presenceFileMode); err != nil {
+		return
+	}
+	// Keep the freshness signal the caller already established.
+	_ = os.Chtimes(path, info.ModTime(), info.ModTime())
 }

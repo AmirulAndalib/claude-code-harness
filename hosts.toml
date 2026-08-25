@@ -160,3 +160,12 @@ transport  = "stdin-json"
 model      = "grok-4.6"
 delivery_strategy = "turn"
 delivery_event_turn = "Stop"
+
+# Hermes declares its snake_case lifecycle hooks in ~/.hermes/config.yaml.
+# harness therefore generates no native hook file and only wires turn delivery.
+[hermes]
+hook_event = "pre_tool_call"
+hook_path  = ".hermes/hooks.json"
+requires_home_path = ".hermes"
+delivery_strategy = "turn"
+delivery_event_turn = "stop"

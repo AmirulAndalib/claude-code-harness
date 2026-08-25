@@ -9,7 +9,24 @@ import (
 	"time"
 
 	"github.com/Chachamaru127/claude-code-harness/go/internal/livemsg"
+	"github.com/Chachamaru127/claude-code-harness/go/internal/livemsggate"
+	"github.com/Chachamaru127/claude-code-harness/go/pkg/config"
 )
+
+type livemsgVerificationDecision string
+
+const livemsgVerificationSend livemsgVerificationDecision = "SEND"
+
+// livemsgVerificationGate is the replaceable seam. It returns the verdict and
+// the evidence behind it; tests substitute it wholesale. Returning both is why
+// no shared slot is needed to carry the result back to the caller.
+var livemsgVerificationGate = func(opts inboxSendOpts) (livemsgVerificationDecision, *livemsggate.Result) {
+	result := livemsggate.Evaluate(context.Background(), livemsggate.Options{
+		RepoRoot: resolveRepoRoot(),
+		Body:     sanitizeLivemsgBodyForStore(opts.Body),
+	})
+	return livemsgVerificationDecision(result.Verdict), &result
+}
 
 type inboxSendOpts struct {
 	Team    string
@@ -38,6 +55,25 @@ func runInboxSendCommand(args []string, stdout, stderr io.Writer) int {
 	body := sanitizeLivemsgBodyForStore(opts.Body)
 	from := sanitizeAndCapLivemsgField(opts.From, 256)
 	to := sanitizeAndCapLivemsgField(opts.To, 256)
+	// The verdict must decide the send. A gate whose return value is discarded
+	// is wiring that cannot ever hold anything back (D58: wired != working).
+	if config.ResolveLivemsgVerification(resolveRepoRoot(), os.Getenv("CLAUDE_PLUGIN_ROOT")) == config.LivemsgVerificationOn {
+		if decision, result := livemsgVerificationGate(opts); decision != livemsgVerificationSend {
+			if result != nil {
+				data, marshalErr := json.Marshal(result)
+				if marshalErr != nil {
+					fmt.Fprintf(stderr, "harness inbox send: marshal verification result: %v\n", marshalErr)
+					return 1
+				}
+				fmt.Fprintf(stdout, "%s\n", data)
+				fmt.Fprintf(stderr, "harness inbox send: held by verification gate: %s\n", result.Reason)
+			} else {
+				fmt.Fprintf(stdout, "held by verification gate (%s)\n", decision)
+				fmt.Fprintf(stderr, "harness inbox send: held by verification gate (%s)\n", decision)
+			}
+			return 1
+		}
+	}
 
 	ctx := context.Background()
 	id, err := store.Send(ctx, opts.Team, from, to, subject, body)

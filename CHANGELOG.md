@@ -6,6 +6,38 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [5.13.0] - 2026-08-25
+
+### Added
+
+#### セッション協調パイプライン (Phase 141)
+
+同じ PC 上の複数セッション (Claude Code / Codex / Cursor / Grok / hermes) が**互いを名簿で見て、直接メッセージを送れる**パイプラインを通しました。何に使うかは利用者に委ねる土台であり、送信の検証は既定オフです。
+
+| 継ぎ目 | 変更前 | 変更後 |
+|---|---|---|
+| 名簿の寿命 | `Stop` で presence を削除。Stop はターン境界なので、生きているセッションが最初の 1 ターン後に名簿から消えていた | 削除は `SessionEnd`、`Stop` では mtime を更新。セッションが続く限り名簿に載り続ける |
+| 名簿の更新 | `SessionStart` の 1 回のみ | 毎ターン更新。refresh は mtime だけを触るので `session declare` の task/label は保持される |
+| 身分証 | `HARNESS_LIVEMSG_TEAM` / `..._AGENT` を読む側だけ存在し、書く側が誰もいなかった | `hook session-register` が `CLAUDE_ENV_FILE` へ **`export` 形式**で書き出す (素の `KEY=VALUE` は子プロセス env に届かない)。`deliveryidentity.Resolve()` の優先順位は不変 |
+| broadcast の届く範囲 | presence は worktree 横断で共有、broadcast だけ worktree ローカル。姿は見えるのに通知が届かなかった | broadcast も git-common-dir 親の共有 scope へ統一 |
+| harness-mem との同居 | `active.json` を自スキーマ決め打ちで読み、他ツールのエントリを 24h prune で削除していた | `map[string]json.RawMessage` で読み書きし、知らないエントリは触らず保持 |
+
+- **エージェント主導の送信**: `skills/session-send/SKILL.md` を追加。`bin/harness inbox send --team/--from/--to/--subject` を案内し、送ってよいもの (完了通知 / これから触る場所の宣言 / 引き継ぎ) と送らないもの (作業中の相談 / 推測) を線引きする。根拠は CooperBench の測定 — 同一ファイルを 2 エージェントが触ると成功率が単独の約半分に落ち、失敗の 63% が相手の変更についての誤った思い込みだった
+- **検証の関所 (opt-in、既定 off)**: `[livemsg] verification = "off" | "on"` を追加。解決は `destructiveDelete` と同じ 5 段 (env / project YAML / project `harness.toml` / plugin `harness.toml` / 既定)。**off の間は送信経路が gate を呼ばない**ため、検証を使わない利用者にコストがかからない。on では機械チェック (ファイル実在 / commit 実在 / `git status` との一致) が判定を担う。機械で判定できない主張の委譲先として read-only agent の口 (`Reviewer` interface + `agents/livemsg-gate.md`) を用意しているが、**本実行経路にはまだ接続していない**。判定役が未設定のときは HOLD にせず `not_observed` を記録して機械チェックの結果を通す (判定役の不在は判定ではない。ここで止めると「テストが成功しました」のような完了通知が全て止まり、パイプラインの目的そのものを壊す)。`HOLD` は宛先へ 1 件も届けず、理由を送信側に返す (`templates/schemas/livemsg-gate.v1.json`)
+- **hermes を 5 ツール目として追加**: `hosts.toml` に `[hermes]` を追加。hermes は `~/.hermes/config.yaml` の YAML 宣言型のため hook ファイルは生成せず、turn delivery のみ配線
+- 配線検証: `scripts/ci/check-session-pipeline-wiring.sh` (7 点) を `tests/validate-plugin.sh` に配線 (配線前 RED 実測済み)
+
+### Fixed
+
+Phase 141 のレビューゲートが見つけた 5 件。いずれも「呼び出しは書かれているが、その結果が上の層で捨てられている」という同じ形をしていました (D58「配線した != 効いている」)。
+
+- **検証 gate の verdict が捨てられていた**: 送信経路が gate を呼びながら戻り値を無視していたため、`HOLD` を返しても配送されていた。verdict で分岐し、理由を送信側へ返す
+- **検証 on が通常のメッセージを弾いていた**: パス判定が「ドットを含むトークン」を全てファイル名とみなしていたため、`Go 1.24.0` や `alice@example.com` を含む完了通知が `HOLD` になっていた。スラッシュを含まない綴りは既知の拡張子を要求する
+- **hermes の delivery がどこにも出力されていなかった**: `harness gen` が enforcement hook の「生成保留」で先に return し、delivery 生成に到達していなかった。`hosts.toml` に宣言はあるのに実出力ゼロ。保留は enforcement だけに限定し、`requires_home_path` で未インストールのホストは明示的にスキップする
+- **メッセージの宛先を特定できなかった**: `session list` に `team` / `agent` 列が無く、`session-send` skill はそれを読めと案内していた。breezing 実行中は agent が `BREEZING_ROLE` で session_id と一致しないため、案内どおりに送ると**エラーも出ないまま未達**になっていた。presence card が解決済みの identity を持ち、名簿がそれを表示する
+- **presence card の新フィールドが serialize 時に落ちていた**: `encodePresenceCard` が Label / Task / Since しかコピーしておらず、追加した Team / Agent が黙って捨てられていた
+
+配線チェック `scripts/ci/check-session-pipeline-wiring.sh` は、上記 3 件目を検出できませんでした (設定文字列の存在しか見ていなかった)。実バイナリを走らせて実出力を検査する形に変更しています。
 ## [5.12.0] - 2026-08-24
 
 ### Added
@@ -6101,7 +6133,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.12.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.13.0...HEAD
+[5.13.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.12.0...v5.13.0
 [5.12.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.11.0...v5.12.0
 [5.11.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.10.0...v5.11.0
 [5.10.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.9.0...v5.10.0
