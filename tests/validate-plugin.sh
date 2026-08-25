@@ -1438,13 +1438,10 @@ echo ""
 echo "24. Session pipeline wiring (Phase 141.10)"
 echo "----------------------------------------"
 
-SESSION_WIRING_OUT="$(bash -x "$PLUGIN_ROOT/scripts/ci/check-session-pipeline-wiring.sh" 2>&1)" && SESSION_WIRING_RC=0 || SESSION_WIRING_RC=$?
+SESSION_WIRING_OUT="$(bash "$PLUGIN_ROOT/scripts/ci/check-session-pipeline-wiring.sh" 2>&1)" && SESSION_WIRING_RC=0 || SESSION_WIRING_RC=$?
 if [ "$SESSION_WIRING_RC" -eq 0 ]; then
     pass_test "セッション協調パイプライン (名簿 / 身分証 / 送る口 / broadcast scope / mem 同居 / 検証 knob / hermes) の 7 点が配線されています"
 else
-    # TEMP DIAGNOSTIC (release v5.13.0 CI investigation): dump everything.
-    echo "=== SESSION_WIRING_RC=$SESSION_WIRING_RC ==="
-    echo "$SESSION_WIRING_OUT"
     # Print which of the 7 seams failed. A gate that only says "failed" costs a
     # full CI round trip to diagnose.
     echo "$SESSION_WIRING_OUT" | grep -E 'NG:|SKIP' || true

@@ -45,7 +45,16 @@ echo ""
 
 # ---- 1. 名簿の寿命: hooks.json 2 ファイルのライフサイクル ----
 echo "1. roster lifecycle (SessionStart/Stop register, SessionEnd unregister)"
-HOOKS_SUMMARY="$(cd "$ROOT_DIR" && python3 - <<'PY' 2>/dev/null || true
+# NOTE: the heredoc body must be a standalone statement with nothing after
+# its opening `<<'PY'` on the same line. bash 5.2 (Ubuntu 24.04's
+# /bin/bash, i.e. GitHub Actions' current ubuntu-latest) has a command
+# substitution parser bug that mis-lexes `<<'PY' 2>/dev/null || true` when
+# it appears inside `$(...)`, throwing a spurious "syntax error near
+# unexpected token `||'" — reproduced on bash 5.2.21, absent on bash 3.2
+# (macOS default) and bash 5.1 (Ubuntu 22.04). Keeping the heredoc opener
+# bare and moving the redirection/fallback to the outer call sidesteps it.
+summarize_hooks_json() {
+  cd "$ROOT_DIR" && python3 - <<'PY'
 import json
 
 def summarize(path):
@@ -73,7 +82,8 @@ elif tracked != plugin:
 else:
     print("OK " + ",".join(sorted(tracked)))
 PY
-)"
+}
+HOOKS_SUMMARY="$(summarize_hooks_json 2>/dev/null || true)"
 
 case "$HOOKS_SUMMARY" in
   OK*)
@@ -194,13 +204,22 @@ else
   probe_home="$(mktemp -d)"
   mkdir -p "$probe_home/.hermes"
   sed -n '/^\[hermes\]/,/^$/p' "$ROOT_DIR/hosts.toml" > "$probe_root/hosts.toml"
-  if HOME="$probe_home" "$HARNESS_BIN" gen "$probe_root" >/dev/null 2>&1 \
-     && [ -s "$probe_root/.hermes/hooks.json" ] \
-     && grep -q 'inbox check' "$probe_root/.hermes/hooks.json"; then
+  probe_err="$(mktemp)"
+  HOME="$probe_home" "$HARNESS_BIN" gen "$probe_root" >/dev/null 2>"$probe_err" || true
+  if grep -q 'no binary for' "$probe_err"; then
+    # bin/harness is a shim that exits 0 with no output when this platform has
+    # no matching binary. That is "could not observe", not "delivery is
+    # missing" — reporting it as a failure would be a false red.
+    echo "  SKIP: この環境向けの harness バイナリが無いため gen 実出力を観測できず (not_observed)"
+    echo "        $(tr -d '\n' < "$probe_err" | cut -c1-160)"
+  elif [ -s "$probe_root/.hermes/hooks.json" ] && grep -q 'inbox check' "$probe_root/.hermes/hooks.json"; then
     ok "harness gen が hermes の delivery を実際に出力する"
   else
     fail "hermes の delivery が生成されない (hosts.toml の宣言だけで実出力が無い)"
+    echo "        gen stderr: $(tr -d '\n' < "$probe_err" | cut -c1-300)"
+    echo "        produced:   $(ls -la "$probe_root/.hermes" 2>&1 | tail -2 | tr '\n' ' ')"
   fi
+  rm -f "$probe_err"
   rm -rf "$probe_root" "$probe_home"
 fi
 echo ""
