@@ -6,6 +6,10 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Changed
+
+- **Plans.md: 2026-08-24 設計レビューの結論を反映**。Phase 140（無人 run の ask 序盤停止対策）を次スプリントの最優先に明記し、Phase 142（記憶パイプライン修理・注入棚卸し・日本語 lint 辞書 seeding・ルール引退提案・native 機能重複点検、7 task。レビュー時の作業名は Phase 141 だったが、同時並行で main へ shipped したセッション協調パイプライン Phase 141 との番号衝突により着地時に Phase 142 へ改番）を新設。裏付けの 2 件の判断材料 HTML（2026-08-24 ハーネス設計レビュー、2026-08-26 Phase 140/141 追記レビュー）を `docs/reports/` に追加し索引を更新
+
 ## [5.13.0] - 2026-08-25
 
 ### Added
