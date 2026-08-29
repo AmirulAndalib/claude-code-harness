@@ -1,0 +1,2542 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23313A7E'/%3E%3Cpath d='M8 16h16M18 10l6 6-6 6' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+  <title>CCH 同期状況 2026-08-27</title>
+  <style>
+    :root {
+      --bg: #f5f4f1;
+      --surface: #fcfbf9;
+      --surface-2: #f0efea;
+      --ink: #1b1b22;
+      --ink-soft: #5a5a64;
+      --ink-faint: #8c8c92;
+      --line: #e4e2db;
+      --line-strong: #d2cfc6;
+      --primary: #313a7e;
+      --primary-soft: #e9eaf4;
+      --primary-ink: #262e66;
+      --kernel: #191b2c;
+      --kernel-2: #23263c;
+      --kernel-line: #343750;
+      --kernel-ink: #c9cbe0;
+      --done: #2f8f5b;
+      --done-soft: #e4f2ea;
+      --wip: #b8821c;
+      --wip-soft: #f6edd8;
+      --risk: #b5462f;
+      --risk-soft: #f6e7e2;
+      --plain: #1f7a6d;
+      --plain-soft: #e1f1ee;
+      --plain-line: #bbe0d9;
+      --radius: 12px;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      color-scheme: light;
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(49, 58, 126, 0.08), transparent 28rem),
+        var(--bg);
+      font-family: var(--sans);
+      line-height: 1.75;
+      overflow-wrap: anywhere;
+      word-break: keep-all;
+    }
+
+    button,
+    summary {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+    }
+
+    button:focus-visible,
+    summary:focus-visible {
+      outline: 3px solid rgba(49, 58, 126, 0.34);
+      outline-offset: 3px;
+    }
+
+    .visually-hidden {
+      position: absolute !important;
+      width: 1px !important;
+      height: 1px !important;
+      padding: 0 !important;
+      margin: -1px !important;
+      overflow: hidden !important;
+      clip: rect(0 0 0 0) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
+    }
+
+    .wrap {
+      width: min(1440px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      margin: 24px auto 18px;
+      padding: clamp(24px, 4vw, 48px);
+      overflow: hidden;
+      color: #fff;
+      background:
+        linear-gradient(135deg, rgba(49, 58, 126, 0.96), rgba(25, 27, 44, 0.98)),
+        var(--kernel);
+      border: 1px solid var(--kernel-line);
+      border-radius: 18px;
+      box-shadow: 0 18px 60px rgba(25, 27, 44, 0.16);
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: #bfc3ff;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 900px;
+      margin: 0;
+      font-size: clamp(1.8rem, 4vw, 3.4rem);
+      line-height: 1.2;
+      letter-spacing: -0.035em;
+    }
+
+    .thesis {
+      max-width: 980px;
+      margin: 24px 0 0;
+      padding: 14px 18px;
+      color: #f4f5ff;
+      background: rgba(255, 255, 255, 0.08);
+      border-left: 4px solid #9ca3ff;
+      border-radius: 0 10px 10px 0;
+      font-size: clamp(1rem, 1.7vw, 1.2rem);
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      margin-top: 18px;
+      color: var(--kernel-ink);
+      font-size: 0.82rem;
+    }
+
+    .decision-section {
+      margin-bottom: 18px;
+      padding: 20px;
+    }
+
+    .decision-head {
+      margin-bottom: 14px;
+    }
+
+    .decision-head h2 {
+      margin: 0;
+      font-size: 1.22rem;
+      line-height: 1.35;
+    }
+
+    .decision-head p:last-child {
+      margin: 6px 0 0;
+      color: var(--ink-soft);
+    }
+
+    .decision-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .decision-card {
+      min-width: 0;
+      padding: 16px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-top: 4px solid var(--primary);
+      border-radius: 10px;
+    }
+
+    .decision-card h3 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      line-height: 1.45;
+    }
+
+    .decision-facts {
+      display: grid;
+      gap: 9px;
+      margin: 0;
+    }
+
+    .decision-fact {
+      display: grid;
+      gap: 2px;
+    }
+
+    .decision-fact dt {
+      color: var(--primary);
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+    }
+
+    .decision-fact dd {
+      margin: 0;
+      color: var(--ink-soft);
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+
+    .decision-fact:first-child dd {
+      color: var(--ink);
+      font-weight: 800;
+    }
+
+    .decision-choices {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 14px;
+    }
+
+    .decision-choice {
+      flex: 1 1 30%;
+      min-width: 0;
+      padding: 9px 6px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      color: var(--ink-soft);
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 800;
+      line-height: 1.3;
+      cursor: pointer;
+    }
+
+    .decision-choice[data-choice="go"][aria-pressed="true"] {
+      background: var(--done-soft);
+      border-color: var(--done);
+      color: var(--done);
+    }
+
+    .decision-choice[data-choice="talk"][aria-pressed="true"] {
+      background: var(--wip-soft);
+      border-color: var(--wip);
+      color: var(--wip);
+    }
+
+    .decision-choice[data-choice="stop"][aria-pressed="true"] {
+      background: var(--risk-soft);
+      border-color: var(--risk);
+      color: var(--risk);
+    }
+
+    .decision-memo-label {
+      display: block;
+      margin-top: 12px;
+      color: var(--ink-faint);
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+    }
+
+    .decision-memo {
+      width: 100%;
+      min-height: 54px;
+      margin-top: 5px;
+      padding: 8px 9px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--ink);
+      font: inherit;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      resize: vertical;
+    }
+
+    .decision-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .decision-copy {
+      padding: 9px 16px;
+      background: var(--primary);
+      border: 1px solid var(--primary);
+      border-radius: 8px;
+      color: #fff;
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .decision-copy-state {
+      color: var(--ink-soft);
+      font-size: 0.8rem;
+    }
+
+    .decision-transcript {
+      width: 100%;
+      min-height: 108px;
+      margin-top: 10px;
+      padding: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.65;
+    }
+
+    .explorer {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 390px);
+      gap: 18px;
+      align-items: start;
+      margin-bottom: 18px;
+    }
+
+    .workflow-main {
+      display: grid;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .workflow-footer {
+      width: 100%;
+      margin: 0;
+    }
+
+    .card {
+      min-width: 0;
+      background: rgba(252, 251, 249, 0.94);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 34px rgba(27, 27, 34, 0.07);
+    }
+
+    .canvas-card {
+      overflow: hidden;
+    }
+
+    .canvas-head {
+      display: grid;
+      gap: 14px;
+      padding: 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .canvas-title-row {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .section-label {
+      margin: 0 0 3px;
+      color: var(--primary);
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+    }
+
+    .canvas-head h2,
+    .side-section h2 {
+      margin: 0;
+      font-size: 1.08rem;
+      line-height: 1.35;
+    }
+
+    .flow-description {
+      margin: 5px 0 0;
+      color: var(--ink-soft);
+      font-size: 0.88rem;
+    }
+
+    .view-state {
+      flex: 0 0 auto;
+      padding: 5px 9px;
+      color: var(--primary-ink);
+      background: var(--primary-soft);
+      border: 1px solid #cfd2ec;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .plain-summary {
+      margin: 0;
+      padding: 12px 14px;
+      color: #15564d;
+      background: var(--plain-soft);
+      border: 1px solid var(--plain-line);
+      border-radius: 10px;
+      font-size: 0.92rem;
+    }
+
+    .plain-summary strong {
+      display: block;
+      margin-bottom: 2px;
+      font-size: 0.76rem;
+      letter-spacing: 0.06em;
+    }
+
+    .canvas-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .control-button {
+      min-height: 38px;
+      padding: 7px 12px;
+      cursor: pointer;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      font-size: 0.82rem;
+      font-weight: 750;
+    }
+
+    .control-button:hover:not(:disabled) {
+      border-color: var(--primary);
+    }
+
+    .control-button[aria-pressed="true"] {
+      color: #fff;
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .control-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.42;
+    }
+
+    .diagram-shell {
+      max-width: 100%;
+      padding: 18px;
+      overflow-x: auto;
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        var(--kernel);
+      background-size: 24px 24px;
+      scrollbar-color: var(--kernel-line) var(--kernel);
+    }
+
+    /* 列と行を 1 つの grid で共有する。列ごとに grid を分けると、
+       同じ row を指定しても列をまたいで高さが揃わないため。 */
+    .diagram {
+      position: relative;
+      display: grid;
+      align-items: start;
+      grid-auto-rows: auto;
+      column-gap: 30px;
+      row-gap: 12px;
+      min-width: 880px;
+      min-height: 470px;
+      padding: 12px 0 40px;
+      isolation: isolate;
+    }
+
+    .edge-layer {
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    /* 列の帯は装飾のみ。ノードとは重ねて敷く。
+       .diagram が align-items:start なので、帯だけは列の高さいっぱいに伸ばす。 */
+    .lane-bg {
+      z-index: 0;
+      align-self: stretch;
+      margin: -12px;
+      background: rgba(35, 38, 60, 0.78);
+      border: 1px solid var(--kernel-line);
+      border-radius: 12px;
+      pointer-events: none;
+    }
+
+    .lane-title {
+      position: relative;
+      z-index: 2;
+      min-width: 0;
+      min-height: 36px;
+      margin: 0;
+      padding-bottom: 8px;
+      color: #c3c8f5;
+      border-bottom: 1px solid var(--kernel-line);
+      font-size: 0.8rem;
+      font-weight: 900;
+      letter-spacing: 0.03em;
+    }
+
+    .node-card {
+      position: relative;
+      z-index: 3;
+      min-width: 0;
+      min-height: 76px;
+      padding: 11px 13px;
+      color: #f0f1ff;
+      background: #2b2e47;
+      border: 1px solid #484c6b;
+      border-radius: 10px;
+      box-shadow: 0 8px 20px rgba(8, 9, 18, 0.22);
+      transition:
+        opacity 160ms ease,
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        transform 160ms ease;
+    }
+
+    .node-card.is-dim {
+      opacity: 0.34;
+      box-shadow: none;
+    }
+
+    .node-card.is-flow {
+      background: #303552;
+      border-color: #99a0ff;
+      box-shadow: 0 0 0 2px rgba(153, 160, 255, 0.16);
+    }
+
+    .node-card.is-step {
+      border-color: #fff;
+      box-shadow:
+        0 0 0 3px rgba(153, 160, 255, 0.38),
+        0 12px 26px rgba(8, 9, 18, 0.34);
+      transform: translateY(-2px);
+    }
+
+    .node-label {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 850;
+      line-height: 1.35;
+    }
+
+    .node-summary {
+      display: block;
+      margin-top: 5px;
+      color: var(--kernel-ink);
+      font-size: 0.72rem;
+      line-height: 1.5;
+    }
+
+    .edge-line {
+      fill: none;
+      stroke: #5c6080;
+      stroke-width: 1.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.16;
+      transition:
+        opacity 160ms ease,
+        stroke 160ms ease,
+        stroke-width 160ms ease;
+    }
+
+    .edge-line.is-return {
+      stroke-dasharray: 5 5;
+    }
+
+    .edge-line.is-flow {
+      stroke: #a7adff;
+      stroke-width: 2.4;
+      opacity: 0.92;
+    }
+
+    .edge-line.is-step {
+      stroke: #fff;
+      stroke-width: 3.6;
+      opacity: 1;
+    }
+
+    .step-badge .badge-halo {
+      fill: var(--kernel);
+      stroke: none;
+    }
+
+    .step-badge circle.badge-body {
+      fill: var(--primary);
+      stroke: #aeb3e7;
+      stroke-width: 1.4;
+    }
+
+    .step-badge.is-current circle.badge-body {
+      fill: #fff;
+      stroke: var(--primary);
+      stroke-width: 2.6;
+    }
+
+    .step-badge.is-dim {
+      opacity: 0.3;
+    }
+
+    .step-badge text {
+      fill: #fff;
+      font-family: var(--sans);
+      font-size: 11px;
+      font-weight: 900;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+
+    .step-badge.is-current text {
+      fill: var(--primary);
+    }
+
+    .sidebar {
+      display: grid;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .side-section {
+      padding: 18px;
+    }
+
+    .side-head {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .side-count {
+      color: var(--ink-faint);
+      font-size: 0.74rem;
+    }
+
+    .flow-list,
+    .step-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .flow-button {
+      width: 100%;
+      padding: 12px;
+      cursor: pointer;
+      text-align: left;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .flow-button:hover {
+      border-color: #aeb2d6;
+    }
+
+    .flow-button[aria-pressed="true"] {
+      background: var(--primary-soft);
+      border-color: var(--primary);
+      box-shadow: inset 4px 0 0 var(--primary);
+    }
+
+    .flow-button-title {
+      display: block;
+      font-size: 0.88rem;
+      font-weight: 850;
+      line-height: 1.4;
+    }
+
+    .flow-button-description {
+      display: block;
+      margin-top: 4px;
+      color: var(--ink-soft);
+      font-size: 0.72rem;
+      line-height: 1.5;
+    }
+
+    .step-card {
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .step-card.is-current {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(49, 58, 126, 0.1);
+    }
+
+    .step-select {
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr);
+      gap: 10px;
+      width: 100%;
+      padding: 12px;
+      cursor: pointer;
+      text-align: left;
+      background: transparent;
+      border: 0;
+    }
+
+    .step-select:hover {
+      background: var(--surface-2);
+    }
+
+    .step-number {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      color: #fff;
+      background: var(--primary);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 900;
+    }
+
+    .step-route {
+      display: block;
+      color: var(--primary);
+      font-size: 0.7rem;
+      font-weight: 850;
+      line-height: 1.4;
+    }
+
+    .step-action {
+      display: block;
+      margin-top: 3px;
+      font-size: 0.86rem;
+      font-weight: 850;
+      line-height: 1.4;
+    }
+
+    .step-description {
+      display: block;
+      margin-top: 5px;
+      color: var(--ink-soft);
+      font-size: 0.76rem;
+      line-height: 1.58;
+    }
+
+    .step-more {
+      padding: 0 12px 10px 54px;
+      color: var(--ink-soft);
+      font-size: 0.73rem;
+    }
+
+    .step-more summary {
+      cursor: pointer;
+      color: var(--primary);
+      font-weight: 800;
+    }
+
+    .detail-grid {
+      display: grid;
+      gap: 7px;
+      margin: 8px 0 0;
+    }
+
+    .detail-row {
+      margin: 0;
+    }
+
+    .detail-row strong {
+      color: var(--ink);
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.92em;
+    }
+
+    .error-box,
+    .noscript {
+      margin: 18px;
+      padding: 14px;
+      color: #7f2c1e;
+      background: var(--risk-soft);
+      border: 1px solid #e5c0b4;
+      border-radius: 10px;
+    }
+
+    .report-footer {
+      margin-bottom: 28px;
+      padding: 18px 20px;
+      color: var(--ink-soft);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      font-size: 0.78rem;
+    }
+
+    .report-footer strong {
+      color: var(--ink);
+    }
+
+    .source-list {
+      margin: 8px 0 0;
+      padding-left: 20px;
+    }
+
+    @media (max-width: 960px) {
+      .decision-list {
+        grid-template-columns: 1fr;
+      }
+
+      .explorer {
+        grid-template-columns: 1fr;
+      }
+
+      .workflow-main {
+        display: contents;
+      }
+
+      .canvas-card {
+        order: 1;
+      }
+
+      .sidebar {
+        order: 2;
+      }
+
+      .workflow-footer {
+        order: 3;
+      }
+
+      .sidebar {
+        grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+      }
+    }
+
+    @media (max-width: 680px) {
+      .wrap {
+        width: min(100% - 20px, 1440px);
+      }
+
+      .hero {
+        margin-top: 10px;
+        padding: 22px 18px;
+        border-radius: 14px;
+      }
+
+      .canvas-title-row {
+        display: grid;
+      }
+
+      .view-state {
+        width: fit-content;
+      }
+
+      .sidebar {
+        grid-template-columns: 1fr;
+      }
+
+      .diagram {
+        min-width: 640px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.001ms !important;
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 12mm;
+      }
+
+      body {
+        background: #fff;
+      }
+
+      .wrap {
+        width: 100%;
+      }
+
+      .hero {
+        margin-top: 0;
+        box-shadow: none;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+
+      .explorer {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .workflow-main {
+        display: contents;
+      }
+
+      .canvas-card {
+        order: 1;
+      }
+
+      .sidebar {
+        order: 2;
+      }
+
+      .workflow-footer {
+        order: 3;
+      }
+
+      .canvas-card,
+      .decision-card,
+      .decision-section,
+      .side-section,
+      .report-footer {
+        box-shadow: none;
+        break-inside: avoid;
+      }
+
+      .canvas-controls,
+      .flow-section,
+      .decision-actions {
+        display: none;
+      }
+
+      .decision-choice {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+
+      .decision-memo,
+      .decision-transcript {
+        border-color: var(--line-strong);
+        overflow: visible;
+      }
+
+      .diagram-shell {
+        overflow: visible;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+
+      .diagram {
+        min-width: 0;
+      }
+
+      .node-card,
+      .edge-line {
+        opacity: 1 !important;
+      }
+
+      .sidebar {
+        margin-top: 12px;
+      }
+
+      .step-card {
+        break-inside: avoid;
+      }
+    }
+
+    /* ==== sync report (this report only) ==== */
+    .explorer { grid-template-columns: minmax(0, 1fr) minmax(300px, 340px); }
+    .diagram { grid-template-columns: repeat(5, minmax(150px, 1fr)) !important; column-gap: 20px; }
+    .node-card { padding: 10px 11px; }
+    .node-label { font-size: 0.84rem; }
+    .node-summary { font-size: 0.7rem; }
+    @media (min-width: 681px) { .diagram { min-width: 0; } }
+    .content-section { margin-bottom: 18px; padding: 22px; }
+    .content-section h2 { margin: 0 0 4px; font-size: 1.22rem; line-height: 1.4; }
+    .lede { margin: 8px 0 0; color: var(--ink-soft); font-size: 0.92rem; }
+    .plainbox { margin: 0 auto 18px; padding: 16px 18px; color: #15564d; background: var(--plain-soft); border: 1px solid var(--plain-line); border-radius: var(--radius); font-size: 0.95rem; line-height: 1.85; }
+    .plainbox .pb-head { display: block; margin-bottom: 4px; font-size: 0.76rem; letter-spacing: 0.06em; }
+    .plainbox p { margin: 6px 0 0; }
+    .easy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+    .easy-card { min-width: 0; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line-strong); border-top: 4px solid var(--primary); border-radius: 10px; }
+    .easy-card h3 { margin: 0 0 6px; font-size: 0.95rem; line-height: 1.5; }
+    .easy-card p, .easy-card li { margin: 6px 0 0; color: var(--ink-soft); font-size: 0.86rem; }
+    .easy-card ul { margin: 6px 0 0; padding-left: 18px; }
+    .easy-card.wide { grid-column: 1 / -1; }
+    .chip { display: inline-block; margin: 0 4px 4px 0; padding: 2px 10px; border: 1px solid transparent; border-radius: 999px; font-size: 0.72rem; font-weight: 900; letter-spacing: 0.04em; white-space: nowrap; }
+    .chip-ok { color: var(--done); background: var(--done-soft); border-color: #b7dcc7; }
+    .chip-warn { color: var(--wip); background: var(--wip-soft); border-color: #e0cfa0; }
+    .chip-risk { color: var(--risk); background: var(--risk-soft); border-color: #e5c0b4; }
+    .chip-info { color: #2c5a7a; background: #e3ecf1; border-color: #bfd4e0; }
+    .table-scroll { margin-top: 12px; overflow-x: auto; }
+    .cmp-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .cmp-table th, .cmp-table td { padding: 9px 10px; border: 1px solid var(--line-strong); text-align: left; vertical-align: top; line-height: 1.6; }
+    .cmp-table th { background: var(--surface-2); font-size: 0.76rem; letter-spacing: 0.04em; white-space: nowrap; }
+    .cmp-table tr.hit td { background: var(--done-soft); }
+    .cmp-table tr.gap td { background: var(--risk-soft); }
+    .cmp-table tr.warn td { background: var(--wip-soft); }
+    .progress-wrap { margin-top: 12px; padding: 16px; color: #f0f1ff; background: var(--kernel); border: 1px solid var(--kernel-line); border-radius: 12px; }
+    .progress-wrap h3 { margin: 0 0 10px; color: #c3c8f5; font-size: 0.92rem; }
+    .gauge { display: grid; gap: 9px; }
+    .gauge-row { display: grid; grid-template-columns: 11.5em minmax(0, 1fr) 5.5em; gap: 8px; align-items: center; font-size: 0.76rem; }
+    .gauge-bar { height: 12px; overflow: hidden; background: #2b2e47; border-radius: 999px; }
+    .gauge-fill { height: 100%; border-radius: 999px; }
+    .g-green { background: #5ec895; }
+    .g-amber { background: #e0b45c; }
+    .g-red { background: #e0745c; }
+    .g-gray { background: #6f7391; }
+    .gauge-note { margin: 10px 0 0; color: var(--kernel-ink); font-size: 0.72rem; }
+    .verdictbox { margin: 0 auto 18px; padding: 18px 20px; color: #1c5c3c; background: var(--done-soft); border: 1px solid #b7dcc7; border-radius: var(--radius); line-height: 1.85; }
+    .verdictbox p, .openbox p { margin: 6px 0 0; }
+    .openbox { margin: 0 auto 18px; padding: 18px 20px; color: #6b4c11; background: var(--wip-soft); border: 1px solid #e0cfa0; border-radius: var(--radius); line-height: 1.85; }
+    .openbox ul, .verdictbox ul { margin: 8px 0 0; padding-left: 20px; }
+    .openbox li, .verdictbox li { margin-bottom: 4px; }
+    .codeblock { margin: 10px 0 0; padding: 10px 12px; overflow-x: auto; color: #dfe2ff; background: var(--kernel); border-radius: 8px; font-family: var(--mono); font-size: 0.78rem; line-height: 1.6; white-space: pre; }
+    @media (max-width: 780px) { .easy-grid { grid-template-columns: 1fr; } }
+    @media print {
+      .content-section, .plainbox, .verdictbox, .openbox, .easy-card { box-shadow: none; break-inside: avoid; }
+      .chip, .cmp-table tr td, .gauge-fill, .progress-wrap { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero wrap">
+    <p class="eyebrow" id="project-name">CLAUDE CODE HARNESS / harness-sync 2026-08-27</p>
+    <h1 id="report-title">今どこにいて、次に何をするか？</h1>
+    <p class="thesis" id="report-thesis">計画と実装のズレは 0 件。v5.13.1 は公開まで完了し、作業ブランチは共有正本（origin/main）と同一。ただし配布先の Claude Code に入った 5.13.1 は部品が欠けていて、エージェント 5 個（worker / reviewer / advisor など）が消えている。次の一手は、Phase 140.1 より先に配布の修理版 5.13.2 を出すこと。</p>
+    <div class="hero-meta">
+      <span id="generated-at">作成日: 未設定</span>
+      <span>判断用の派生レポート</span>
+      <span>正本はフッターの出典</span>
+    </div>
+  </header>
+
+  <section class="plainbox wrap" aria-label="やさしく言うと">
+    <strong class="pb-head">やさしく言うと</strong>
+    <p>harness-sync は「計画表（Plans.md）と実際のファイルや git の状態が食い違っていないか」を照合する点検です。今回の点検では食い違いは 0 件でした。作業中の task は無く、未保存の変更も無く、作業ブランチは共有正本（origin/main）と同じ地点にいます。v5.13.1 は公開まで終わっています。</p>
+    <p>ただし点検の途中で、公開の「その先」に問題が見つかりました。他プロジェクトで使う Claude Code が受け取った 5.13.1 は、部品が 6 項目しか入っていない状態です。エージェント（AI の実装役、審査役、助言役など 5 個）が入っておらず、他プロジェクトからは呼べません。安全装置（関所）は、複製へ自動で逃げる仕組みのおかげで動いています。</p>
+    <p><strong>結論: 同期はきれい。次の一手は、計画にある Phase 140.1 より先に配布の修理版 5.13.2 を出すこと。</strong>下の 3 枚のカードで判断すると、次スプリントの順番が確定します。完了条件は「3 件すべてについて、進める範囲と今回は止める範囲が決まる」ことです。</p>
+  </section>
+
+  <section class="card decision-section wrap" id="decision-section" aria-labelledby="decision-heading" hidden>
+    <div class="decision-head">
+      <p class="section-label">立花が今決めること</p>
+      <h2 id="decision-heading">進める範囲を選ぶ</h2>
+      <p>推奨と、今回の許可に含まれないことを分けて表示します。完了条件は、3 件すべてについて進める範囲と今回は止める範囲が決まること。選んだ結果は下のボタンでコピーして、チャットに貼って戻してください。</p>
+    </div>
+    <div class="decision-list" id="decision-list" role="list"></div>
+    <div class="decision-actions">
+      <button type="button" class="decision-copy" id="decision-copy">選んだ結果をまとめてコピー</button>
+      <span class="decision-copy-state" id="decision-copy-state" role="status" aria-live="polite">選んだ内容はこのページに保存されません。コピーして戻してください。</span>
+    </div>
+    <textarea class="decision-transcript" id="decision-transcript" readonly hidden aria-label="コピーする本文"></textarea>
+  </section>
+
+  <main class="explorer wrap" id="workflow-explorer">
+    <div class="workflow-main">
+    <section class="card canvas-card" aria-labelledby="active-flow-title">
+      <div class="canvas-head">
+        <div class="canvas-title-row">
+          <div>
+            <p class="section-label">選択中の流れ</p>
+            <h2 id="active-flow-title">フローを読み込み中</h2>
+            <p class="flow-description" id="active-flow-description"></p>
+          </div>
+          <span class="view-state" id="view-state">流れ全体</span>
+        </div>
+
+        <p class="plain-summary">
+          <strong>やさしく言うと</strong>
+          <span id="plain-summary">選んだフローの要点をここに表示します。</span>
+        </p>
+
+        <div class="canvas-controls" aria-label="段階を移動">
+          <button class="control-button" id="previous-step" type="button">← 前へ</button>
+          <button class="control-button" id="show-overview" type="button" aria-pressed="true">流れ全体</button>
+          <button class="control-button" id="next-step" type="button">次へ →</button>
+        </div>
+      </div>
+
+      <div class="diagram-shell" aria-label="システム構成図。横方向にスクロールできます。">
+        <div class="diagram" id="diagram">
+          <svg class="edge-layer" id="edge-layer" aria-hidden="true"></svg>
+        </div>
+      </div>
+
+      <noscript>
+        <p class="noscript">この図の切替にはJavaScriptが必要です。印刷版または「処理の順番」を参照してください。</p>
+      </noscript>
+    </section>
+
+    <footer class="report-footer workflow-footer">
+      <strong>SSOT出典</strong>
+      <ul class="source-list" id="source-list"></ul>
+      <p><strong>分析方法と制約</strong>: 2026-08-27 に harness-sync skill の手順（Plans.md 照合 / git 状態 / 振り返り）で実施。配布欠けは同日の plugin update 直後に手元の cache と claude plugin details を実測。原因は 2026-08-29 に旧 script の再現で確定し、本文を改訂した。直したい箇所は HTML を編集せず、見た目の場所を指してチャットで伝えると AI 側で反映する。</p>
+    <p>本レポートは理解と判断のための派生物です。仕様や実装の正本ではありません。</p>
+    </footer>
+    </div>
+
+    <aside class="sidebar" aria-label="流れと処理の順番">
+      <section class="card side-section flow-section" aria-labelledby="flows-heading">
+        <div class="side-head">
+          <div>
+            <p class="section-label">1つ選ぶ</p>
+            <h2 id="flows-heading">見たい流れを選ぶ</h2>
+          </div>
+          <span class="side-count" id="flow-count"></span>
+        </div>
+        <div class="flow-list" id="flow-list" role="list"></div>
+      </section>
+
+      <section class="card side-section" aria-labelledby="steps-heading">
+        <div class="side-head">
+          <div>
+            <p class="section-label">上から順に読む</p>
+            <h2 id="steps-heading">処理の順番</h2>
+          </div>
+          <span class="side-count" id="step-count"></span>
+        </div>
+        <div class="step-list" id="step-list" role="list"></div>
+      </section>
+    </aside>
+
+    <p id="workflow-status" class="visually-hidden" aria-live="polite"></p>
+  </main>
+
+  <section class="card content-section wrap" aria-labelledby="s1-h">
+    <p class="section-label">01 · 同期の結果</p>
+    <h2 id="s1-h">計画と実装のズレは 0 件</h2>
+    <p class="lede">harness-sync の 3 つの検査項目を、Plans.md と git の実測で照合した。</p>
+    <div class="table-scroll">
+      <table class="cmp-table">
+        <thead><tr><th>検査項目</th><th>見つけ方</th><th>結果</th></tr></thead>
+        <tbody>
+          <tr class="hit"><td>完了済みなのに「作業中」のまま</td><td>コミット履歴 と Plans.md の印（cc:wip）</td><td><span class="chip chip-ok">該当なし</span> cc:wip は 0 件（凡例の 2 行だけ）</td></tr>
+          <tr class="hit"><td>着手済みなのに「未着手」のまま</td><td>変更ファイル と Plans.md の印（cc:todo）</td><td><span class="chip chip-ok">該当なし</span> 未保存の変更は 0 件</td></tr>
+          <tr class="hit"><td>「完了」なのに未コミット</td><td>git status と Plans.md の印（cc:done）</td><td><span class="chip chip-ok">該当なし</span> HEAD 78a678dd は origin/main と同一</td></tr>
+          <tr class="warn"><td>エージェント編集履歴との照合</td><td>.claude/state/agent-trace.jsonl</td><td><span class="chip chip-warn">照合不能</span> この worktree にファイルが存在しない（未生成。不存在 = 問題なし、ではない）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-scroll">
+      <table class="cmp-table">
+        <thead><tr><th>Phase</th><th>内容</th><th>task</th><th>状態</th></tr></thead>
+        <tbody>
+          <tr class="hit"><td>134</td><td>検証チェーン配線修理（HOTL 本実装）</td><td>8</td><td><span class="chip chip-ok">完了 8/8</span></td></tr>
+          <tr class="hit"><td>135</td><td>日本語 writing lint（エンジン）</td><td>5</td><td><span class="chip chip-ok">完了 5/5</span> 辞書は空のまま（142.4 で入れる）</td></tr>
+          <tr class="hit"><td>136</td><td>surface チェリーピック</td><td>3</td><td><span class="chip chip-ok">完了 3/3</span></td></tr>
+          <tr class="hit"><td>137</td><td>ループエンジニアリング施策</td><td>3</td><td><span class="chip chip-ok">完了 3/3</span></td></tr>
+          <tr class="gap"><td>138</td><td>汎用 feedback ルール + count 段階付け + PR evidence pack</td><td>6</td><td><span class="chip chip-risk">未着手 6/6</span> 8/15 起票、最古の未着手</td></tr>
+          <tr class="hit"><td>139</td><td>D70 Codex Breezing worker route</td><td>3</td><td><span class="chip chip-ok">完了 3/3</span></td></tr>
+          <tr class="gap"><td>140</td><td>guardrail defer 方式（無人停止の修理）</td><td>4</td><td><span class="chip chip-risk">未着手 4/4</span> 8/25 裁定で次スプリント先頭</td></tr>
+          <tr class="hit"><td>141</td><td>セッション協調パイプライン</td><td>10</td><td><span class="chip chip-ok">完了 10/10</span> main 側で並行して完了</td></tr>
+          <tr class="gap"><td>142</td><td>外部吸収レビューの反映（記憶 / 注入棚卸し / 辞書 / 引退提案 / native 点検）</td><td>7</td><td><span class="chip chip-risk">未着手 7/7</span> 8/25 起票</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card content-section wrap" aria-labelledby="s2-h">
+    <p class="section-label">02 · 進捗</p>
+    <h2 id="s2-h">全体の 65%。残りは 3 つの束</h2>
+    <p class="lede">100% の定義は「Phase 134〜142 の 49 task がすべて完了（cc:done）」。</p>
+    <div class="progress-wrap">
+      <h3>Phase 別の完了率（task 数ベース）</h3>
+      <div class="gauge">
+        <div class="gauge-row"><span>全体（49 task）</span><div class="gauge-bar"><div class="gauge-fill g-green" style="width:65%"></div></div><span>32 / 49</span></div>
+        <div class="gauge-row"><span>134〜137, 139, 141</span><div class="gauge-bar"><div class="gauge-fill g-green" style="width:100%"></div></div><span>32 / 32</span></div>
+        <div class="gauge-row"><span>138 feedback 規則</span><div class="gauge-bar"><div class="gauge-fill g-gray" style="width:0%"></div></div><span>0 / 6</span></div>
+        <div class="gauge-row"><span>140 無人停止の修理</span><div class="gauge-bar"><div class="gauge-fill g-gray" style="width:0%"></div></div><span>0 / 4</span></div>
+        <div class="gauge-row"><span>142 記憶と辞書の修理</span><div class="gauge-bar"><div class="gauge-fill g-gray" style="width:0%"></div></div><span>0 / 7</span></div>
+      </div>
+      <p class="gauge-note">32 ÷ 49 = 65.3%。task の大きさは均一ではないので、時間ベースの進捗ではない。</p>
+    </div>
+    <div class="easy-grid">
+      <div class="easy-card"><h3>プロジェクトの目的</h3><p>AI にプログラムを書かせるときの安全装置つき手順（計画 → 実装 → 審査 → 判断）を、Claude / Codex / Cursor のどれからでも同じように効かせる。立花は最終判断だけをする。</p></div>
+      <div class="easy-card"><h3>今やっている作業</h3><p>v5.13.1 の公開とその後始末。公開は完了、他プロジェクトへの配布で部品欠けが見つかり、修理版の要否を判断する段階。</p></div>
+      <div class="easy-card"><h3>何のためにやるのか</h3><p>8/24 のレビューで出た運用の 3 穴（記憶が空 / 辞書が空 / 無人停止）を直す前に、直した版が他プロジェクトへ「ちゃんと届く」状態を作るため。届かなければ修理は現場で効かない。</p></div>
+      <div class="easy-card"><h3>次に進めるべきタスク</h3><ul><li><strong>立花の判断が必要</strong>: 下の 3 カード（修理版 5.13.2 / 140.1 着手 / 順番の固定）</li><li><strong>次に AI が続ける</strong>: 承認後、修理版の実装と実インストール確認。完了条件は配布先で Agents (5)</li><li><strong>外部条件待ち</strong>: 無し</li></ul></div>
+    </div>
+  </section>
+
+  <section class="card content-section wrap" aria-labelledby="s3-h">
+    <p class="section-label">03 · 配布の欠け</p>
+    <h2 id="s3-h">他プロジェクトの 5.13.1 に、エージェントが入っていない</h2>
+    <p class="lede">事実、推定、未確認を分けて置く。</p>
+    <div class="table-scroll">
+      <table class="cmp-table">
+        <thead><tr><th>項目</th><th>状態</th><th>根拠</th></tr></thead>
+        <tbody>
+          <tr class="hit"><td>台帳の版</td><td><span class="chip chip-ok">事実</span> 5.12.0 → 5.13.1 に更新済み。適用は各セッションの再起動後</td><td>claude plugin update の出力</td></tr>
+          <tr class="gap"><td>cache 5.13.1 の中身</td><td><span class="chip chip-risk">事実</span> .claude-plugin / hooks / output-styles / scripts / skills / VERSION の 6 項目だけ</td><td>ls ~/.claude/plugins/cache/…/5.13.1</td></tr>
+          <tr class="gap"><td>エージェント</td><td><span class="chip chip-risk">事実</span> Agents (0)。repo には 5 個（advisor / livemsg-gate / reviewer / test-wiring-auditor / worker）</td><td>claude plugin details / ls agents/</td></tr>
+          <tr class="hit"><td>関所（hooks）</td><td><span class="chip chip-ok">事実</span> 27 種が登録され、複製の bin/harness で 5.13.1 (Hokage) が動く</td><td>repo 外ディレクトリからの実測 probe</td></tr>
+          <tr class="warn"><td>5.13.0 の cache</td><td><span class="chip chip-warn">事実</span> 同じ 6 項目。5.12.0 は完全な複製</td><td>ls 各版の cache</td></tr>
+          <tr class="hit"><td>原因</td><td><span class="chip chip-ok">実測</span> CCH 自身の SessionStart hook（scripts/sync-plugin-cache.sh）が、まだ入っていない版の cache フォルダを先に作っていた。中身はその script が同期する分（hooks / skills / scripts / output-styles / VERSION）だけで、Claude Code は後から入れるときに既にあるフォルダをそのまま使った。同じ script が marketplace 複製の plugin.json を別 worktree の版（5.13.0）へ書き戻していたため、claude plugin update は「5.13.0 が最新」と答え、5.13.1 は一度も入っていない</td><td>2026-08-29 に旧 script で再現: 未インストール版の cache 作成 / 複製の plugin.json と VERSION の書換 / 複製の docs/research 削除。claude plugin update → already at the latest version (5.13.0)。CC docs: plugin.json の version が最新判定の正、agents/ は宣言なしで自動発見</td></tr>
+          <tr class="warn"><td>templates を読む Go 機能</td><td><span class="chip chip-warn">未確認</span> mirror / judgment ledger / night-watch が痩せた cache を見て壊れるか</td><td>go/internal/clientmirror/mirror.go:20 ほか 6 か所</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="lede">修理の要点: 直す場所は scripts/sync-plugin-cache.sh の 1 か所。manifest（plugin.json）や Go の生成コードは触らない。agents/ は Claude Code が宣言なしで拾うので、cache の複製が完全なら戻る。</p>
+    <div class="codeblock">欠陥 1  未インストール版の cache フォルダを先に作る   → 既にある版だけ更新し、無ければ作らない
+欠陥 2  複製の VERSION / plugin.json を書き戻す        → 複製が同じ版のときだけ同期し、版を持つ 3 ファイルは書かない
+欠陥 3  複製の docs/research（git 管理下）を削除する   → 削除は cache 側だけ
+追加    agents/ を同期対象に加える（既存 cache の欠けも埋まる）</div>
+  </section>
+
+  <section class="card content-section wrap" aria-labelledby="s4-h">
+    <p class="section-label">04 · 振り返り</p>
+    <h2 id="s4-h">直近 7 日: 50 commit、完了 task 10 件（Phase 141）、止まった原因は 2 種類</h2>
+    <p class="lede">harness-sync の既定の振り返り（見積もり精度 / ブロック / スコープ変動）。</p>
+    <div class="table-scroll">
+      <table class="cmp-table">
+        <thead><tr><th>指標</th><th>値</th><th>読み方</th></tr></thead>
+        <tbody>
+          <tr><td>期間</td><td>2026-08-20 〜 08-27</td><td>git log --since 7 days</td></tr>
+          <tr><td>commit 数</td><td>50</td><td>Phase 141（10 task）と v5.13.0 / v5.13.1 の 2 公開を含む</td></tr>
+          <tr><td>変更規模（直近 10 commit）</td><td>149 ファイル / +14,859 / -1,348 行</td><td>実行ファイル 4 個の再ビルドと Plans.md 追記を含む</td></tr>
+          <tr class="warn"><td>見積もりのズレ</td><td>公開の工程を 1 つ飛ばした</td><td>VERSION を上げたのに実行ファイルを再ビルドせず、CI が赤に。再ビルド commit を 1 つ追加</td></tr>
+          <tr class="warn"><td>ブロック</td><td>Plans.md 上の blocked 印は 0 件。実際の停止は 2 種類</td><td>① 公開役の AI が「CI を待ちます」で自主停止（複数回、指示の再送で復帰）② 削除確認で無人 run が停止（Phase 140 の動機）</td></tr>
+          <tr class="warn"><td>スコープ変動</td><td>+7 task（Phase 142）</td><td>8/24 のレビュー由来。削除 0</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="easy-grid">
+      <div class="easy-card"><h3>学び</h3><ul><li>「公開した」と「配布先で動く」は別の工程。配布先の実測を公開の完了条件に含めていなかった</li><li>CI の待ち判定は exit code ではなく一覧の fail 行で見る（gh pr checks --watch は fail でも 0 で終わった）</li></ul></div>
+      <div class="easy-card"><h3>次に活かすこと</h3><ul><li>release の完了条件に「別プロジェクトで claude plugin details を見て部品数を確認」を足す（修理版で配線）</li><li>Phase 140.3 の「自主停止の禁止文言」は今回も再現した停止パターンなので、140.1 と同じスプリントで済ませる</li></ul></div>
+    </div>
+  </section>
+
+  <section class="openbox wrap" aria-label="未確定事項">
+    <strong>未確定・正直な但し書き</strong>
+    <ul>
+      <li>2026-08-29 改訂: 初版では原因を「Claude Code が manifest 宣言の部品だけ複製する」と推定していたが、旧 script の再現で否定された。原因は CCH 自身の SessionStart hook。修理版の契約テスト 4 本は旧 script で RED、修理後 GREEN を記録済み</li>
+      <li>Claude Code が「既にある版フォルダをそのまま使う」は、5.13.0 / 5.13.1 の中身と時刻からの推論で、CC の公開文書には無い。修理後は script がフォルダを作らないので、この推論に依存せず新しい版が完全な複製で入る見込み。実測は 5.13.2 の plugin update で取る</li>
+      <li>別 worktree で動く旧 script は、それらのセッションが 5.13.2 を取り込むまで複製の版を書き戻しうる。修理版の公開直後に marketplace update → plugin update を続けて実行し、窓を狭める</li>
+      <li>agent-trace.jsonl がこの worktree に無いため、編集履歴ベースの照合は行っていない</li>
+      <li>進捗 65% は task 数ベース。138 / 140 / 142 の 17 task は検証込みの task（[tdd:required] / [lane:gate]）が多く、時間では 30% より重い</li>
+      <li>振り返りの harness-mem への記録（Step R4）はこの回では行っていない。判断が出た後に decisions.md へ書く</li>
+    </ul>
+  </section>
+
+  <section class="verdictbox wrap" aria-label="総合判定">
+    <strong>総合判定と次の一手</strong>
+    <p>同期はきれい。Plans.md の更新は不要。作業は「公開した版を配布先で効かせる」段階で止まっており、そこにだけ欠けがある。推奨は、修理版 5.13.2（sync-plugin-cache.sh の 3 欠陥修正 + 実インストール確認）を先に出し、その後 Phase 140.1 → 142 → 138 の順で進めること。</p>
+    <ul>
+      <li>この回答までに進めたこと: 同期の照合（3 検査 + Phase 別集計）、配布欠けの切り分け（送る側は完全、受け取る側で欠ける）、原因の再現（CCH 自身の hook script、2026-08-29）、振り返り</li>
+      <li>次に AI が続けること（承認後）: script の修正と契約テスト（RED → GREEN）、公開、plugin update で 5.13.2 が完全な複製で入ることの確認。完了条件は配布先で Agents (5)</li>
+      <li>立花の判断が必要: 上の 3 カード</li>
+      <li>外部条件待ち: 無し</li>
+    </ul>
+  </section>
+
+  <script id="report-data" type="application/json">
+{
+  "meta": {
+    "project": "CLAUDE CODE HARNESS",
+    "title": "今どこにいて、次に何をするか？",
+    "thesis": "計画と実装のズレは 0 件。v5.13.1 は公開まで完了し、作業ブランチは共有正本（origin/main）と同一。ただし配布先の Claude Code に入った 5.13.1 は部品が欠けていて、エージェント 5 個（worker / reviewer / advisor など）が消えている。次の一手は、Phase 140.1 より先に配布の修理版 5.13.2 を出すこと。",
+    "decisionMode": true,
+    "generatedAt": "2026-08-27",
+    "sourceRefs": [
+      "Plans.md（Phase 134〜142 の 49 task、cc:todo 17 / cc:done 32 / cc:wip 0）",
+      "git: HEAD 78a678dd == origin/main、working tree clean、直近 7 日 50 commit",
+      "GitHub Release v5.13.1（PR #337、tag v5.13.1、4 platform binary）",
+      "~/.claude/plugins/cache/claude-code-harness-marketplace/claude-code-harness/5.13.1（6 項目のみ）",
+      "claude plugin details: Skills (23) / Agents (0) / Hooks (27)",
+      ".claude-plugin/plugin.json と go/cmd/harness/sync.go:100-112（skills と outputStyles だけ宣言）",
+      "go/pkg/config/toml.go:41-51 ProjectConfig（Agents フィールド無し）",
+      "agents/（advisor / livemsg-gate / reviewer / test-wiring-auditor / worker の 5 個）",
+      ".claude/memory/decisions.md D71 / Plans.md Phase 140 優先順ノート（2026-08-25 裁定）"
+    ]
+  },
+  "decisions": [
+    {
+      "id": "decision-hotfix",
+      "title": "配布の修理版 5.13.2 を、Phase 140.1 より先に出してよいか",
+      "recommendation": "先に進める",
+      "impact": "scripts/sync-plugin-cache.sh の 3 欠陥（未インストール版の cache を先に作る / 複製の版を書き戻す / 複製の git 管理ファイルを消す）を直し、契約テスト 4 本を足して 5.13.2 として公開する。公開後に plugin update で 5.13.2 が完全な複製（agents 5 個、bin、templates）で入ることを確認する。manifest と Go は触らない。",
+      "notNow": "新機能は入れない。関所（hooks）の複製への退避経路も残す。手元の壊れた cache（5.13.0 / 5.13.1）は消さず、Claude Code の整理に任せる。",
+      "reversible": "戻せる。script の変更は 1 ファイルで、5.12.0 の完全な複製も手元に残っている。複製の plugin.json を git の内容へ戻す操作だけは Claude Code 管理下のフォルダへの手当てで、release の確認時にまとめて判断する。"
+    },
+    {
+      "id": "decision-140",
+      "title": "修理版の後、Phase 140.1（削除確認の保留キュー）に着手してよいか",
+      "recommendation": "進める",
+      "impact": "設定に第 3 の値「保留（defer）」を足す。無人実行中に危ない削除コマンドが出たとき、「実行していい？」で全体を止める代わりに、実行せず保留リストへ積んで次の仕事を続ける。保留は朝まとめて見られる。",
+      "notNow": "危ない削除を勝手に実行することはしない。保留を承認して実行する道具（140.2）は次の task。既定値は今の「警告して通す（warn）」のまま、保留は選んだ人だけ有効。",
+      "reversible": "戻せる。設定値を消せば今の動きに戻る。既存の warn / ask の挙動には回帰テストで手を付けない。"
+    },
+    {
+      "id": "decision-order",
+      "title": "次スプリントの順番を 140 → 142 → 138 に固定してよいか",
+      "recommendation": "固定する",
+      "impact": "Phase 140（無人停止の修理、4 task）、Phase 142（記憶と辞書の修理、7 task）、Phase 138（フィードバック規則の自動化、6 task）の順で進める。138 は 8/15 起票で最古の未着手だが、142 が先に辞書と承認の共用部を作るので後のほうが手戻りが少ない。",
+      "notNow": "Phase 138 を削らない。7 task ある Phase 142 の中の順番（142.1 → 142.2 …）はこの場では変えない。",
+      "reversible": "戻せる。順番は Plans.md の 1 行のメモで、いつでも書き換えられる。着手前なら手戻りは無い。"
+    }
+  ],
+  "categories": [
+    {
+      "id": "c-plan",
+      "label": "① 計画する"
+    },
+    {
+      "id": "c-build",
+      "label": "② 作って検証する"
+    },
+    {
+      "id": "c-publish",
+      "label": "③ 公開する"
+    },
+    {
+      "id": "c-install",
+      "label": "④ 配布先へ入れる"
+    },
+    {
+      "id": "c-run",
+      "label": "⑤ 現場で動く"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n-plans",
+      "label": "Plans.md（49 task）",
+      "categoryId": "c-plan",
+      "row": 1,
+      "summary": "計画の正本。完了 32、未着手 17、作業中 0。未着手は Phase 138 / 140 / 142 の 3 束"
+    },
+    {
+      "id": "n-decisions",
+      "label": "decisions.md（D71）",
+      "categoryId": "c-plan",
+      "row": 2,
+      "summary": "判断の記録。8/25 の裁定で Phase 140 を先頭、自動採用は不採用"
+    },
+    {
+      "id": "n-worktree",
+      "label": "作業ブランチ（clean）",
+      "categoryId": "c-build",
+      "row": 1,
+      "summary": "release/v5.13.1-plan-followup。未保存の変更なし、共有正本と同じ 78a678dd"
+    },
+    {
+      "id": "n-ci",
+      "label": "CI 検証（validate）",
+      "categoryId": "c-build",
+      "row": 2,
+      "summary": "構造検証と『実行ファイルが版と一致するか』の関所。8/26 に 1 度赤になり再ビルドで通過"
+    },
+    {
+      "id": "n-main",
+      "label": "共有正本（origin/main）",
+      "categoryId": "c-publish",
+      "row": 1,
+      "summary": "PR #337 を取り込み済み。VERSION 5.13.1"
+    },
+    {
+      "id": "n-release",
+      "label": "公開版 v5.13.1（Release）",
+      "categoryId": "c-publish",
+      "row": 2,
+      "summary": "tag と GitHub Release。4 platform の実行ファイルを添付済み"
+    },
+    {
+      "id": "n-clone",
+      "label": "marketplace の複製",
+      "categoryId": "c-install",
+      "row": 1,
+      "summary": "~/.claude/plugins/marketplaces/ にある repo の完全な複製。agents / bin / templates を含む"
+    },
+    {
+      "id": "n-cache",
+      "label": "plugin cache 5.13.1（欠け）",
+      "categoryId": "c-install",
+      "row": 2,
+      "summary": "Claude Code が実際に読む場所。6 項目（hooks / skills / scripts / output-styles / VERSION / manifest）だけ。agents / bin / templates が無い。この 6 項目は CCH の sync script が同期する集合と一致する"
+    },
+    {
+      "id": "n-hooks",
+      "label": "関所（hooks 27 種）",
+      "categoryId": "c-run",
+      "row": 1,
+      "summary": "他プロジェクトでも動く。cache に実行ファイルが無いので複製へ自動で逃げ、5.13.1 を実行"
+    },
+    {
+      "id": "n-agents",
+      "label": "エージェント 5 個（不在）",
+      "categoryId": "c-run",
+      "row": 2,
+      "summary": "worker / reviewer / advisor / test-wiring-auditor / livemsg-gate。配布先では Agents (0)"
+    },
+    {
+      "id": "n-unattended",
+      "label": "無人実行（Phase 140）",
+      "categoryId": "c-run",
+      "row": 3,
+      "summary": "夜間の自動実行。今は削除確認で止まる。140.1 で『保留して続行』にする"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-plans-worktree",
+      "sourceNodeId": "n-plans",
+      "targetNodeId": "n-worktree",
+      "label": "task を実装"
+    },
+    {
+      "id": "e-decisions-plans",
+      "sourceNodeId": "n-decisions",
+      "targetNodeId": "n-plans",
+      "label": "優先順を反映"
+    },
+    {
+      "id": "e-worktree-ci",
+      "sourceNodeId": "n-worktree",
+      "targetNodeId": "n-ci",
+      "label": "PR で検証"
+    },
+    {
+      "id": "e-ci-main",
+      "sourceNodeId": "n-ci",
+      "targetNodeId": "n-main",
+      "label": "merge"
+    },
+    {
+      "id": "e-main-release",
+      "sourceNodeId": "n-main",
+      "targetNodeId": "n-release",
+      "label": "tag"
+    },
+    {
+      "id": "e-release-clone",
+      "sourceNodeId": "n-release",
+      "targetNodeId": "n-clone",
+      "label": "marketplace update"
+    },
+    {
+      "id": "e-clone-cache",
+      "sourceNodeId": "n-clone",
+      "targetNodeId": "n-cache",
+      "label": "plugin update"
+    },
+    {
+      "id": "e-cache-hooks",
+      "sourceNodeId": "n-cache",
+      "targetNodeId": "n-hooks",
+      "label": "hook 登録"
+    },
+    {
+      "id": "e-clone-hooks",
+      "sourceNodeId": "n-clone",
+      "targetNodeId": "n-hooks",
+      "label": "bin/harness へ逃げる"
+    },
+    {
+      "id": "e-cache-agents",
+      "sourceNodeId": "n-cache",
+      "targetNodeId": "n-agents",
+      "label": "agents 複製（今は無い）"
+    },
+    {
+      "id": "e-hooks-unattended",
+      "sourceNodeId": "n-hooks",
+      "targetNodeId": "n-unattended",
+      "label": "削除確認"
+    }
+  ],
+  "flows": [
+    {
+      "id": "flow-sync",
+      "title": "同期の結果: 計画から配布先まで今どこか",
+      "description": "harness-sync が照合した 5 工程の現在地",
+      "plainSummary": "計画（Plans.md）と実装（git）にズレは無く、公開まで終わっている。ズレが出たのは配布先の 1 か所だけで、Claude Code が複製した 5.13.1 にエージェントが入っていない。",
+      "steps": [
+        {
+          "stepNumber": 1,
+          "edgeId": "e-decisions-plans",
+          "action": "裁定を計画に反映した",
+          "description": "8/25 の裁定 3 件（自動採用は不採用 / 改善 5 件を載せる / Phase 140 を先頭）を Plans.md に書き、Phase 142 として 7 task を起票した。番号は main 側の Phase 141 と衝突したため 142 に改番。",
+          "why": "計画の正本を 1 か所に保ち、次のセッションが同じ順番で動けるようにするため。",
+          "codeReference": "Plans.md:238 (Phase 140) / Plans.md:290 (Phase 142)"
+        },
+        {
+          "stepNumber": 2,
+          "edgeId": "e-plans-worktree",
+          "action": "作業ブランチを照合した",
+          "description": "Plans.md の cc:wip は 0 件、未保存の変更は 0 件。『完了なのに未コミット』『着手済みなのに未着手表示』のどちらも該当なし。エージェント編集履歴（agent-trace.jsonl）はこの worktree に存在しないため照合対象外。",
+          "why": "計画の表示と実際のファイルが食い違うと、次の作業者が二重に手を付けるため。",
+          "codeReference": "git status --short（空） / grep cc:wip Plans.md（凡例の 2 行のみ）"
+        },
+        {
+          "stepNumber": 3,
+          "edgeId": "e-worktree-ci",
+          "action": "CI の関所を通した",
+          "description": "PR #337 の validate は 1 度赤になった。原因は VERSION を上げたのに 4 platform の実行ファイルを再ビルドしていなかったこと（『実行ファイルと版の一致』の関所）。再ビルド commit 68d2b335 で通過。",
+          "why": "配布される実行ファイルが古い版を名乗ると、現場で『修理したはずが効かない』が起きるため。",
+          "codeReference": "scripts/ci/check-binary-source-drift.sh"
+        },
+        {
+          "stepNumber": 4,
+          "edgeId": "e-ci-main",
+          "action": "共有正本へ取り込んだ",
+          "description": "PR #337 を merge（この repo は squash 不可）。作業ブランチの HEAD 78a678dd は origin/main と完全に同一。",
+          "why": "作業ブランチと正本の差分が 0 であることが、同期完了の定義だから。",
+          "codeReference": "git log HEAD..origin/main（0 件）"
+        },
+        {
+          "stepNumber": 5,
+          "edgeId": "e-main-release",
+          "action": "v5.13.1 として公開した",
+          "description": "tag v5.13.1 を打ち、GitHub Release に 4 platform の実行ファイル（13〜14 MB）を添付した。",
+          "why": "他プロジェクトは Release 経由でしか新しい版を受け取れないため。"
+        },
+        {
+          "stepNumber": 6,
+          "edgeId": "e-clone-cache",
+          "action": "配布先へ入れた（ここで欠けた）",
+          "description": "marketplace update → plugin update で台帳は 5.13.1 に上がった。しかし複製された cache は 6 項目だけで、agents / bin / templates が入っていない。5.12.0 の cache は完全な複製だった。",
+          "why": "配布先の Claude Code は cache しか読まないため、ここに無い部品は現場に存在しないのと同じ。",
+          "codeReference": "ls ~/.claude/plugins/cache/claude-code-harness-marketplace/claude-code-harness/5.13.1"
+        }
+      ]
+    },
+    {
+      "id": "flow-degrade",
+      "title": "配布の欠け: エージェントが消えた経路と、関所が生き残った理由",
+      "description": "5.13.0 / 5.13.1 の cache だけが欠けている",
+      "plainSummary": "欠けた cache を作ったのは Claude Code ではなく CCH 自身の SessionStart hook。版を上げた worktree が、まだ入っていない版の cache フォルダを同期分だけで先に作り、Claude Code はそれをそのまま使った。さらに同じ script が複製の plugin.json を古い版に書き戻し、plugin update が新しい版を見つけられなくなった。関所（hooks）だけは複製へ自動で逃げる仕組みがあったので生き残った。",
+      "steps": [
+        {
+          "stepNumber": 1,
+          "edgeId": "e-release-clone",
+          "action": "複製は完全に取れている",
+          "description": "marketplace の複製（~/.claude/plugins/marketplaces/…）は repo の完全な複製で、agents 5 個、bin/harness、templates を全部含む。git archive v5.13.1 も同様なので、配布側（CCH の .gitattributes）の除外設定は原因ではない。",
+          "why": "原因が『送る側』か『受け取る側』かを切り分けるため。",
+          "codeReference": "git archive v5.13.1 --list（agents / bin / templates を含む）"
+        },
+        {
+          "stepNumber": 2,
+          "edgeId": "e-clone-cache",
+          "action": "cache への複製で部品が落ちる",
+          "description": "cache 5.13.1 の中身は .claude-plugin / hooks / output-styles / scripts / skills / VERSION の 6 項目で、作成時刻は 8/26 03:27（release commit の 7 分後、SessionStart hook の実行時刻）。この 6 項目は scripts/sync-plugin-cache.sh が同期する集合そのもの。5.13.0 / 5.8.0 / 5.9.0 も同じ欠け方で、5.10〜5.12 は Claude Code が先に入れたので完全。2026-08-29 に旧 script を空の HOME で走らせ、同じ 6 項目のフォルダが作られることを再現した。",
+          "why": "欠けた集合が自前 script の同期集合と一致すれば、直す場所は Claude Code ではなく script だと決まるため。",
+          "codeReference": "scripts/sync-plugin-cache.sh（critical_files / critical_dirs）/ scripts/session-init.sh:99-101"
+        },
+        {
+          "stepNumber": 3,
+          "edgeId": "e-cache-agents",
+          "action": "エージェントが現場に存在しなくなる",
+          "description": "claude plugin details は Skills (23) / Agents (0) / Hooks (27)。worker（実装役）、reviewer（審査役）、advisor（助言役）、test-wiring-auditor（テスト配線の監査役）、livemsg-gate（送信の関所）が他プロジェクトから呼べない。breezing と自動レビューがこの 5 個に依存する。",
+          "why": "何が使えなくなったかを部品名で押さえないと、被害範囲を誤るため。",
+          "codeReference": "agents/*.md（5 ファイル）"
+        },
+        {
+          "stepNumber": 4,
+          "edgeId": "e-clone-hooks",
+          "action": "関所だけは複製へ逃げて生き残る",
+          "description": "hook のラッパーは cache に bin/harness が無いと、CLAUDE_PROJECT_DIR → PWD → marketplace の複製 → cache の順に探す。repo 外のディレクトリから試すと複製が選ばれ、5.13.1 (Hokage) が動いた。templates を読む Go の機能（mirror / judgment ledger / night-watch）が痩せた cache を見て壊れるかは未検証。",
+          "why": "『関所は生きている』が実測で言えないと、他プロジェクトの安全性を過大にも過小にも評価するため。",
+          "codeReference": "hooks/hooks.json の valid_root() / go/internal/clientmirror/mirror.go:20"
+        }
+      ]
+    },
+    {
+      "id": "flow-hotfix",
+      "title": "修理版 5.13.2 の道筋（推奨）",
+      "description": "自前 script が配布先を壊さないようにして再配布する",
+      "plainSummary": "scripts/sync-plugin-cache.sh を「既に入っている版だけ更新し、複製の版は書き戻さず、複製の git 管理ファイルは消さない」に直す。契約テスト 4 本を旧 script で RED、修理後 GREEN で記録してから公開し、plugin update で 5.13.2 が完全な複製で入ることを確認する。",
+      "steps": [
+        {
+          "stepNumber": 1,
+          "edgeId": "e-plans-worktree",
+          "action": "script の 3 欠陥を直す",
+          "description": "cache フォルダは既にある版だけ更新して新規には作らない。marketplace 複製は git HEAD の版が同じときだけ同期し、VERSION / plugin.json / marketplace.json は書かない。docs/research などの削除は cache 側だけ。agents/ を同期対象に加える。",
+          "why": "配布先（cache と複製）の所有者は Claude Code で、自前 script は更新役に留めるため。作る役と版を決める役を奪ったことが 3 件の欠陥の共通根。",
+          "codeReference": "scripts/sync-plugin-cache.sh / tests/test-sync-plugin-cache.sh"
+        },
+        {
+          "stepNumber": 2,
+          "edgeId": "e-worktree-ci",
+          "action": "契約テストを RED → GREEN で記録して CI へ",
+          "description": "tests/test-sync-plugin-cache.sh に 4 本の契約（複製の版ファイルを書かない / 複製の git 管理ファイルを消さない / 未インストール版の cache を作らない / 別の版の複製に触れない）を足す。旧 script では 4 本とも RED、修理後 GREEN。既存の validate-plugin.sh 配線をそのまま使う。VERSION を上げたら 4 platform の実行ファイルを再ビルドする。",
+          "why": "『配線した』と『効いている』は別で、同じ事故を 1 セッションで 2 回起こした記録があるため。",
+          "codeReference": "tests/validate-plugin.sh / scripts/ci/check-binary-source-drift.sh"
+        },
+        {
+          "stepNumber": 3,
+          "edgeId": "e-ci-main",
+          "action": "取り込む",
+          "description": "PR を merge（--merge）。",
+          "why": "共有正本を更新するため。"
+        },
+        {
+          "stepNumber": 4,
+          "edgeId": "e-main-release",
+          "action": "5.13.2 として公開する",
+          "description": "tag と Release を作る。公開は外部送信なので、release フローの単一確認で立花が承認する。",
+          "why": "他プロジェクトへ届ける唯一の経路だから。"
+        },
+        {
+          "stepNumber": 5,
+          "edgeId": "e-clone-cache",
+          "action": "配布先で Agents (5) を確認する",
+          "description": "複製の plugin.json を git の内容へ戻してから marketplace update → plugin update を続けて実行し、cache 5.13.2 に agents 5 個 / bin / templates が揃うこと、claude plugin list が 5.13.2 を示すことを見る。",
+          "why": "配布先の実測が無いと、修理が効いたと言えないため。"
+        }
+      ]
+    },
+    {
+      "id": "flow-next",
+      "title": "その次: Phase 140.1 で無人実行を止めない",
+      "description": "削除確認を『保留して続行』に変える",
+      "plainSummary": "夜間の自動実行が『この削除、実行していい？』で止まる問題を、実行せずに保留リストへ積んで続行する形に変える。",
+      "steps": [
+        {
+          "stepNumber": 1,
+          "edgeId": "e-plans-worktree",
+          "action": "設定値 defer と保留リストを実装する",
+          "description": "R05（削除の見張り）が確認を出す場面で、設定が defer なら deny を返し、理由文に『保留に積んだ / 再試行禁止 / 他タスクを続行 / 終了時に保留一覧を報告』を埋め込む。操作は .claude/state/deferred-ops.jsonl に 1 行追記。",
+          "why": "hook の deny は実行を止めず、ask だけが全体を止めると 8/22 に実測したため。",
+          "codeReference": "go/internal/policy/rules.go:248-300 / go/internal/guardrail/destructive_delete_policy.go"
+        },
+        {
+          "stepNumber": 2,
+          "edgeId": "e-worktree-ci",
+          "action": "実行ファイルに payload を投げて確かめる",
+          "description": "defer 設定で deny + 保留 1 行、同じコマンドの再試行で重複なし、warn / ask の既存挙動に回帰なし、の 3 点を実バイナリで測る。",
+          "why": "Plans.md 140.1 の完了条件 (a)(b)(c) がそのまま検証項目だから。"
+        },
+        {
+          "stepNumber": 3,
+          "edgeId": "e-hooks-unattended",
+          "action": "現場で無人実行が完走する",
+          "description": "他プロジェクトに届くのは plugin 更新後。保留の承認と実行は 140.2（harness deferred list / approve）で作る。それまでは保留は積まれるだけで、朝に人が確認して手で対応する。",
+          "why": "140.1 単体では『積む』までで、承認して実行する道具が無いため。"
+        }
+      ]
+    }
+  ]
+}
+  </script>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const svgNamespace = "http://www.w3.org/2000/svg";
+      const decisionChoices = [
+        ["go", "やっていい"],
+        ["talk", "相談したい"],
+        ["stop", "やらない"]
+      ];
+      const decisionState = new Map();
+      const decisionMemo = new Map();
+      const elements = {
+        projectName: document.getElementById("project-name"),
+        reportTitle: document.getElementById("report-title"),
+        reportThesis: document.getElementById("report-thesis"),
+        generatedAt: document.getElementById("generated-at"),
+        decisionSection: document.getElementById("decision-section"),
+        decisionList: document.getElementById("decision-list"),
+        decisionCopy: document.getElementById("decision-copy"),
+        decisionCopyState: document.getElementById("decision-copy-state"),
+        decisionTranscript: document.getElementById("decision-transcript"),
+        diagram: document.getElementById("diagram"),
+        edgeLayer: document.getElementById("edge-layer"),
+        flowList: document.getElementById("flow-list"),
+        stepList: document.getElementById("step-list"),
+        activeFlowTitle: document.getElementById("active-flow-title"),
+        activeFlowDescription: document.getElementById("active-flow-description"),
+        plainSummary: document.getElementById("plain-summary"),
+        flowCount: document.getElementById("flow-count"),
+        stepCount: document.getElementById("step-count"),
+        viewState: document.getElementById("view-state"),
+        status: document.getElementById("workflow-status"),
+        previous: document.getElementById("previous-step"),
+        overview: document.getElementById("show-overview"),
+        next: document.getElementById("next-step"),
+        sourceList: document.getElementById("source-list")
+      };
+
+      let data;
+
+      try {
+        data = JSON.parse(document.getElementById("report-data").textContent);
+        const errors = validateData(data);
+        if (errors.length) throw new Error(errors.join(" / "));
+      } catch (error) {
+        showError(error.message);
+        return;
+      }
+
+      const nodeMap = new Map(data.nodes.map((node) => [node.id, node]));
+      const edgeMap = new Map(data.edges.map((edge) => [edge.id, edge]));
+      const state = {
+        flowIndex: 0,
+        stepIndex: null,
+        printStepIndex: null,
+        openedDetails: []
+      };
+
+      applyMetadata();
+      renderDecisions();
+      renderDiagramNodes();
+      renderFlowList();
+      selectFlow(0);
+      attachControls();
+
+      let resizeFrame = 0;
+      window.addEventListener("resize", () => {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(drawEdges);
+      });
+
+      window.addEventListener("beforeprint", preparePrint);
+      window.addEventListener("afterprint", restoreAfterPrint);
+
+      function applyMetadata() {
+        document.title = data.meta.title;
+        // 肩ラベルの後半は既定で "INTERACTIVE WORKFLOW"。
+        // 社外向け資料では meta.eyebrowSuffix に "" を入れて消せる。
+        const suffix =
+          data.meta.eyebrowSuffix === undefined
+            ? "INTERACTIVE WORKFLOW"
+            : data.meta.eyebrowSuffix;
+        elements.projectName.textContent = suffix
+          ? `${data.meta.project} / ${suffix}`
+          : data.meta.project;
+        elements.reportTitle.textContent = data.meta.title;
+        elements.reportThesis.textContent = data.meta.thesis;
+        elements.generatedAt.textContent = `作成日: ${data.meta.generatedAt || "未設定"}`;
+        elements.flowCount.textContent = `${data.flows.length}件`;
+
+        elements.sourceList.replaceChildren();
+        for (const source of data.meta.sourceRefs || []) {
+          const item = document.createElement("li");
+          const code = document.createElement("code");
+          code.textContent = source;
+          item.append(code);
+          elements.sourceList.append(item);
+        }
+      }
+
+      function renderDecisions() {
+        if (data.meta.decisionMode !== true) {
+          elements.decisionSection.hidden = true;
+          elements.decisionList.replaceChildren();
+          return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        const labels = [
+          ["推奨", "recommendation"],
+          ["許可すると起きること", "impact"],
+          ["今回はしないこと", "notNow"],
+          ["後から戻せるか", "reversible"]
+        ];
+
+        for (const decision of data.decisions) {
+          const card = document.createElement("article");
+          card.className = "decision-card";
+          card.setAttribute("role", "listitem");
+
+          const title = document.createElement("h3");
+          title.textContent = decision.title;
+
+          const facts = document.createElement("dl");
+          facts.className = "decision-facts";
+          for (const [label, key] of labels) {
+            const row = document.createElement("div");
+            row.className = "decision-fact";
+            const term = document.createElement("dt");
+            term.textContent = label;
+            const detail = document.createElement("dd");
+            detail.textContent = decision[key];
+            row.append(term, detail);
+            facts.append(row);
+          }
+
+          const choices = document.createElement("div");
+          choices.className = "decision-choices";
+          choices.setAttribute("role", "group");
+          choices.setAttribute("aria-label", decision.title + " の判断");
+          for (const [choiceKey, choiceLabel] of decisionChoices) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "decision-choice";
+            button.dataset.choice = choiceKey;
+            button.dataset.decisionId = decision.id;
+            button.setAttribute("aria-pressed", "false");
+            button.textContent = choiceLabel;
+            choices.append(button);
+          }
+
+          const memoLabel = document.createElement("label");
+          memoLabel.className = "decision-memo-label";
+          memoLabel.textContent = "ひとことメモ（任意）";
+          const memo = document.createElement("textarea");
+          memo.className = "decision-memo";
+          memo.dataset.decisionId = decision.id;
+          memo.rows = 2;
+          memoLabel.append(memo);
+
+          card.append(title, facts, choices, memoLabel);
+          fragment.append(card);
+        }
+
+        elements.decisionList.replaceChildren(fragment);
+        elements.decisionSection.hidden = false;
+      }
+
+      // 判断の記録。押した結果はページに保存せず、コピーして戻す前提にする。
+      function handleDecisionChoice(event) {
+        const button = event.target.closest(".decision-choice");
+        if (!button) return;
+        const pressed = button.getAttribute("aria-pressed") === "true";
+        const group = button.parentElement;
+        for (const sibling of group.querySelectorAll(".decision-choice")) {
+          sibling.setAttribute("aria-pressed", "false");
+        }
+        button.setAttribute("aria-pressed", pressed ? "false" : "true");
+        decisionState.set(button.dataset.decisionId, pressed ? "" : button.textContent);
+        elements.decisionCopyState.textContent = "選んだ内容はこのページに保存されません。コピーして戻してください。";
+      }
+
+      function buildDecisionTranscript() {
+        const lines = [data.meta.title, "判断: " + data.meta.project, ""];
+        for (const decision of data.decisions || []) {
+          const choice = decisionState.get(decision.id) || "未選択";
+          const memo = (decisionMemo.get(decision.id) || "").trim();
+          lines.push("- " + decision.title);
+          lines.push("  判断: " + choice + "（推奨: " + decision.recommendation + "）");
+          if (memo) lines.push("  メモ: " + memo);
+        }
+        return lines.join("\n");
+      }
+
+      // クリップボードは、権限待ちや未フォーカスのときに応答が返らないことがある。
+      // 1.2 秒で打ち切り、必ず手でコピーできる本文を出す。押して何も起きない状態を作らない。
+      function writeToClipboard(text) {
+        if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+          return Promise.resolve(false);
+        }
+        return Promise.race([
+          navigator.clipboard.writeText(text).then(() => true, () => false),
+          new Promise((resolve) => setTimeout(() => resolve(false), 1200))
+        ]);
+      }
+
+      async function copyDecisions() {
+        const text = buildDecisionTranscript();
+        elements.decisionCopyState.textContent = "コピーしています…";
+        const copied = await writeToClipboard(text);
+        if (copied) {
+          elements.decisionCopyState.textContent = "コピーしました。そのまま貼り付けて戻してください。";
+          elements.decisionTranscript.hidden = true;
+          return;
+        }
+        elements.decisionTranscript.value = text;
+        elements.decisionTranscript.hidden = false;
+        elements.decisionTranscript.select();
+        elements.decisionCopyState.textContent = "自動コピーができませんでした。下の本文を選んでコピーしてください。";
+      }
+
+      function renderDiagramNodes() {
+        const fragment = document.createDocumentFragment();
+        const columnOf = new Map(
+          data.categories.map((category, index) => [category.id, index + 1])
+        );
+
+        // 行番号を決める。row 指定があれば従い、無ければその列の次の空き行に置く。
+        const nextRow = new Map(data.categories.map((category) => [category.id, 1]));
+        const rowOf = new Map();
+
+        for (const node of data.nodes) {
+          const explicit = Number.isInteger(node.row) && node.row > 0 ? node.row : null;
+          const row = explicit ?? nextRow.get(node.categoryId) ?? 1;
+          rowOf.set(node.id, row);
+          nextRow.set(
+            node.categoryId,
+            Math.max(nextRow.get(node.categoryId) ?? 1, row + 1)
+          );
+        }
+
+        elements.diagram.style.gridTemplateColumns =
+          `repeat(${data.categories.length}, minmax(190px, 1fr))`;
+
+        data.categories.forEach((category, index) => {
+          // 帯はその列でノードが在る範囲までにする。空白まで伸ばすと図が間延びして見える。
+          const rowsHere = data.nodes
+            .filter((node) => node.categoryId === category.id)
+            .map((node) => rowOf.get(node.id) ?? 1);
+          const firstRowHere = rowsHere.length ? Math.min(...rowsHere) : 1;
+          const lastRowHere = rowsHere.length ? Math.max(...rowsHere) : 1;
+
+          const background = document.createElement("div");
+          background.className = "lane-bg";
+          background.style.gridColumn = String(index + 1);
+          background.style.gridRow = `${firstRowHere + 1} / ${lastRowHere + 2}`;
+          background.setAttribute("aria-hidden", "true");
+          fragment.append(background);
+
+          const title = document.createElement("h3");
+          title.className = "lane-title";
+          title.textContent = category.label;
+          title.style.gridColumn = String(index + 1);
+          title.style.gridRow = "1";
+          fragment.append(title);
+        });
+
+        for (const node of data.nodes) {
+          const category = data.categories.find((item) => item.id === node.categoryId);
+          const card = document.createElement("div");
+          card.className = "node-card";
+          card.id = `node-${node.id}`;
+          card.dataset.nodeId = node.id;
+          card.style.gridColumn = String(columnOf.get(node.categoryId) ?? 1);
+          // 1 行目は列見出しが占めるので 1 つ下げる。
+          card.style.gridRow = String((rowOf.get(node.id) ?? 1) + 1);
+          card.setAttribute(
+            "aria-label",
+            category ? `${category.label}／${node.label}` : node.label
+          );
+
+          const label = document.createElement("span");
+          label.className = "node-label";
+          label.textContent = node.label;
+
+          const summary = document.createElement("span");
+          summary.className = "node-summary";
+          summary.textContent = node.summary || "";
+
+          card.append(label, summary);
+          fragment.append(card);
+        }
+
+        elements.diagram.append(fragment);
+      }
+
+      function renderFlowList() {
+        elements.flowList.replaceChildren();
+
+        data.flows.forEach((flow, index) => {
+          const item = document.createElement("div");
+          item.setAttribute("role", "listitem");
+
+          const button = document.createElement("button");
+          button.className = "flow-button";
+          button.type = "button";
+          button.dataset.flowIndex = String(index);
+          button.setAttribute("aria-pressed", "false");
+
+          const title = document.createElement("span");
+          title.className = "flow-button-title";
+          title.textContent = flow.title;
+
+          const description = document.createElement("span");
+          description.className = "flow-button-description";
+          description.textContent = flow.description;
+
+          button.append(title, description);
+          button.addEventListener("click", () => selectFlow(index));
+          button.addEventListener("keydown", (event) => {
+            moveFocus(event, ".flow-button", index);
+          });
+          item.append(button);
+          elements.flowList.append(item);
+        });
+      }
+
+      function selectFlow(index) {
+        state.flowIndex = index;
+        state.stepIndex = null;
+
+        for (const button of elements.flowList.querySelectorAll(".flow-button")) {
+          button.setAttribute(
+            "aria-pressed",
+            String(Number(button.dataset.flowIndex) === state.flowIndex)
+          );
+        }
+
+        renderSteps();
+        updateView();
+      }
+
+      function renderSteps() {
+        const flow = currentFlow();
+        elements.stepList.replaceChildren();
+        elements.stepCount.textContent = `${flow.steps.length}段階`;
+
+        flow.steps.forEach((step, index) => {
+          const edge = edgeMap.get(step.edgeId);
+          const source = nodeMap.get(edge.sourceNodeId);
+          const target = nodeMap.get(edge.targetNodeId);
+
+          const card = document.createElement("article");
+          card.className = "step-card";
+          card.dataset.stepIndex = String(index);
+          card.setAttribute("role", "listitem");
+
+          const button = document.createElement("button");
+          button.className = "step-select";
+          button.type = "button";
+          button.dataset.stepIndex = String(index);
+
+          const number = document.createElement("span");
+          number.className = "step-number";
+          number.textContent = String(step.stepNumber);
+
+          const copy = document.createElement("span");
+
+          const route = document.createElement("span");
+          route.className = "step-route";
+          route.textContent = `${source.label} → ${target.label}`;
+
+          const action = document.createElement("span");
+          action.className = "step-action";
+          action.textContent = step.action;
+
+          const description = document.createElement("span");
+          description.className = "step-description";
+          description.textContent = step.description;
+
+          copy.append(route, action, description);
+          button.append(number, copy);
+          button.addEventListener("click", () => selectStep(index));
+          button.addEventListener("keydown", (event) => {
+            moveFocus(event, ".step-select", index);
+          });
+          card.append(button);
+
+          const details = buildStepDetails(step);
+          if (details) card.append(details);
+          elements.stepList.append(card);
+        });
+      }
+
+      function buildStepDetails(step) {
+        if (!step.why && !step.payload && !step.codeReference) return null;
+
+        const details = document.createElement("details");
+        details.className = "step-more";
+
+        const summary = document.createElement("summary");
+        summary.textContent = "理由、受け渡す情報、コードを見る";
+        details.append(summary);
+
+        const grid = document.createElement("div");
+        grid.className = "detail-grid";
+
+        const fields = [
+          ["なぜ", step.why],
+          ["受け渡すもの", step.payload],
+          ["コード参照", step.codeReference]
+        ];
+
+        for (const [label, value] of fields) {
+          if (!value) continue;
+          const row = document.createElement("p");
+          row.className = "detail-row";
+          const strong = document.createElement("strong");
+          strong.textContent = `${label}: `;
+          row.append(strong);
+
+          if (label === "コード参照") {
+            const code = document.createElement("code");
+            code.textContent = value;
+            row.append(code);
+          } else {
+            row.append(document.createTextNode(value));
+          }
+          grid.append(row);
+        }
+
+        details.append(grid);
+        return details;
+      }
+
+      function selectStep(index) {
+        state.stepIndex = index;
+        updateView();
+        const selected = elements.stepList.querySelector(`[data-step-index="${index}"]`);
+        selected?.scrollIntoView({
+          block: "nearest",
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "auto"
+            : "smooth"
+        });
+      }
+
+      function updateView() {
+        const flow = currentFlow();
+        const currentStep = state.stepIndex === null ? null : flow.steps[state.stepIndex];
+
+        elements.activeFlowTitle.textContent = flow.title;
+        elements.activeFlowDescription.textContent = flow.description;
+        elements.plainSummary.textContent = flow.plainSummary;
+        elements.viewState.textContent = currentStep
+          ? `段階 ${currentStep.stepNumber}/${flow.steps.length}`
+          : `流れ全体・${flow.steps.length}段階`;
+        elements.status.textContent = currentStep
+          ? `${flow.title}、段階${currentStep.stepNumber}/${flow.steps.length}を表示`
+          : `${flow.title}、流れ全体${flow.steps.length}段階を表示`;
+
+        elements.overview.setAttribute("aria-pressed", String(state.stepIndex === null));
+        elements.previous.disabled = state.stepIndex === null;
+        elements.next.disabled = state.stepIndex === flow.steps.length - 1;
+
+        const flowEdgeIds = new Set(flow.steps.map((step) => step.edgeId));
+        const flowNodeIds = new Set();
+        for (const edgeId of flowEdgeIds) {
+          const edge = edgeMap.get(edgeId);
+          flowNodeIds.add(edge.sourceNodeId);
+          flowNodeIds.add(edge.targetNodeId);
+        }
+
+        const stepNodeIds = new Set();
+        if (currentStep) {
+          const edge = edgeMap.get(currentStep.edgeId);
+          stepNodeIds.add(edge.sourceNodeId);
+          stepNodeIds.add(edge.targetNodeId);
+        }
+
+        for (const card of elements.diagram.querySelectorAll(".node-card")) {
+          const nodeId = card.dataset.nodeId;
+          card.classList.toggle("is-dim", !flowNodeIds.has(nodeId));
+          card.classList.toggle("is-flow", flowNodeIds.has(nodeId));
+          card.classList.toggle("is-step", stepNodeIds.has(nodeId));
+        }
+
+        for (const card of elements.stepList.querySelectorAll(".step-card")) {
+          const isCurrent = Number(card.dataset.stepIndex) === state.stepIndex;
+          card.classList.toggle("is-current", isCurrent);
+          const button = card.querySelector(".step-select");
+          if (isCurrent) {
+            button.setAttribute("aria-current", "step");
+          } else {
+            button.removeAttribute("aria-current");
+          }
+        }
+
+        requestAnimationFrame(drawEdges);
+      }
+
+      function drawEdges() {
+        const flow = currentFlow();
+        const currentStep = state.stepIndex === null ? null : flow.steps[state.stepIndex];
+        const flowEdgeIds = new Set(flow.steps.map((step) => step.edgeId));
+        const bounds = elements.diagram.getBoundingClientRect();
+
+        elements.edgeLayer.replaceChildren(buildMarkers());
+        elements.edgeLayer.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`);
+
+        // 番号が既に置いた番号と重なったら、空くまで下へ逃がす。
+        const placedBadges = [];
+        const avoidOverlap = (x, y) => {
+          let candidate = y;
+          for (let guard = 0; guard < 8; guard += 1) {
+            const clash = placedBadges.some(
+              (spot) => Math.abs(spot.x - x) < 26 && Math.abs(spot.y - candidate) < 26
+            );
+            if (!clash) break;
+            candidate += 28;
+          }
+          placedBadges.push({ x, y: candidate });
+          return candidate;
+        };
+
+        // 左へ戻る線は図の下を回る。複数あると重なるので通す高さを分ける。
+        const returnLane = new Map();
+        let returnCount = 0;
+
+        for (const edge of data.edges) {
+          const sourceElement = document.getElementById(`node-${edge.sourceNodeId}`);
+          const targetElement = document.getElementById(`node-${edge.targetNodeId}`);
+          if (!sourceElement || !targetElement) continue;
+
+          const source = sourceElement.getBoundingClientRect();
+          const target = targetElement.getBoundingClientRect();
+          const sourceCenter = source.left + source.width / 2;
+          const targetCenter = target.left + target.width / 2;
+
+          if (Math.abs(sourceCenter - targetCenter) >= 14 && targetCenter < sourceCenter) {
+            returnLane.set(edge.id, returnCount);
+            returnCount += 1;
+          }
+        }
+
+        for (const edge of data.edges) {
+          const sourceElement = document.getElementById(`node-${edge.sourceNodeId}`);
+          const targetElement = document.getElementById(`node-${edge.targetNodeId}`);
+          if (!sourceElement || !targetElement) continue;
+
+          const source = sourceElement.getBoundingClientRect();
+          const target = targetElement.getBoundingClientRect();
+          const geometry = edgeGeometry(source, target, bounds, returnLane.get(edge.id) ?? 0);
+          const path = document.createElementNS(svgNamespace, "path");
+          const isFlow = flowEdgeIds.has(edge.id);
+          const isCurrent = currentStep?.edgeId === edge.id;
+
+          path.setAttribute("d", geometry.path);
+          path.setAttribute("class", [
+            "edge-line",
+            geometry.kind === "return" ? "is-return" : "",
+            isFlow ? "is-flow" : "",
+            isCurrent ? "is-step" : ""
+          ].filter(Boolean).join(" "));
+          path.setAttribute(
+            "marker-end",
+            isCurrent
+              ? "url(#arrow-step)"
+              : isFlow
+                ? "url(#arrow-flow)"
+                : "url(#arrow-dim)"
+          );
+          elements.edgeLayer.append(path);
+
+          const matchingSteps = flow.steps.filter((step) => step.edgeId === edge.id);
+          const spread = geometry.kind === "vertical" ? { x: 27, y: 0 } : { x: 0, y: 27 };
+
+          matchingSteps.forEach((step, badgeIndex) => {
+            const shift = badgeIndex - (matchingSteps.length - 1) / 2;
+            const badgeX = geometry.midX + spread.x * shift;
+            const badgeY = avoidOverlap(badgeX, geometry.midY + spread.y * shift);
+            const badge = createStepBadge(
+              step.stepNumber,
+              badgeX,
+              badgeY,
+              currentStep?.stepNumber === step.stepNumber,
+              currentStep !== null && currentStep?.stepNumber !== step.stepNumber
+            );
+            elements.edgeLayer.append(badge);
+          });
+        }
+      }
+
+      function edgeGeometry(source, target, bounds, returnLane = 0) {
+        const s = {
+          left: source.left - bounds.left,
+          right: source.right - bounds.left,
+          top: source.top - bounds.top,
+          bottom: source.bottom - bounds.top
+        };
+        const t = {
+          left: target.left - bounds.left,
+          right: target.right - bounds.left,
+          top: target.top - bounds.top,
+          bottom: target.bottom - bounds.top
+        };
+        const sx = (s.left + s.right) / 2;
+        const tx = (t.left + t.right) / 2;
+        const sy = (s.top + s.bottom) / 2;
+        const ty = (t.top + t.bottom) / 2;
+        const radius = 14;
+
+        // 同じ列に並ぶ場合は縦の直線でつなぐ。膨らませない。
+        if (Math.abs(sx - tx) < 14) {
+          const downward = ty >= sy;
+          const y1 = downward ? s.bottom : s.top;
+          const y2 = downward ? t.top : t.bottom;
+          // 縦の間隔が狭いと番号が線を覆い隠す。そのときだけ番号を線の横へ逃がす。
+          const tight = Math.abs(y2 - y1) < 34;
+          return {
+            path: `M ${sx} ${y1} L ${sx} ${y2}`,
+            midX: tight ? sx + 26 : sx,
+            midY: (y1 + y2) / 2,
+            kind: "vertical"
+          };
+        }
+
+        // 右へ進む場合は列間の余白で一度だけ折れる階段にする。
+        if (tx > sx) {
+          const x1 = s.right;
+          const x2 = t.left;
+          // 隣の列なら間の余白の中央で折る。2 列以上先へ飛ぶ場合は
+          // 出発点のすぐ右で折り、番号が途中の列のノードに重ならないようにする。
+          const spansMany = tx - sx > (s.right - s.left) * 1.4;
+          const turnX = spansMany
+            ? x1 + Math.min(16, (x2 - x1) / 2)
+            : x1 + (x2 - x1) / 2;
+          return {
+            path: orthogonalPath(x1, sy, turnX, x2, ty, radius),
+            midX: turnX,
+            midY: (sy + ty) / 2,
+            kind: "forward"
+          };
+        }
+
+        // 左へ戻る場合は図の下側を回す。ノードの上を横切らせない。
+        const x1 = s.left;
+        const x2 = t.right;
+        const detourY = bounds.height - 14 - returnLane * 14;
+        const reach = Math.max(34, Math.abs(x1 - x2) * 0.16);
+        return {
+          path: [
+            `M ${x1} ${sy}`,
+            `C ${x1 - reach} ${sy}, ${x1 - reach} ${detourY}, ${(x1 + x2) / 2} ${detourY}`,
+            `C ${x2 + reach} ${detourY}, ${x2 + reach} ${ty}, ${x2} ${ty}`
+          ].join(" "),
+          midX: (x1 + x2) / 2,
+          midY: detourY,
+          kind: "return"
+        };
+      }
+
+      // 水平 → 垂直 → 水平の順に折れる直交線。角は同じ半径で丸める。
+      function orthogonalPath(x1, y1, turnX, x2, y2, radius) {
+        if (Math.abs(y1 - y2) < 3) {
+          return `M ${x1} ${y1} L ${x2} ${y2}`;
+        }
+
+        const direction = y2 > y1 ? 1 : -1;
+        const r = Math.max(
+          0,
+          Math.min(
+            radius,
+            Math.abs(y2 - y1) / 2,
+            Math.abs(turnX - x1),
+            Math.abs(x2 - turnX)
+          )
+        );
+
+        if (r < 2) {
+          return `M ${x1} ${y1} L ${turnX} ${y1} L ${turnX} ${y2} L ${x2} ${y2}`;
+        }
+
+        return [
+          `M ${x1} ${y1}`,
+          `L ${turnX - r} ${y1}`,
+          `Q ${turnX} ${y1} ${turnX} ${y1 + r * direction}`,
+          `L ${turnX} ${y2 - r * direction}`,
+          `Q ${turnX} ${y2} ${turnX + r} ${y2}`,
+          `L ${x2} ${y2}`
+        ].join(" ");
+      }
+
+      function buildMarkers() {
+        const definitions = document.createElementNS(svgNamespace, "defs");
+        const markers = [
+          ["arrow-dim", "#656982", 0.35],
+          ["arrow-flow", "#a7adff", 1],
+          ["arrow-step", "#ffffff", 1]
+        ];
+
+        for (const [id, color, opacity] of markers) {
+          const marker = document.createElementNS(svgNamespace, "marker");
+          marker.id = id;
+          marker.setAttribute("viewBox", "0 0 10 10");
+          marker.setAttribute("refX", "9");
+          marker.setAttribute("refY", "5");
+          marker.setAttribute("markerWidth", "4.4");
+          marker.setAttribute("markerHeight", "4.4");
+          marker.setAttribute("orient", "auto-start-reverse");
+
+          const arrow = document.createElementNS(svgNamespace, "path");
+          arrow.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+          arrow.setAttribute("fill", color);
+          arrow.setAttribute("opacity", String(opacity));
+          marker.append(arrow);
+          definitions.append(marker);
+        }
+
+        return definitions;
+      }
+
+      function createStepBadge(number, x, y, isCurrent, isDim) {
+        const group = document.createElementNS(svgNamespace, "g");
+        group.setAttribute(
+          "class",
+          [
+            "step-badge",
+            isCurrent ? "is-current" : "",
+            isDim ? "is-dim" : ""
+          ].filter(Boolean).join(" ")
+        );
+        group.setAttribute("transform", `translate(${x} ${y})`);
+
+        // 線の上に置いても数字が読めるよう、背景色で線を一度抜く。
+        const halo = document.createElementNS(svgNamespace, "circle");
+        halo.setAttribute("class", "badge-halo");
+        halo.setAttribute("r", isCurrent ? "15" : "13");
+
+        const circle = document.createElementNS(svgNamespace, "circle");
+        circle.setAttribute("class", "badge-body");
+        circle.setAttribute("r", isCurrent ? "12.5" : "10.5");
+
+        const text = document.createElementNS(svgNamespace, "text");
+        text.textContent = String(number);
+
+        group.append(halo, circle, text);
+        return group;
+      }
+
+      function attachControls() {
+        elements.decisionList.addEventListener("click", handleDecisionChoice);
+        elements.decisionList.addEventListener("input", (event) => {
+          const memo = event.target.closest(".decision-memo");
+          if (!memo) return;
+          decisionMemo.set(memo.dataset.decisionId, memo.value);
+        });
+        elements.decisionCopy.addEventListener("click", copyDecisions);
+
+        elements.overview.addEventListener("click", () => {
+          state.stepIndex = null;
+          updateView();
+        });
+
+        elements.previous.addEventListener("click", () => {
+          if (state.stepIndex === null) return;
+          if (state.stepIndex === 0) {
+            state.stepIndex = null;
+            updateView();
+          } else {
+            selectStep(state.stepIndex - 1);
+          }
+        });
+
+        elements.next.addEventListener("click", () => {
+          const flow = currentFlow();
+          if (state.stepIndex === null) {
+            selectStep(0);
+          } else if (state.stepIndex < flow.steps.length - 1) {
+            selectStep(state.stepIndex + 1);
+          }
+        });
+      }
+
+      function moveFocus(event, selector, index) {
+        if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+        event.preventDefault();
+        const container = selector === ".step-select"
+          ? elements.stepList
+          : elements.flowList;
+        const buttons = [...container.querySelectorAll(selector)];
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        buttons[(index + delta + buttons.length) % buttons.length]?.focus();
+      }
+
+      function currentFlow() {
+        return data.flows[state.flowIndex];
+      }
+
+      function validateData(value) {
+        const errors = [];
+        const arrays = ["categories", "nodes", "edges", "flows"];
+
+        if (!value?.meta?.title) errors.push("meta.titleがありません");
+        if (!value?.meta?.thesis) errors.push("meta.thesisがありません");
+        if (
+          value?.meta?.decisionMode !== undefined &&
+          typeof value.meta.decisionMode !== "boolean"
+        ) {
+          errors.push("meta.decisionModeは真偽値で指定してください");
+        }
+
+        if (value?.meta?.decisionMode === true) {
+          if (!Array.isArray(value.decisions) || value.decisions.length < 1 || value.decisions.length > 3) {
+            errors.push("判断資料のdecisionsは1〜3件にしてください");
+          } else {
+            const decisionIds = new Set();
+            const fields = ["id", "title", "recommendation", "impact", "notNow", "reversible"];
+            for (const decision of value.decisions) {
+              for (const field of fields) {
+                if (typeof decision?.[field] !== "string" || decision[field].trim() === "") {
+                  errors.push(`decisionの${field}がありません`);
+                }
+              }
+              if (decisionIds.has(decision.id)) errors.push(`decision id ${decision.id}が重複しています`);
+              decisionIds.add(decision.id);
+            }
+          }
+        } else if (Array.isArray(value?.decisions) && value.decisions.length > 0) {
+          errors.push("decisionsを表示するにはmeta.decisionModeをtrueにしてください");
+        }
+
+        for (const key of arrays) {
+          if (!Array.isArray(value?.[key]) || value[key].length === 0) {
+            errors.push(`${key}が空です`);
+          }
+        }
+        if (errors.length) return errors;
+
+        const ids = (items) => new Set(items.map((item) => item.id));
+        const categoryIds = ids(value.categories);
+        const nodeIds = ids(value.nodes);
+        const edgeIds = ids(value.edges);
+
+        for (const node of value.nodes) {
+          if (!categoryIds.has(node.categoryId)) {
+            errors.push(`${node.id}のcategoryIdが不正です`);
+          }
+        }
+        for (const edge of value.edges) {
+          if (!nodeIds.has(edge.sourceNodeId) || !nodeIds.has(edge.targetNodeId)) {
+            errors.push(`${edge.id}のnode参照が不正です`);
+          }
+        }
+        for (const flow of value.flows) {
+          flow.steps?.forEach((step, index) => {
+            if (step.stepNumber !== index + 1) {
+              errors.push(`${flow.id}のstepNumberが連番ではありません`);
+            }
+            if (!edgeIds.has(step.edgeId)) {
+              errors.push(`${flow.id}が存在しないedgeを参照しています`);
+            }
+          });
+        }
+        return errors;
+      }
+
+      function showError(message) {
+        const box = document.createElement("div");
+        box.className = "error-box";
+        box.setAttribute("role", "alert");
+        box.textContent = `レポートデータを表示できません: ${message}`;
+        elements.diagram.replaceChildren(box);
+      }
+
+      function preparePrint() {
+        state.printStepIndex = state.stepIndex;
+        state.openedDetails = [...document.querySelectorAll(".step-more")]
+          .filter((details) => details.open);
+        for (const details of document.querySelectorAll(".step-more")) details.open = true;
+        state.stepIndex = null;
+        updateView();
+        requestAnimationFrame(drawEdges);
+      }
+
+      function restoreAfterPrint() {
+        for (const details of document.querySelectorAll(".step-more")) {
+          details.open = state.openedDetails.includes(details);
+        }
+        state.stepIndex = state.printStepIndex;
+        updateView();
+      }
+    })();
+  </script>
+</body>
+</html>

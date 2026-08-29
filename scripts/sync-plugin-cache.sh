@@ -48,6 +48,45 @@ SOURCE_VERSION="$(tr -d '[:space:]' < "${PROJECT_ROOT}/VERSION")"
 CACHE_DIR="${HOME}/.claude/plugins/cache/${MARKETPLACE_NAME}/${PLUGIN_NAME}/${SOURCE_VERSION}"
 MARKETPLACE_DIR="${HOME}/.claude/plugins/marketplaces/${MARKETPLACE_NAME}"
 
+# The versioned cache directory is created by Claude Code's plugin installer,
+# which copies the whole plugin tree into it. This script must only refresh an
+# install that already exists. When it pre-created the directory (a checkout
+# whose VERSION was bumped before `claude plugin update` ran), the installer
+# later found the directory present and left it as-is, so users got a plugin
+# holding only the subset synced here: no agents/, no bin/, no templates/
+# (observed for 5.8.0, 5.9.0, 5.13.0, 5.13.1; `claude plugin list` → Agents (0)).
+if [ ! -d "$CACHE_DIR" ]; then
+  echo "Info: plugin cache ${SOURCE_VERSION} is not installed; skipping cache sync." >&2
+  CACHE_DIR=""
+fi
+
+# The marketplace clone is a git checkout owned by Claude Code, and its
+# working-tree .claude-plugin/plugin.json `version` is what
+# `claude plugin update` compares against. Writing this checkout's files into a
+# clone that sits on another release rewrites that version (a 5.13.0 worktree
+# held the clone at 5.13.0 after 5.13.1 shipped, so the update reported
+# "already at the latest version"). Refresh the clone only when it is on the
+# same release, and never rewrite its version-bearing files.
+MARKETPLACE_SYNC=0
+if [ -d "$MARKETPLACE_DIR" ]; then
+  clone_version="$(git -C "$MARKETPLACE_DIR" show HEAD:VERSION 2>/dev/null | tr -d '[:space:]' || true)"
+  if [ -z "$clone_version" ] && [ -f "${MARKETPLACE_DIR}/VERSION" ]; then
+    clone_version="$(tr -d '[:space:]' < "${MARKETPLACE_DIR}/VERSION")"
+  fi
+  if [ "$clone_version" = "$SOURCE_VERSION" ]; then
+    MARKETPLACE_SYNC=1
+  else
+    echo "Info: marketplace clone is at ${clone_version:-unknown}, source is ${SOURCE_VERSION}; skipping marketplace sync." >&2
+  fi
+fi
+
+is_version_bearing() {
+  case "$1" in
+    VERSION|.claude-plugin/plugin.json|.claude-plugin/marketplace.json) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 sync_file_to_dir() {
   local rel_path="$1"
   local target_dir="$2"
@@ -62,11 +101,14 @@ sync_file_to_dir() {
 sync_file() {
   local rel_path="$1"
 
-  sync_file_to_dir "$rel_path" "$CACHE_DIR"
+  if [ -n "$CACHE_DIR" ]; then
+    sync_file_to_dir "$rel_path" "$CACHE_DIR"
+  fi
 
-  # If a local marketplace checkout is installed, keep its hook definitions in
-  # lockstep too. Claude may load hooks from this path before the versioned cache.
-  if [ -d "$MARKETPLACE_DIR" ]; then
+  # Keep the installed marketplace clone's hook definitions in lockstep when it
+  # is on this release. Claude may load hooks from this path before the
+  # versioned cache. Version-bearing files stay owned by the clone's git.
+  if [ "$MARKETPLACE_SYNC" = 1 ] && ! is_version_bearing "$rel_path"; then
     sync_file_to_dir "$rel_path" "$MARKETPLACE_DIR"
   fi
 }
@@ -122,11 +164,13 @@ sync_dir_to_dir() {
 sync_dir() {
   local rel_path="$1"
 
-  sync_dir_to_dir "$rel_path" "$CACHE_DIR"
+  if [ -n "$CACHE_DIR" ]; then
+    sync_dir_to_dir "$rel_path" "$CACHE_DIR"
+  fi
 
   # Keep the installed marketplace checkout loadable too; Claude may inspect it
   # before the versioned cache depending on install/reload state.
-  if [ -d "$MARKETPLACE_DIR" ]; then
+  if [ "$MARKETPLACE_SYNC" = 1 ]; then
     sync_dir_to_dir "$rel_path" "$MARKETPLACE_DIR"
   fi
 }
@@ -188,18 +232,23 @@ done
 copy_hook_script_closure ".claude-plugin/hooks.json"
 copy_hook_script_closure "hooks/hooks.json"
 
-# plugin.json currently declares these directories. If they are missing from the
-# versioned install cache, Claude lists the plugin as enabled but failed to load.
+# Plugin load surfaces: plugin.json declares skills / outputStyles, and Claude
+# auto-discovers agents/ at the plugin root. If they are missing from the
+# versioned install cache, Claude lists the plugin as enabled but failed to
+# load (or with Agents (0)).
 critical_dirs=(
   "skills"
   "output-styles"
+  "agents"
 )
 
 for dir in "${critical_dirs[@]}"; do
   sync_dir "$dir"
 done
 
-cleanup_private_paths_in_dir "$CACHE_DIR"
-if [ -d "$MARKETPLACE_DIR" ]; then
-  cleanup_private_paths_in_dir "$MARKETPLACE_DIR"
+# Only the installed cache is cleaned. The marketplace clone is a git checkout
+# in which these paths are tracked files; deleting them there left the clone
+# permanently dirty (21 `D docs/research/*` entries) for no privacy gain.
+if [ -n "$CACHE_DIR" ]; then
+  cleanup_private_paths_in_dir "$CACHE_DIR"
 fi
