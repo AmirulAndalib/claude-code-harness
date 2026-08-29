@@ -320,7 +320,7 @@ Hermes Agent (NousResearch) からは「可逆性の厚さが自律の許可量�
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
 | 143.1 | `[lane:gate]` `[tdd:required]` `scripts/sync-plugin-cache.sh` の 3 欠陥修正: cache dir は既存のみ更新 (新規作成しない) / 複製は git HEAD の VERSION が一致するときだけ同期し VERSION / plugin.json / marketplace.json は書かない / private path 削除は cache 側のみ / `agents` を critical_dirs に追加。契約テスト 4 本を `tests/test-sync-plugin-cache.sh` に追加 (validate-plugin.sh の既存配線を利用) | (a) 旧 script で RED (未インストール版 dir 作成 / 複製 plugin.json + VERSION 書換 / docs/research 削除 を再現) → 修正後 GREEN, (b) `bash tests/validate-plugin.sh` PASS | - | cc:done |
-| 143.2 | v5.13.2 公開後の配布先実測: 複製の plugin.json を git の内容へ戻し (release 確認ゲートで operator 承認)、`claude plugin marketplace update` → `claude plugin update` を続けて実行 | (a) cache 5.13.2 に agents 5 個 / bin / templates が揃う, (b) `claude plugin list` が 5.13.2, (c) 結果を Plans.md と decisions.md D72 に追記 | 143.1 | cc:todo |
+| 143.2 | v5.13.2 公開後の配布先実測: 複製の plugin.json を git の内容へ戻し (release 確認ゲートで operator 承認)、`claude plugin marketplace update` → `claude plugin update` を続けて実行 | (a) cache 5.13.2 に agents 5 個 / bin / templates が揃う, (b) `claude plugin list` が 5.13.2, (c) 結果を Plans.md と decisions.md D72 に追記 | 143.1 | cc:done | <!-- 2026-08-30 実測: installed 5.13.2、cache 5.13.2 は完全複製 (agents 5 / bin / templates)、claude plugin list 5.13.2。複製は CC 側が既に clean (dirty 0) で restore は no-op -->
 
 **共有ファイル lane (Invariant 1)**: `tests/validate-plugin.sh` の owner は 142.7 のみ。`skills/maintenance/` は 142.3、`skills/japanese-writing-drafter/` と `go/internal/writinglint/` は 142.4 → 142.5 の順で直列。`Plans.md` / `CHANGELOG.md` / `spec.md` は worker 編集禁止 (Lead が統合時に編集)。生成物 (binary / mirror) は統合後に trunk で 1 回再生成 (Invariant 3)。
 
