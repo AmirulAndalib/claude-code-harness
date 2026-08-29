@@ -6,6 +6,8 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [5.13.2] - 2026-08-29
+
 ### Fixed
 
 - **配布経路の修理: SessionStart の `scripts/sync-plugin-cache.sh` が plugin cache と marketplace 複製を壊していた**。他プロジェクトで `claude plugin list` が Agents (0) になり、`claude plugin update` が 5.13.1 を見つけられなかった原因は Claude Code ではなく CCH 自身の hook script (2026-08-29 に旧 script を空の HOME で走らせて再現)。
@@ -6156,7 +6158,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.13.1...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.13.2...HEAD
+[5.13.2]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.13.1...v5.13.2
 [5.13.1]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.13.0...v5.13.1
 [5.13.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.12.0...v5.13.0
 [5.12.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.11.0...v5.12.0

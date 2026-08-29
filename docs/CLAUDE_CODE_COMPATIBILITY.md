@@ -5,7 +5,7 @@ Last updated: 2026-07-10
 ## Supported Baseline
 
 - Claude Code: `v2.1+`
-- Plugin version: `5.13.1`
+- Plugin version: `5.13.2`
 - Guardrail runtime: bundled Go-native `harness` binary
 
 Node.js is not required for the Go-native guardrail engine. Optional skills and
