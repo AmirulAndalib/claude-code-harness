@@ -19,9 +19,9 @@ Change history for claude-code-harness.
 
 契約テスト 4 本を `tests/test-sync-plugin-cache.sh` に追加 (旧 script で RED、修正後 GREEN)。manifest (plugin.json) と Go の生成コードは変更なし。`agents/` は宣言なしで自動発見される。
 
-### Added
+### Changed
 
-- **同期レポート `docs/reports/2026-08-27-harness-sync-status.html`**: harness-sync の結果 (Plans.md と git のズレ 0 件、Phase 134〜142 の 49 task 中 32 完了) と配布欠けの判断材料。初版の推定「CC が manifest 宣言の部品だけ複製する」は上記の再現で否定されたため改訂済み。Plans.md に Phase 143 (この hotfix) を追加し、次スプリント順 143 → 140 → 142 → 138 を記録 (operator 裁定 2026-08-29)。判断の記録は `.claude/memory/decisions.md` D72
+- **同期レポート `docs/reports/2026-08-27-harness-sync-status.html` を追加 (docs)**: harness-sync の結果 (Plans.md と git のズレ 0 件、Phase 134〜142 の 49 task 中 32 完了) と配布欠けの判断材料。初版の推定「CC が manifest 宣言の部品だけ複製する」は上記の再現で否定されたため改訂済み。Plans.md に Phase 143 (この hotfix) を追加し、次スプリント順 143 → 140 → 142 → 138 を記録 (operator 裁定 2026-08-29)。判断の記録は `.claude/memory/decisions.md` D72
 
 ## [5.13.1] - 2026-08-26
 
