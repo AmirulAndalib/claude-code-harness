@@ -239,7 +239,9 @@ lifecycle、ledger の実行 evidence を含む。
 
 **Purpose**: operator 裁定 (2026-08-22): 無人 run が確認プロンプトで序盤停止するのが最悪の結果。ask は「人間がその場にいる対話ターン」専用に格下げし、無人時は (a) 安全そうなら warn で自走 (v5.10.0 実装済み)、(b) operator 条件 (本番影響 / main への不可逆 / root 外) に触れる可能性がある操作は**実行せずスキップして他の作業を継続**し、戻った operator が保留一覧を一括レビューする。機構の核: hook の deny は run を止めない (エージェントに理由が返り続行する。2026-08-22 に floor deny 2 回で実測)。止めるのは ask だけ。
 
-**優先順 (operator 裁定 2026-08-25)**: 次スプリントの先頭。Phase 142 (外部吸収レビュー由来) より先に着手する。根拠: 2026-08-24 の設計レビュー (`docs/reports/2026-08-24-cch-harness-review.html`) で、HOTL の残る穴のうち「無人 run が ask で序盤停止する」が最大と判定。vibe-kanban が既定 `--dangerously-skip-permissions` で解いている問題を、確認を消さずに解く CCH の答えがこの Phase。
+**優先順 (operator 裁定 2026-08-25)**: 次スプリントの先頭。Phase 142 (外部吸収レビュー由来) より先に着手する。
+
+**順番の固定 (operator 裁定 2026-08-29)**: Phase 143 (配布経路の hotfix v5.13.2) → 140 → 142 → 138。138 は 8/15 起票で最古の未着手だが、142 が先に辞書 (142.4) と記憶 (142.1) を用意するため後に置く。根拠: 2026-08-24 の設計レビュー (`docs/reports/2026-08-24-cch-harness-review.html`) で、HOTL の残る穴のうち「無人 run が ask で序盤停止する」が最大と判定。vibe-kanban が既定 `--dangerously-skip-permissions` で解いている問題を、確認を消さずに解く CCH の答えがこの Phase。
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
@@ -308,6 +310,17 @@ Hermes Agent (NousResearch) からは「可逆性の厚さが自律の許可量�
 | 142.5 | `[lane:gate]` `[tdd:required]` ルール usage telemetry + 引退提案 (Hermes curator の安全な半分): writing lint (将来は feedback rules も) のヒット時に `use_count` / `last_used_at` を個人層 sidecar (`~/.claude/writing-lint/.usage.json`。辞書本体は書き換えない) へ記録。閾値 (既定 90 日未使用、`use_count == 0` は登録から 90 日の猶予) で「archive 提案」を proposals.jsonl に生成する。**実行は承認 CLI のみ、archive は `.archive/` へ移動して復元可、削除経路は作らない**。全 mutation を append-only ledger (`~/.claude/writing-lint/.ledger.jsonl`、actor + before/after ハッシュ) に記録 | (a) ヒット時に usage が更新される, (b) 90 日 fixture で archive 提案が生成される, (c) 自動 archive / 自動削除の経路が存在しない negative test, (d) archive → restore の往復 test, (e) ledger に actor と hash が残る, (f) `cd go && go test ./internal/writinglint/...` PASS + gofmt/vet clean | 142.4 | cc:todo |
 | 142.6 | `[lane:fast]` `[tdd:skip:docs-only]` CC native 機能との重複点検を定期化: `docs/research/official-feature-inventory-2026-06.md` を 2026-08 版へ更新 (Dynamic Workflows / Agent Teams experimental 既定 OFF / worktree isolation 4 種チェック / `/code-review ultra` / auto-memory machine-local / 28 hook events / scheduled tasks 3 層)。各行に「CCH は利便性として採用 / 統治境界としては委譲しない」の既存判定を明記。`CLAUDE.md:14` の「Opus 4.7」表記を現行世代へ修正。更新周期 (CC minor 追従時) を upstream-update 系 skill の手順に 1 行追加 | (a) inventory が 2026-08 版に更新, (b) CLAUDE.md 表記修正, (c) `bash scripts/ci/check-consistency.sh` PASS, (d) 「委譲して薄くする」判断は本 task に含めない (1 件ずつ別起票) ことが明記 | - | cc:todo |
 | 142.7 | `[lane:gate]` 検証の検証: 142.1 / 142.3 / 142.5 の実効性契約テスト (空 resume 未注入 / 重複注入検出 / 自動 archive 経路なし) を `tests/validate-plugin.sh` に配線。各テストは配線前 RED / 配線後 GREEN の実測記録つき | (a) 3 本の契約テストが RED→GREEN 記録つき, (b) `bash tests/validate-plugin.sh` 全体 PASS, (c) `bash scripts/ci/check-consistency.sh` PASS | 142.1, 142.3, 142.5 | cc:todo |
+
+---
+
+## Phase 143: 配布経路の修理 — 自前 hook script が plugin cache と marketplace 複製を壊していた (2026-08-29 起票、hotfix v5.13.2)
+
+**Purpose**: operator 裁定 (2026-08-29、`docs/reports/2026-08-27-harness-sync-status.html` の判断カード 3 件): 修理版 5.13.2 を Phase 140.1 より先に出す。原因は `scripts/sync-plugin-cache.sh` (SessionStart hook) の 3 欠陥。(1) まだ入っていない版の cache dir を同期分 (hooks / skills / scripts / output-styles / VERSION) だけで先に作り、Claude Code はそれをそのまま使う (5.8.0 / 5.9.0 / 5.13.0 / 5.13.1 で Agents (0)、agents / bin / templates 不在)。(2) 別 worktree の VERSION / plugin.json を marketplace 複製へ書き戻し、`claude plugin update` が複製の plugin.json を最新判定に使うため「5.13.0 が最新」と答えて 5.13.1 が入らない。(3) 複製の tracked `docs/research/*` を削除して git を恒久 dirty にする。初版レポートの推定「CC が manifest 宣言の部品だけ複製する」は旧 script の再現で否定 (agents/ は宣言なしで自動発見される。CC docs plugins-reference)。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 143.1 | `[lane:gate]` `[tdd:required]` `scripts/sync-plugin-cache.sh` の 3 欠陥修正: cache dir は既存のみ更新 (新規作成しない) / 複製は git HEAD の VERSION が一致するときだけ同期し VERSION / plugin.json / marketplace.json は書かない / private path 削除は cache 側のみ / `agents` を critical_dirs に追加。契約テスト 4 本を `tests/test-sync-plugin-cache.sh` に追加 (validate-plugin.sh の既存配線を利用) | (a) 旧 script で RED (未インストール版 dir 作成 / 複製 plugin.json + VERSION 書換 / docs/research 削除 を再現) → 修正後 GREEN, (b) `bash tests/validate-plugin.sh` PASS | - | cc:done |
+| 143.2 | v5.13.2 公開後の配布先実測: 複製の plugin.json を git の内容へ戻し (release 確認ゲートで operator 承認)、`claude plugin marketplace update` → `claude plugin update` を続けて実行 | (a) cache 5.13.2 に agents 5 個 / bin / templates が揃う, (b) `claude plugin list` が 5.13.2, (c) 結果を Plans.md と decisions.md D72 に追記 | 143.1 | cc:todo |
 
 **共有ファイル lane (Invariant 1)**: `tests/validate-plugin.sh` の owner は 142.7 のみ。`skills/maintenance/` は 142.3、`skills/japanese-writing-drafter/` と `go/internal/writinglint/` は 142.4 → 142.5 の順で直列。`Plans.md` / `CHANGELOG.md` / `spec.md` は worker 編集禁止 (Lead が統合時に編集)。生成物 (binary / mirror) は統合後に trunk で 1 回再生成 (Invariant 3)。
 

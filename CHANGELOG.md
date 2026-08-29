@@ -6,6 +6,23 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Fixed
+
+- **配布経路の修理: SessionStart の `scripts/sync-plugin-cache.sh` が plugin cache と marketplace 複製を壊していた**。他プロジェクトで `claude plugin list` が Agents (0) になり、`claude plugin update` が 5.13.1 を見つけられなかった原因は Claude Code ではなく CCH 自身の hook script (2026-08-29 に旧 script を空の HOME で走らせて再現)。
+
+| 継ぎ目 | 変更前 | 変更後 |
+|---|---|---|
+| 版ごとの cache dir | まだ入っていない版の dir を同期分 (hooks / skills / scripts / output-styles / VERSION) だけで先に作る。Claude Code は後で既にある dir をそのまま使うので、agents / bin / templates の無い plugin になる (5.8.0 / 5.9.0 / 5.13.0 / 5.13.1) | 既に入っている版だけ更新し、無ければ作らない |
+| marketplace 複製の版 | 別 worktree の VERSION / plugin.json を複製へ書き戻す。`claude plugin update` は複製の plugin.json を最新判定に使うため「5.13.0 が最新」と答え、5.13.1 が入らない | 複製の git HEAD が同じ版のときだけ同期し、VERSION / plugin.json / marketplace.json は書かない |
+| 複製の private path 削除 | tracked の `docs/research/*` を削除し、複製の git を恒久 dirty (21 件の `D`) にする | 削除は cache 側のみ |
+| agents/ | 同期対象外 | `critical_dirs` に追加 (既に入っている cache の欠けも埋まる) |
+
+契約テスト 4 本を `tests/test-sync-plugin-cache.sh` に追加 (旧 script で RED、修正後 GREEN)。manifest (plugin.json) と Go の生成コードは変更なし。`agents/` は宣言なしで自動発見される。
+
+### Added
+
+- **同期レポート `docs/reports/2026-08-27-harness-sync-status.html`**: harness-sync の結果 (Plans.md と git のズレ 0 件、Phase 134〜142 の 49 task 中 32 完了) と配布欠けの判断材料。初版の推定「CC が manifest 宣言の部品だけ複製する」は上記の再現で否定されたため改訂済み。Plans.md に Phase 143 (この hotfix) を追加し、次スプリント順 143 → 140 → 142 → 138 を記録 (operator 裁定 2026-08-29)。判断の記録は `.claude/memory/decisions.md` D72
+
 ## [5.13.1] - 2026-08-26
 
 ### Changed
