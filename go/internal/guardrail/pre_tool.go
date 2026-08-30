@@ -548,6 +548,12 @@ func evaluatePreTool(input hookproto.HookInput) hookproto.HookResult {
 	if isDestructiveDeleteWarnApproval(result) {
 		recordDestructiveDeleteWarning(ctx.ProjectRoot, input, result)
 	}
+	// destructive_delete=defer (140.1): R05 refused an operation it could not
+	// verify. The deny reason already tells the agent the operation is queued;
+	// this is where the queue line is actually written (deduplicated on retry).
+	if isDestructiveDeleteDeferral(result) {
+		recordDeferredOp(ctx.ProjectRoot, input, result)
+	}
 	if scopeWarning != "" && result.Decision == hookproto.DecisionApprove && result.SystemMessage == "" {
 		result.SystemMessage = scopeWarning
 	}

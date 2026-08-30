@@ -32,6 +32,11 @@ protectedBranchPush = "ask"
 # 未解決 $VAR・glob・素の `.` / `/` は warn でも ask のまま。
 # ask: 実行前にユーザー確認。git 外の消えたら困るデータを root 配下に持つ repo や
 # guardrail 自体を開発・検証する時はこちらへ opt-out する
+# defer (Phase 140.1、無人 run 向け): warn と同じ場面は warn のまま通し、warn でも
+# ask になる場面 (root 外・`..`・未解決 $VAR・glob・素の `.`) は ask の代わりに deny を
+# 返して .claude/state/deferred-ops.jsonl に積む。deny は run を止めない
+# (エージェントに行動契約 = 再試行禁止 / 他タスク継続 / 終了時に保留一覧を報告 が返る)。
+# 同一コマンドの再試行はキューに重複しない。承認 CLI は 140.2
 destructiveDelete = "warn"
 allow = [
   # Low-risk local development commands. Keep install, arbitrary npx/npm exec,

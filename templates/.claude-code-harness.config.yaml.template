@@ -66,6 +66,11 @@ safety:
   # ask:  confirm with the user. Opt out to this in repos that keep
   #       unrecoverable non-git data under the project root, or when
   #       developing the guardrails themselves.
+  # defer: for unattended runs (Phase 140.1). Same as warn where warn
+  #       approves; where warn would still ask, return deny (which does not
+  #       stall the run) with a behavioural contract in the reason, and queue
+  #       the command in .claude/state/deferred-ops.jsonl for operator review.
+  #       A retry of the same command is not queued twice.
   destructive_delete: warn
   # R03 protected path break-glass ask-list is supported only in harness.toml:
   # [[safety.guardrail.protectedPathAskList]]

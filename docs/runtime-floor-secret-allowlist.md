@@ -235,6 +235,28 @@ judgement plus a review trail:
   the guardrails themselves, opt back out with `destructive_delete = ask`.
 - `WorkMode` continues to skip R05 entirely; `warn` only matters outside a run.
 
+### `destructive_delete=defer` (unattended runs; Phase 140.1)
+
+`defer` is a superset of `warn`. Everything `warn` approves, `defer` approves
+the same way (same `R05_WARN` message, same `destructive-delete.jsonl` record).
+The difference is what happens where `warn` would still `ask`:
+
+- R05 returns **deny** instead of `ask`. A deny does not stall the run: the
+  agent receives the reason and continues; only `ask` blocks on a human.
+- The reason starts with `R05_DEFER:` and carries the behavioural contract the
+  agent is expected to follow: the operation is queued, do not retry or rewrite
+  it into another deletion, continue with the remaining tasks, report the
+  deferred-ops list at the end of the run.
+- The guardrail layer appends one line to `.claude/state/deferred-ops.jsonl`
+  (`id`, `timestamp`, `session_id`, `agent_id`, `cwd`, `command`, `rule_id`,
+  `policy`, `reason`, `status: pending`). `id` is the first 12 hex characters of
+  `sha256(rule_id \0 cwd \0 command)`, so a retry of the same command in the same
+  cwd finds its pending entry and is not queued twice while still being denied.
+- Without a resolvable project root there is nowhere to queue, so the rule
+  falls back to `ask` exactly like `warn` does.
+- Approval of a queued entry is the 140.2 CLI (`bin/harness deferred list /
+  approve <id>`); until then the operator reviews the file directly.
+
 `WorkMode` retains its existing
 R05 bypass. Destruction outside the task worktree remains a hard deny in the
 Runtime Floor, which runs before the policy rules and does not depend on

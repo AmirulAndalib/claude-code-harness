@@ -6,6 +6,18 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Added
+
+- **`destructive_delete: defer` (Phase 140.1、無人 run の ask 停止対策)**: R05 (rm -rf / find -delete) で warn なら ask になる場面 (root 外の綴り・`..`・未解決 `$VAR`・glob・素の `.`) を、ask の代わりに **deny + 行動契約** に置き換える設定値。deny は run を止めず (エージェントに理由が返り続行する)、操作は `.claude/state/deferred-ops.jsonl` に 1 行 (`id` / `timestamp` / `session_id` / `agent_id` / `cwd` / `command` / `rule_id` / `policy` / `reason` / `status: pending`) 積まれる。同一コマンドの再試行は deny のままキューに重複しない。warn が通す場面は defer でも warn のまま (allow + `destructive-delete.jsonl` 記録)。既定は引き続き warn。設定は `harness.toml [safety.permissions] destructiveDelete` / `.claude-code-harness.config.yaml safety.destructive_delete` / env `HARNESS_DESTRUCTIVE_DELETE_POLICY`。承認 CLI は 140.2 で追加予定
+
+| 場面 | ask (opt-out) | warn (既定) | defer (新設) |
+|---|---|---|---|
+| 削除対象が agent 所有と静的に証明できる | allow | allow | allow |
+| 相対 / root 配下の綴りだが前置コマンドあり | ask | allow + warn 記録 | allow + warn 記録 |
+| root 外・`..`・`$VAR`・glob・素の `.` | ask | ask | **deny + キュー** (run は止まらない) |
+
+実効性契約: `tests/test-r05-destructive-delete-policy.sh` に実バイナリ probe 4 本 (deny + キュー 1 行 / 再試行で重複なし / warn 経路の回帰なし) を追加 (修正前 RED、修正後 GREEN)。Go 側は `go/internal/policy` と `go/internal/guardrail` に 10 本追加
+
 ## [5.13.2] - 2026-08-29
 
 ### Fixed
