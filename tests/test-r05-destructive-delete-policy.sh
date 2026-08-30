@@ -14,6 +14,8 @@
 #   2. opt-out (harness.toml destructiveDelete=ask): 同じコマンドが ask に戻り、記録されない
 #   2b. env HARNESS_DESTRUCTIVE_DELETE_POLICY=ask も既定 warn より優先される
 #   3. warn でも root 外の絶対パスは allow にならず、記録もされない
+#   4. defer (140.1): warn なら ask になる場面が deny + .claude/state/deferred-ops.jsonl 1 行に
+#      なる。同一コマンド再試行でキューが増えない。局所綴りの warn 経路は不変
 #
 # Usage: bash tests/test-r05-destructive-delete-policy.sh
 
@@ -160,6 +162,57 @@ if [ "$(record_count "$OUT_DIR")" = "0" ]; then
   pass "warn: allow にならなかった削除は記録されない"
 else
   fail "warn: 拒否した削除が記録されてしまった"
+fi
+
+# 4. defer (Phase 140.1): warn なら ask になる場面 (glob) を deny + 保留キューに変える
+deferred_count() {
+  local dir="$1"
+  local f="$dir/.claude/state/deferred-ops.jsonl"
+  if [ -f "$f" ]; then wc -l < "$f" | tr -d ' '; else echo 0; fi
+}
+
+DEFER_DIR="$(fixture_project defer defer)"
+mkdir -p "$DEFER_DIR/build/x"
+CMD="cd $DEFER_DIR && rm -rf ./build/*"
+decision="$(run_hook "$DEFER_DIR" "$CMD")"
+if [ "$decision" = "deny" ]; then
+  pass "defer: warn なら ask になる glob 削除が deny になる"
+else
+  fail "defer: deny を期待したが $decision"
+fi
+if [ "$(deferred_count "$DEFER_DIR")" = "1" ]; then
+  pass "defer: .claude/state/deferred-ops.jsonl に 1 行積まれる"
+  if jq -e --arg cmd "$CMD" --arg sid "$SESSION_ID" \
+       'select(.command == $cmd and .policy == "defer" and .status == "pending" and .session_id == $sid and .rule_id == "R05:confirm-rm-rf" and (.id | length) == 12 and .reason != "")' \
+       "$DEFER_DIR/.claude/state/deferred-ops.jsonl" >/dev/null; then
+    pass "defer: キュー行に id / command / policy / status / session_id / rule_id / reason が入っている"
+  else
+    fail "defer: キュー行の内容が期待と違う: $(cat "$DEFER_DIR/.claude/state/deferred-ops.jsonl")"
+  fi
+else
+  fail "defer: キューが 1 行でない ($(deferred_count "$DEFER_DIR"))"
+fi
+if [ "$(record_count "$DEFER_DIR")" = "0" ]; then
+  pass "defer: 保留した削除は destructive-delete.jsonl (warn 記録) には書かれない"
+else
+  fail "defer: 保留した削除が warn 記録に混ざった"
+fi
+
+# 4b. 同一コマンドの再試行: deny 継続、キューは増えない
+decision="$(run_hook "$DEFER_DIR" "$CMD")"
+if [ "$decision" = "deny" ] && [ "$(deferred_count "$DEFER_DIR")" = "1" ]; then
+  pass "defer: 同一コマンドの再試行は deny のまま、キューは 1 行のまま"
+else
+  fail "defer: 再試行で decision=$decision / キュー $(deferred_count "$DEFER_DIR") 行"
+fi
+
+# 4c. defer でも局所的な綴りは warn 経路のまま (allow + warn 記録)、既存挙動の回帰なし
+CMD="cd $DEFER_DIR && echo hi && rm -rf tmp/x"
+decision="$(run_hook "$DEFER_DIR" "$CMD")"
+if [ "$decision" = "allow" ] && [ "$(record_count "$DEFER_DIR")" = "1" ] && [ "$(deferred_count "$DEFER_DIR")" = "1" ]; then
+  pass "defer: 局所的な綴りは warn のまま allow + 記録、キューには積まれない"
+else
+  fail "defer: 局所綴りで decision=$decision / warn 記録 $(record_count "$DEFER_DIR") / キュー $(deferred_count "$DEFER_DIR")"
 fi
 
 echo "PASS=$PASS FAIL=$FAIL"

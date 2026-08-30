@@ -280,7 +280,8 @@ var Rules = []GuardRule{
 			// warn into the default path. Out-of-root spellings, `..`, unresolved
 			// `$VAR`, globs and bare `.` still ask even under warn — that keeps
 			// the blast-radius backstop of spec.md HOTL invariant 3.
-			if NormalizeDestructiveDeletePolicy(ctx.DestructiveDeletePolicy) == DestructiveDeletePolicyWarn &&
+			deletePolicy := NormalizeDestructiveDeletePolicy(ctx.DestructiveDeletePolicy)
+			if (deletePolicy == DestructiveDeletePolicyWarn || deletePolicy == DestructiveDeletePolicyDefer) &&
 				dangerousRemovalTargetsAreLexicallyLocal(command, targets, ctx.ProjectRoot, ctx.Input.SessionID) {
 				// Advisory: this approval must not preempt later deny/ask
 				// rules (R06, R08 reviewer no-write, R10, R11, R12) when the
@@ -289,6 +290,20 @@ var Rules = []GuardRule{
 					Decision:      hookproto.DecisionApprove,
 					SystemMessage: fmt.Sprintf("R05_WARN: destructive delete allowed without confirmation (destructive_delete=warn; target not statically verifiable, recorded in .claude/state/destructive-delete.jsonl):\n%s", command),
 					Advisory:      true,
+				}
+			}
+			// destructive_delete=defer (Phase 140.1): where warn would ask, an
+			// unattended run gets a deny that carries the behavioural contract
+			// (queued / do not retry / continue / report). The guardrail layer
+			// appends the operation to .claude/state/deferred-ops.jsonl keyed by
+			// DeferredOpID, so a retry keeps denying without a second entry.
+			// Without a project root there is nowhere to queue: fall through to
+			// ask, exactly like warn.
+			if deletePolicy == DestructiveDeletePolicyDefer && ctx.ProjectRoot != "" {
+				id := DeferredOpID("R05:confirm-rm-rf", ctx.Input.CWD, command)
+				return &hookproto.HookResult{
+					Decision: hookproto.DecisionDeny,
+					Reason:   DeferredOpReason(id, command),
 				}
 			}
 			return &hookproto.HookResult{

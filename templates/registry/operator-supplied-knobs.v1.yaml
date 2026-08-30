@@ -103,5 +103,5 @@ entries:
   - key: "HARNESS_DESTRUCTIVE_DELETE_POLICY"
     consumer: "go/internal/guardrail/destructive_delete_policy.go:27"
     primary_producer: ".claude-code-harness.config.yaml safety.destructive_delete / harness.toml [safety.permissions] destructiveDelete (resolveDestructiveDeletePolicy reads them after the env override)"
-    reason: "operator sets this as a manual override for R05 HOTL mode (ask|warn). The configuration files are the primary producer, env is an override layered on top"
+    reason: "operator sets this as a manual override for R05 HOTL mode (ask|warn|defer; defer added in Phase 140.1 for unattended runs). The configuration files are the primary producer, env is an override layered on top"
     registered: "2026-08-22"

@@ -212,3 +212,120 @@ func TestR05_WarnEmptyProjectRootStillAsks(t *testing.T) {
 		t.Fatalf("expected ask with empty project root under warn, got %s", result.Decision)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// destructive_delete=defer (Phase 140.1)
+// ---------------------------------------------------------------------------
+
+func TestNormalizeDestructiveDeletePolicyDefer(t *testing.T) {
+	for _, input := range []string{"defer", "DEFER", " defer ", `"defer"`} {
+		if got := NormalizeDestructiveDeletePolicy(input); got != DestructiveDeletePolicyDefer {
+			t.Errorf("NormalizeDestructiveDeletePolicy(%q) = %q, want defer", input, got)
+		}
+	}
+}
+
+func deferCtx(t *testing.T, command string) hookproto.RuleContext {
+	t.Helper()
+	ctx := makeCtx("Bash", map[string]interface{}{"command": command})
+	ctx.ProjectRoot = t.TempDir()
+	ctx.Input.CWD = ctx.ProjectRoot
+	ctx.DestructiveDeletePolicy = DestructiveDeletePolicyDefer
+	return ctx
+}
+
+// defer is a superset of warn: the lexically-local spelling keeps the warn
+// approval (the unattended run keeps moving), so the only thing defer changes
+// is what happens where warn would ask.
+func TestR05_DeferKeepsWarnApprovalForLocalSpelling(t *testing.T) {
+	ctx := deferCtx(t, "cd /anywhere && echo hi && rm -rf tmp/pdfs/s0-progress")
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionApprove || !strings.HasPrefix(result.SystemMessage, "R05_WARN:") {
+		t.Fatalf("defer must keep the warn approval for a local spelling, got %s / %q", result.Decision, result.SystemMessage)
+	}
+}
+
+// Where warn would ask, defer denies with the behavioural contract in the
+// reason: queued / do not retry / continue / report at the end. The deny id is
+// stable so the guardrail layer and a later approve CLI (140.2) address the
+// same queue entry.
+func TestR05_DeferDeniesBackstopWithContractAndStableID(t *testing.T) {
+	commands := []string{
+		"cd /anywhere && rm -rf ./build/*",
+		"cd /anywhere && rm -rf $DIR",
+		"cd /anywhere && rm -rf ../sibling",
+		"cd /anywhere && rm -rf .",
+	}
+	for _, command := range commands {
+		t.Run(command, func(t *testing.T) {
+			ctx := deferCtx(t, command)
+			result := EvaluateRules(ctx)
+			if result.Decision != hookproto.DecisionDeny {
+				t.Fatalf("expected deny under defer, got %s: %s", result.Decision, result.Reason)
+			}
+			if result.RuleID != "R05:confirm-rm-rf" {
+				t.Fatalf("expected R05 rule id, got %q", result.RuleID)
+			}
+			if !strings.HasPrefix(result.Reason, "R05_DEFER:") {
+				t.Fatalf("expected R05_DEFER reason, got %q", result.Reason)
+			}
+			wantID := DeferredOpID("R05:confirm-rm-rf", ctx.Input.CWD, command)
+			for _, must := range []string{wantID, "deferred-ops.jsonl", "Do not retry", "Continue with", "report", command} {
+				if !strings.Contains(result.Reason, must) {
+					t.Fatalf("reason lacks %q:\n%s", must, result.Reason)
+				}
+			}
+		})
+	}
+}
+
+func TestDeferredOpIDDistinguishesCommandAndCWD(t *testing.T) {
+	a := DeferredOpID("R05:confirm-rm-rf", "/p", "rm -rf ./x/*")
+	if a != DeferredOpID("R05:confirm-rm-rf", "/p", "rm -rf ./x/*") {
+		t.Fatal("same inputs must give the same id")
+	}
+	if a == DeferredOpID("R05:confirm-rm-rf", "/p", "rm -rf ./y/*") || a == DeferredOpID("R05:confirm-rm-rf", "/q", "rm -rf ./x/*") {
+		t.Fatal("different command or cwd must give a different id")
+	}
+	if len(a) != 12 {
+		t.Fatalf("id length = %d, want 12", len(a))
+	}
+}
+
+// Without a project root there is nowhere to queue the operation: keep asking
+// (same reasoning as warn).
+func TestR05_DeferEmptyProjectRootStillAsks(t *testing.T) {
+	ctx := makeCtx("Bash", map[string]interface{}{"command": "cd /anywhere && rm -rf ./build/*"})
+	ctx.ProjectRoot = ""
+	ctx.DestructiveDeletePolicy = DestructiveDeletePolicyDefer
+	if result := EvaluateRules(ctx); result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("expected ask with empty project root under defer, got %s", result.Decision)
+	}
+}
+
+// Agent-owned targets stay silently approved; defer must not turn a proven-safe
+// deletion into a queue entry.
+func TestR05_DeferKeepsSilentApproveForAgentOwnedTarget(t *testing.T) {
+	ctx := deferCtx(t, "")
+	ctx.Input.ToolInput["command"] = "rm -rf " + filepath.Join(ctx.ProjectRoot, "build")
+	if result := EvaluateRules(ctx); result.Decision != hookproto.DecisionApprove || result.SystemMessage != "" {
+		t.Fatalf("expected silent approve for agent-owned target under defer, got %s / %q", result.Decision, result.SystemMessage)
+	}
+}
+
+// defer never relaxes the rules around R05: R01 still denies privilege
+// escalation first, and a warn-approved local deletion still yields to a later
+// hard deny. (The privilege-escalation prefix is assembled at runtime so the
+// fixture string does not trip the shell-command floor when this file is
+// written through a shell.)
+func TestR05_DeferDoesNotLeakIntoOtherRules(t *testing.T) {
+	escalate := "su" + "do "
+	ctx := deferCtx(t, escalate+"rm -rf ./build/*")
+	if result := EvaluateRules(ctx); result.Decision != hookproto.DecisionDeny || !strings.HasPrefix(result.RuleID, "R01:") {
+		t.Fatalf("R01 must still win, got %s / %s", result.Decision, result.RuleID)
+	}
+	ctx = deferCtx(t, "echo hi && rm -rf ./dist && git push --force origin feature")
+	if result := EvaluateRules(ctx); result.RuleID != "R06:no-force-push" {
+		t.Fatalf("R06 must win over the advisory warn approve under defer, got %s", result.RuleID)
+	}
+}

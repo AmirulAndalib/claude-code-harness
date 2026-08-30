@@ -183,3 +183,128 @@ func TestEvaluatePreTool_DestructiveDeleteProvenLocalDoesNotRecord(t *testing.T)
 		t.Fatalf("proven-local approve must not write a warn record, got %d", len(records))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// destructive_delete=defer (Phase 140.1): deny + queue, no duplicate on retry
+// ---------------------------------------------------------------------------
+
+func readDeferredOps(t *testing.T, dir string) []deferredOpEntry {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "state", deferredOpsFile))
+	if err != nil {
+		return nil
+	}
+	var entries []deferredOpEntry
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		var e deferredOpEntry
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatalf("bad deferred-ops line %q: %v", line, err)
+		}
+		entries = append(entries, e)
+	}
+	return entries
+}
+
+func deferProject(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "harness.toml"),
+		[]byte("[safety.permissions]\ndestructiveDelete = \"defer\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// DoD (a): defer → deny + exactly one queue line carrying the fields the
+// operator needs to review it later.
+func TestEvaluatePreTool_DestructiveDeleteDeferDeniesAndQueues(t *testing.T) {
+	clearGuardrailKnobEnv(t)
+	dir := deferProject(t)
+	command := "cd " + dir + " && rm -rf ./build/*"
+
+	result := EvaluatePreTool(bashInput(dir, command))
+	if result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected deny under defer, got %s: %s", result.Decision, result.Reason)
+	}
+	if !strings.HasPrefix(result.Reason, "R05_DEFER:") {
+		t.Fatalf("expected R05_DEFER reason, got %q", result.Reason)
+	}
+	ops := readDeferredOps(t, dir)
+	if len(ops) != 1 {
+		t.Fatalf("expected 1 deferred op, got %d", len(ops))
+	}
+	op := ops[0]
+	if op.Command != command || op.RuleID != "R05:confirm-rm-rf" || op.SessionID != "session-0123456789abcdef" ||
+		op.Policy != "defer" || op.Status != "pending" || op.Timestamp == "" || op.Reason == "" || op.CWD != dir {
+		t.Fatalf("unexpected deferred op: %+v", op)
+	}
+	if op.ID == "" || !strings.Contains(result.Reason, op.ID) {
+		t.Fatalf("deny reason must cite the queue id %q:\n%s", op.ID, result.Reason)
+	}
+	if records := readDestructiveDeleteRecords(t, dir); len(records) != 0 {
+		t.Fatalf("a deferred deletion is not a warn approval; got %d warn records", len(records))
+	}
+}
+
+// DoD (b): retrying the same command keeps denying and does not grow the queue.
+func TestEvaluatePreTool_DestructiveDeleteDeferRetryDoesNotDuplicate(t *testing.T) {
+	clearGuardrailKnobEnv(t)
+	dir := deferProject(t)
+	command := "cd " + dir + " && rm -rf ./build/*"
+	for i := 0; i < 3; i++ {
+		if result := EvaluatePreTool(bashInput(dir, command)); result.Decision != hookproto.DecisionDeny {
+			t.Fatalf("retry %d: expected deny, got %s", i, result.Decision)
+		}
+	}
+	if ops := readDeferredOps(t, dir); len(ops) != 1 {
+		t.Fatalf("expected the queue to hold 1 entry after retries, got %d", len(ops))
+	}
+	// A different deletion is a different queue entry.
+	if result := EvaluatePreTool(bashInput(dir, "cd "+dir+" && rm -rf ./dist/*")); result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected deny for the second command, got %s", result.Decision)
+	}
+	if ops := readDeferredOps(t, dir); len(ops) != 2 {
+		t.Fatalf("expected 2 distinct entries, got %d", len(ops))
+	}
+}
+
+// DoD (c): the existing warn approval (local spelling) and the explicit ask
+// opt-out are unchanged by the new value.
+func TestEvaluatePreTool_DestructiveDeleteDeferKeepsWarnPathAndAskOptOut(t *testing.T) {
+	clearGuardrailKnobEnv(t)
+	dir := deferProject(t)
+	result := EvaluatePreTool(bashInput(dir, "cd "+dir+" && echo hi && rm -rf tmp/pdfs/s0-progress"))
+	if result.Decision != hookproto.DecisionApprove || !strings.HasPrefix(result.SystemMessage, "R05_WARN:") {
+		t.Fatalf("defer must keep the warn approval for a local spelling, got %s / %q", result.Decision, result.SystemMessage)
+	}
+	if records := readDestructiveDeleteRecords(t, dir); len(records) != 1 {
+		t.Fatalf("warn record expected under defer for the local spelling, got %d", len(records))
+	}
+	if ops := readDeferredOps(t, dir); len(ops) != 0 {
+		t.Fatalf("a warn-approved deletion must not be queued, got %d", len(ops))
+	}
+
+	askDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(askDir, "harness.toml"),
+		[]byte("[safety.permissions]\ndestructiveDelete = \"ask\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if result := EvaluatePreTool(bashInput(askDir, "cd "+askDir+" && rm -rf ./build/*")); result.Decision != hookproto.DecisionAsk {
+		t.Fatalf("ask opt-out must still ask, got %s", result.Decision)
+	}
+	if ops := readDeferredOps(t, askDir); len(ops) != 0 {
+		t.Fatalf("ask must not queue, got %d", len(ops))
+	}
+}
+
+// The env knob reaches defer too (operator override over the file layers).
+func TestBuildContextDestructiveDeletePolicyDeferFromEnv(t *testing.T) {
+	clearGuardrailKnobEnv(t)
+	t.Setenv("HARNESS_DESTRUCTIVE_DELETE_POLICY", "defer")
+	if ctx := BuildContext(bashInput(t.TempDir(), "rm -rf ./x")); ctx.DestructiveDeletePolicy != "defer" {
+		t.Fatalf("DestructiveDeletePolicy = %q, want defer", ctx.DestructiveDeletePolicy)
+	}
+}
