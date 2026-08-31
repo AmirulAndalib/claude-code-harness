@@ -283,6 +283,20 @@ else
   fail "140.2 (b): 未 approve が deny でない ($decision / $decision2)"
 fi
 
+# 5e2. R16: agent の Bash 経由 approve は hook が deny する (operator の直接実行は対象外)
+decision="$(run_hook "$DEFER_DIR" "bin/harness deferred approve $DEFER_ID $DEFER_DIR")"
+if [ "$decision" = "deny" ]; then
+  pass "R16: agent の Bash 経由 'deferred approve' は deny される (self-approve 遮断)"
+else
+  fail "R16: self-approve が deny されない ($decision)"
+fi
+decision="$(run_hook "$DEFER_DIR" "bin/harness deferred list $DEFER_DIR")"
+if [ "$decision" != "deny" ]; then
+  pass "R16: 'deferred list' (報告経路) は deny されない ($decision)"
+else
+  fail "R16: list まで deny された"
+fi
+
 # 5e. 存在しない / pending でない id の approve は失敗する
 if "$HARNESS_BIN" deferred approve "ffffffffffff" "$DEFER_DIR" >/dev/null 2>&1; then
   fail "140.2: 存在しない id の approve が成功してしまった"

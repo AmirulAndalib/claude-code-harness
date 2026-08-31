@@ -2,7 +2,7 @@ package policy
 
 // Deny-surface self-audit (Phase 91.6 FLOOR).
 //
-// The guard rules R01-R15 are "the chain that constrains the agent": a subset
+// The guard rules R01-R16 are "the chain that constrains the agent": a subset
 // of them can emit a DENY decision (force-push, reset --hard on a protected
 // branch, secret / protected-path writes, Codex-mode direct writes, etc.). If
 // that chain is silently weakened — a deny rule removed, or its triggering
@@ -66,9 +66,13 @@ type denyRuleSignature struct {
 // surface stays a faithful mirror.
 //
 // Rules deliberately omitted (they never deny):
-//   - R04, R05  → DecisionAsk
+//   - R04       → DecisionAsk
 //   - R09, R13  → warn (approve + systemMessage)
 //   - R14       → local-trial no-op
+//
+// R05 is included since 140.1: under destructive_delete=defer it CAN deny
+// (the blast-radius backstop becomes deny + queue). Like R12, the matcher
+// captures the detector and the gating policy value, not the runtime setting.
 //
 // R12 (direct push to a protected branch) is included: it CAN deny, under the
 // `protected_branch_push=deny` configuration. Its deny is gated by the same
@@ -82,6 +86,7 @@ func denyRuleSignatures() []denyRuleSignature {
 		// .pem rule, …) is exactly the weakening this surface must catch.
 		{ruleID: "R02:no-write-protected-paths", matchers: protectedPathDenyPatternSources()},
 		{ruleID: "R03:no-bash-write-protected-paths", matchers: protectedPathDenyPatternSources()},
+		{ruleID: "R05:confirm-rm-rf", matchers: []string{"shellscan.DangerousRemoval", "policy=defer"}},
 		{ruleID: "R06:no-force-push", matchers: regexpSources(forcePushPattern, forcePushShort)},
 		// R07 (Codex mode) and R08 (Breezing reviewer) deny on a context flag, not
 		// a pattern; their condition descriptor is the flag predicate. R08 also has
@@ -92,6 +97,7 @@ func denyRuleSignatures() []denyRuleSignature {
 		{ruleID: "R11:no-reset-hard-protected-branch", matchers: regexpSources(protectedBranchRefPattern)},
 		{ruleID: "R12:confirm-direct-push-protected-branch", matchers: append(regexpSources(gitPushPattern, protectedBranchRefPattern), "policy=deny")},
 		{ruleID: "R15:no-stage-secret-file", matchers: append(regexpSources(r15SecretStagingPatterns...), "except="+publicEnvTemplatePattern.String(), "git-add-stage-commit-pathspec", "quote-aware-shell-lexer")},
+		{ruleID: "R16:no-self-approve-deferred", matchers: regexpSources(deferredApproveCommandPattern)},
 	}
 }
 
@@ -171,19 +177,24 @@ func DenySurface() []string {
 // and paste the printed slice here.
 var baselineDenySurface = []string{
 	"R01:no-sudo:3d90ab7cf0b192d7fd9b6267693d75b8015a379ba75da09022850322c695e6f0",
-	"R02:no-write-protected-paths:6c8daecc5e7745ead7fb671cd2867bb2b0e4b598526167ef3676de56a8fe4868",
-	"R03:no-bash-write-protected-paths:a54551decc10465f4a6fba38166382ed7900f9e4834eef1b6298c7a8daea2e5f",
+	// 2026-08-31 regenerated (140.2 review follow-up): R02/R03 の deny パターン集合へ
+	// guardrail approval queue / audit record (deferred-ops.jsonl / destructive-delete.jsonl)
+	// を追加したため signature が変わった。パターンは純増で削除・緩和はゼロ。
+	// R05 (140.1 defer deny) と R16 (self-approve 遮断) は新規の面。他行は不変。
+	"R02:no-write-protected-paths:b6e6800a51182c5c5b69bc38f6eca604527b5512b914442cb3cf292ebf7a22cb",
+	"R03:no-bash-write-protected-paths:4e4b4a34437899627a33b5573518db378a6754e72c99296ec23d9a96a894616e",
+	"R05:confirm-rm-rf:e9a19ee52b801eaac560ab0826a5241ad77d22633de1309b3259b4e5f10a1cb8",
 	"R06:no-force-push:7320e66b09a8fd7c4cf6b24a800b7b78b8b82181720ca722bb6ab4002fc574a2",
-	"R07:codex-mode-no-write:9d6770d2cb308bf2a3eb48c420b44658f2befaa642d652eeb348f54b3529213d",
 	// 2026-08-11 regenerated: R08 の禁止コマンド集合へ `ln` / `tee` を追加した
 	// ため signature が変わった。パターンは 4 → 6 の純増で、削除・緩和はゼロ
 	// (symlink を state dir 内に作って write-block を回避する経路を塞ぐ)。
-	// 他 9 行は不変であることを確認済み。
+	"R07:codex-mode-no-write:9d6770d2cb308bf2a3eb48c420b44658f2befaa642d652eeb348f54b3529213d",
 	"R08:breezing-reviewer-no-write:012409783ac3a86b7a996228c19762913ffa494d55e6c599a35239498adeb3ac",
 	"R10:no-git-bypass-flags:4a9a63d2d3a4f496d16fb4f2e135b060d741b95006278c249c526ae683c732c5",
 	"R11:no-reset-hard-protected-branch:7b0ffd50649b06d0fc4630cdbbf134e4278f3dbe707df381521b87c0a7a61bfd",
 	"R12:confirm-direct-push-protected-branch:1f47124d7cec9dd1ec43abc991b8ab054c756cd56d0d5bbc407ea4137b50de6b",
 	"R15:no-stage-secret-file:d1953619a0859c4b5337766f90c981bd88611d9847aacce95b2a40fbbe578cc4",
+	"R16:no-self-approve-deferred:033a27b031aba5e95bf83662d15babdaa619424bc2f556a991c8d26f2b0c76c1",
 }
 
 // compareDenySurfaces reports whether current is WEAKENED relative to baseline.

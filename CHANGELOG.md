@@ -20,6 +20,16 @@ Change history for claude-code-harness.
   path. The progress surface gains an additive `deferred_ops_pending` section
   (`progress-snapshot.v1`) listing pending deletions with their approve commands
   (same shape as the Phase 136.2 writing-lint queue).
+  Review follow-up (independent reviewer findings, both fixed pre-merge): (1) the
+  "operator-only" boundary is now enforced, not just documented — new guardrail rule
+  **R16:no-self-approve-deferred** denies agent Bash invocations of
+  `harness deferred approve` (list stays allowed), and `deferred-ops.jsonl` /
+  `destructive-delete.jsonl` joined the R02/R03 protected-path deny set so an agent
+  cannot forge `"status":"approved"` lines (interpreter writes remain a documented
+  residual, same class as the R05 symlink residual); approve stamps `approved_by`.
+  (2) `recordDeferredOp`'s dedup-check + append now runs under the same file lock as
+  the approve/consume flips, closing a lost-write / duplicate-pending race. R05
+  (defer deny) and R16 joined the deny-surface baseline and rule-coverage pins.
 
 - **`destructive_delete: defer` (Phase 140.1、無人 run の ask 停止対策)**: R05 (rm -rf / find -delete) で warn なら ask になる場面 (root 外の綴り・`..`・未解決 `$VAR`・glob・素の `.`) を、ask の代わりに **deny + 行動契約** に置き換える設定値。deny は run を止めず (エージェントに理由が返り続行する)、操作は `.claude/state/deferred-ops.jsonl` に 1 行 (`id` / `timestamp` / `session_id` / `agent_id` / `cwd` / `command` / `rule_id` / `policy` / `reason` / `status: pending`) 積まれる。同一コマンドの再試行は deny のままキューに重複しない。warn が通す場面は defer でも warn のまま (allow + `destructive-delete.jsonl` 記録)。既定は引き続き warn。設定は `harness.toml [safety.permissions] destructiveDelete` / `.claude-code-harness.config.yaml safety.destructive_delete` / env `HARNESS_DESTRUCTIVE_DELETE_POLICY`。承認 CLI は 140.2 の `bin/harness deferred` で追加済み
 

@@ -141,8 +141,10 @@ func TestCompareDenySurfaces_IdenticalPasses(t *testing.T) {
 
 // TestDenySurface_CoversExpectedRules pins the membership of the deny surface to
 // the rules that actually deny in rules.go, and asserts the non-deny rules
-// (R04/R05 ask, R09/R13 warn, R14 no-op) are NOT present. This catches a future
+// (R04 ask, R09/R13 warn, R14 no-op) are NOT present. This catches a future
 // edit that makes a rule deny (or stop denying) without updating the surface.
+// R05 joined the surface with 140.1 (destructive_delete=defer CAN deny) and
+// R16 with 140.2 (operator-only approve CLI).
 func TestDenySurface_CoversExpectedRules(t *testing.T) {
 	present := map[string]bool{}
 	for _, e := range DenySurface() {
@@ -150,7 +152,8 @@ func TestDenySurface_CoversExpectedRules(t *testing.T) {
 	}
 
 	wantDeny := []string{
-		"R01", "R02", "R03", "R06", "R07", "R08", "R10", "R11", "R12",
+		"R01", "R02", "R03", "R05", "R06", "R07", "R08", "R10", "R11", "R12",
+		"R15", "R16",
 	}
 	for _, id := range wantDeny {
 		if !present[id] {
@@ -158,7 +161,7 @@ func TestDenySurface_CoversExpectedRules(t *testing.T) {
 		}
 	}
 
-	wantAbsent := []string{"R04", "R05", "R09", "R13", "R14"}
+	wantAbsent := []string{"R04", "R09", "R13", "R14"}
 	for _, id := range wantAbsent {
 		if present[id] {
 			t.Errorf("non-deny rule %q must not be in the deny surface", id)

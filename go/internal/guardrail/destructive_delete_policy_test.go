@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Chachamaru127/claude-code-harness/go/pkg/hookproto"
@@ -429,5 +430,54 @@ func TestListDeferredOps_SkipsDamagedLines(t *testing.T) {
 	}
 	if views, err = ListDeferredOps(t.TempDir()); err != nil || views != nil {
 		t.Fatalf("missing file must yield nil, nil; got %+v, %v", views, err)
+	}
+}
+
+// 140.2 review follow-up: the dedup check and the append are one critical
+// section under the queue file lock. Concurrent identical deferrals must
+// produce exactly one pending line (the old unlocked check-then-append could
+// race into duplicates or lose an append against a concurrent flip rewrite).
+func TestRecordDeferredOp_ConcurrentIdenticalCommandsQueueOnce(t *testing.T) {
+	dir := t.TempDir()
+	input := bashInput(dir, "cd "+dir+" && rm -rf ./build/*")
+	result := hookproto.HookResult{
+		Decision: hookproto.DecisionDeny,
+		RuleID:   "R05:confirm-rm-rf",
+		Reason:   "R05_DEFER: x",
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			recordDeferredOp(dir, input, result)
+		}()
+	}
+	wg.Wait()
+	ops := readDeferredOps(t, dir)
+	if len(ops) != 1 || ops[0].Status != deferredOpStatusPending {
+		t.Fatalf("expected exactly 1 pending line after concurrent records, got %+v", ops)
+	}
+}
+
+// approve stamps approved_by so the audit trail distinguishes the operator's
+// CLI action.
+func TestApproveDeferredOp_StampsApprovedBy(t *testing.T) {
+	dir := t.TempDir()
+	stateDir := filepath.Join(dir, ".claude", "state")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	queue := filepath.Join(stateDir, deferredOpsFile)
+	line := `{"id":"dddddddddddd","command":"x","rule_id":"R05:confirm-rm-rf","policy":"defer","reason":"r","status":"pending"}` + "\n"
+	if err := os.WriteFile(queue, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApproveDeferredOp(dir, "dddddddddddd"); err != nil {
+		t.Fatalf("ApproveDeferredOp: %v", err)
+	}
+	ops := readDeferredOps(t, dir)
+	if len(ops) != 1 || ops[0].ApprovedBy == "" || !strings.HasPrefix(ops[0].ApprovedBy, "cli") {
+		t.Fatalf("expected approved_by stamp, got %+v", ops)
 	}
 }

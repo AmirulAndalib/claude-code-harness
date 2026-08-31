@@ -191,6 +191,31 @@ var Rules = []GuardRule{
 		Evaluate:    r14TddRequiredLocalTrialResult,
 	},
 
+	// R16: deferred-ops approval is operator-only (140.2 review follow-up).
+	// destructive_delete=defer queues refused deletions for the OPERATOR to
+	// approve out-of-band; the deny reason and `deferred list` output hand the
+	// agent the exact approve command, so without this rule the agent one step
+	// from "done" could simply run it and unblock itself — an auto-approval
+	// path the 140.2 contract explicitly excludes. `deferred list` stays
+	// allowed (the agent is expected to report the queue at end of run).
+	{
+		ID:          "R16:no-self-approve-deferred",
+		ToolPattern: regexp.MustCompile(`^Bash$`),
+		Evaluate: func(ctx hookproto.RuleContext) *hookproto.HookResult {
+			command, ok := ctx.Input.ToolInput["command"].(string)
+			if !ok {
+				return nil
+			}
+			if !deferredApproveCommandPattern.MatchString(command) {
+				return nil
+			}
+			return &hookproto.HookResult{
+				Decision: hookproto.DecisionDeny,
+				Reason:   "R16: approving a deferred op is operator-only. Report the pending queue (bin/harness deferred list) and ask the operator to run the approve command themselves.",
+			}
+		},
+	},
+
 	// R15: block staging or committing secret files
 	{
 		ID:          "R15:no-stage-secret-file",
@@ -610,3 +635,7 @@ func EvaluateRules(ctx hookproto.RuleContext) hookproto.HookResult {
 	}
 	return hookproto.HookResult{Decision: hookproto.DecisionApprove}
 }
+
+// deferredApproveCommandPattern matches an invocation of the operator-only
+// approve CLI (R16). `deferred list` deliberately does not match.
+var deferredApproveCommandPattern = regexp.MustCompile(`(?i)\bharness(?:\.exe)?["']?\s+deferred\s+approve\b`)

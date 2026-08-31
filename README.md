@@ -14,7 +14,7 @@
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License"></a>
   <a href="docs/CLAUDE_CODE_COMPATIBILITY.md"><img src="https://img.shields.io/badge/Claude_Code-v2.1+-purple.svg" alt="Claude Code"></a>
   <img src="https://img.shields.io/badge/Skills-5_core_%2F_21_total-orange.svg" alt="Skills: 5 core verbs / 21 total">
-  <img src="https://img.shields.io/badge/Guardrails-R01%E2%80%93R15_%2B_5_floors-B5462F.svg" alt="Guardrails: R01-R15 plus 5 runtime floor categories">
+  <img src="https://img.shields.io/badge/Guardrails-R01%E2%80%93R15_%2B_5_floors-B5462F.svg" alt="Guardrails: R01-R16 plus 5 runtime floor categories">
   <img src="https://img.shields.io/badge/Core-Go_Native-00ADD8.svg" alt="Go Core">
 </p>
 

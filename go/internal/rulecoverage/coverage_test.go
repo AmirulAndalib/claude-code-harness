@@ -37,19 +37,22 @@ func TestCoverage_MatrixCountsMatchExpected(t *testing.T) {
 	c := Summarize(m)
 
 	// Lock the numbers so future drift is caught (the U3 "4/14 gated" finding).
-	if c.Total != 15 {
-		t.Fatalf("expected 15 defined rules, got %d", c.Total)
+	if c.Total != 16 {
+		// R01-R16 (R16: no-self-approve-deferred, Phase 140.2 review follow-up)
+		t.Fatalf("expected 16 defined rules, got %d", c.Total)
 	}
 	if c.ShellGate != 5 {
 		// R10-R13 + R05 (destructive_delete policy contract test wired into
 		// validate-plugin.sh — tests/test-r05-destructive-delete-policy.sh).
 		t.Fatalf("expected 5 shell-gated rules (R05, R10-R13), got %d", c.ShellGate)
 	}
-	if c.SelfauditPin != 10 {
-		t.Fatalf("expected 10 selfaudit-pinned rules, got %d", c.SelfauditPin)
+	if c.SelfauditPin != 12 {
+		// +R05 (defer deny, 140.1) and +R16 (self-approve block, 140.2) joined
+		// the deny-surface baseline.
+		t.Fatalf("expected 12 selfaudit-pinned rules, got %d", c.SelfauditPin)
 	}
-	if c.BehavioralTest != 15 {
-		t.Fatalf("expected 15 behaviorally-tested rules, got %d", c.BehavioralTest)
+	if c.BehavioralTest != 16 {
+		t.Fatalf("expected 16 behaviorally-tested rules, got %d", c.BehavioralTest)
 	}
 }
 

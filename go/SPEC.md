@@ -346,6 +346,7 @@ RECOVERING → ABORTED     (リカバリ失敗、人間介入必要)
 | R11 | Bash | protected branch への `git reset --hard` | deny | なし |
 | R12 | Bash | main/master への直接 push | ask（設定で deny / allow 可） | `protected_branch_push` |
 | R13 | Write/Edit/MultiEdit | package.json, Dockerfile, workflow 等 | approve + warn | なし |
+| R16 | Bash | `harness deferred approve` の agent 実行 (140.2。承認は operator-only。`deferred list` は対象外) | deny | なし |
 
 R03 の target extraction は redirection / `tee` ベース。`sed -i` 等の in-place 書き込み検出は v1 範囲外。
 

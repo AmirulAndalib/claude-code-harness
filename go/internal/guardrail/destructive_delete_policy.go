@@ -141,6 +141,7 @@ type deferredOpEntry struct {
 	Reason     string `json:"reason"`
 	Status     string `json:"status"`
 	ApprovedAt string `json:"approved_at,omitempty"`
+	ApprovedBy string `json:"approved_by,omitempty"`
 	ConsumedAt string `json:"consumed_at,omitempty"`
 }
 
@@ -181,6 +182,19 @@ func recordDeferredOp(projectRoot string, input hookproto.HookInput, result hook
 		return
 	}
 	path := filepath.Join(stateDir, deferredOpsFile)
+	// The dedup check and the append must be one critical section (140.2
+	// review): unlocked, (a) two concurrent identical commands can both pass
+	// the pending check and queue duplicate pending lines with the same id,
+	// and (b) an append landing between flipDeferredOpStatus's read and its
+	// atomic rename is silently lost. Same lock as the flip path.
+	_ = auditlog.WithFileLock(path+".lock", func() error {
+		appendDeferredOpLocked(path, id, result.RuleID, input, command)
+		return nil
+	})
+}
+
+// appendDeferredOpLocked runs under the queue file lock.
+func appendDeferredOpLocked(path, id, ruleID string, input hookproto.HookInput, command string) {
 	if hasPendingDeferredOp(path, id) {
 		return
 	}
@@ -191,7 +205,7 @@ func recordDeferredOp(projectRoot string, input hookproto.HookInput, result hook
 		AgentID:   input.AgentID,
 		CWD:       input.CWD,
 		Command:   command,
-		RuleID:    result.RuleID,
+		RuleID:    ruleID,
 		Policy:    policy.DestructiveDeletePolicyDefer,
 		Reason:    "blast-radius backstop: target is not statically inside the project root (out-of-root spelling, `..`, unresolved $VAR, glob, or bare `.`), so warn could not approve it and an unattended run must not stop on a prompt",
 		Status:    deferredOpStatusPending,
@@ -327,6 +341,7 @@ func flipDeferredOpStatus(projectRoot, id, fromStatus, toStatus string) (bool, e
 			switch toStatus {
 			case deferredOpStatusApproved:
 				line.entry.ApprovedAt = now
+				line.entry.ApprovedBy = approvedByIdentity()
 			case deferredOpStatusConsumed:
 				line.entry.ConsumedAt = now
 			}
@@ -342,6 +357,15 @@ func flipDeferredOpStatus(projectRoot, id, fromStatus, toStatus string) (bool, e
 		return false, err
 	}
 	return flipped, nil
+}
+
+// approvedByIdentity records who ran the approve CLI. Best-effort audit
+// breadcrumb (an agent-run approve is blocked upstream by R16, not here).
+func approvedByIdentity() string {
+	if user := strings.TrimSpace(os.Getenv("USER")); user != "" {
+		return "cli:" + user
+	}
+	return "cli"
 }
 
 // ApproveDeferredOp flips a pending queue entry to approved. It is the CLI

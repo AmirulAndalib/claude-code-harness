@@ -79,6 +79,16 @@ var protectedPathRules = []protectedPathRule{
 	// dot, distinct ".example." infix).
 	{protectedPathDeny, "harness control-plane config", regexp.MustCompile(`(?:^|/)\.claude-code-harness\.config\.(?:json|ya?ml)$`)},
 
+	// Phase 140.2 review follow-up: the deferred-ops queue is the operator's
+	// approval surface and destructive-delete.jsonl is its audit record. An
+	// agent writing either file could forge "status":"approved" lines or erase
+	// the review trail, so direct Write/Edit (R02) and shell writes (R03) are
+	// denied. The guardrail process itself writes them from Go, not through a
+	// tool call, so enforcement is unaffected. Residual: an interpreter
+	// (python -c etc.) can still write the file — same accepted class as the
+	// R05 symlink residual; R16 closes the approve-CLI channel.
+	{protectedPathDeny, "guardrail approval queue / audit record", regexp.MustCompile(`(?:^|/)\.claude/state/(?:deferred-ops|destructive-delete)\.jsonl$`)},
+
 	// ask: agent capability surfaces and editor automation settings
 	{protectedPathAsk, "Claude capability path", regexp.MustCompile(`(?:^|/)\.claude/(?:skills|agents|commands)(?:/|$)`)},
 	{protectedPathAsk, "editor automation settings", regexp.MustCompile(`(?:^|/)\.vscode(?:/|$)`)},

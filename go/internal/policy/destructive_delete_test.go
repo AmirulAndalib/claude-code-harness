@@ -382,3 +382,64 @@ func TestR05_DeferApprovalDoesNotPreemptLaterDenyRules(t *testing.T) {
 		t.Fatalf("expected R06 deny to win over consumed defer approval, got %s (%s)", result.Decision, result.RuleID)
 	}
 }
+
+// R16 (140.2 review follow-up): the approve CLI is operator-only. An agent
+// Bash call invoking it — any spelling that reaches the harness binary — is
+// denied, while `deferred list` (the reporting path the R05_DEFER contract
+// asks for) stays allowed.
+func TestR16_DeniesAgentSelfApproveOfDeferredOps(t *testing.T) {
+	denied := []string{
+		"bin/harness deferred approve abc123def456",
+		"harness deferred approve abc123def456",
+		"cd /repo && ./bin/harness deferred approve abc123def456 /repo",
+		"HARNESS_X=1 harness deferred  approve abc123def456",
+	}
+	for _, command := range denied {
+		t.Run(command, func(t *testing.T) {
+			ctx := makeCtx("Bash", map[string]interface{}{"command": command})
+			result := EvaluateRules(ctx)
+			if result.Decision != hookproto.DecisionDeny || result.RuleID != "R16:no-self-approve-deferred" {
+				t.Fatalf("expected R16 deny, got %s (%s)", result.Decision, result.RuleID)
+			}
+		})
+	}
+}
+
+func TestR16_AllowsDeferredListAndUnrelatedCommands(t *testing.T) {
+	allowed := []string{
+		"bin/harness deferred list",
+		"bin/harness deferred list --json /repo",
+		"echo deferred approve", // no harness invocation
+		"git commit -m 'deferred approve flow'",
+	}
+	for _, command := range allowed {
+		t.Run(command, func(t *testing.T) {
+			ctx := makeCtx("Bash", map[string]interface{}{"command": command})
+			result := EvaluateRules(ctx)
+			if result.RuleID == "R16:no-self-approve-deferred" {
+				t.Fatalf("R16 must not match %q, got %s", command, result.Decision)
+			}
+		})
+	}
+}
+
+// R02/R03 (140.2 review follow-up): the queue and its audit record are the
+// operator's approval surface — direct tool writes are denied so an agent
+// cannot forge "status":"approved" lines or erase the review trail.
+func TestR16_QueueAndAuditFilesAreWriteProtected(t *testing.T) {
+	for _, file := range []string{
+		"/repo/.claude/state/deferred-ops.jsonl",
+		"/repo/.claude/state/destructive-delete.jsonl",
+	} {
+		ctx := makeCtx("Write", map[string]interface{}{"file_path": file, "content": "x"})
+		result := EvaluateRules(ctx)
+		if result.Decision != hookproto.DecisionDeny || result.RuleID != "R02:no-write-protected-paths" {
+			t.Fatalf("expected R02 deny for %s, got %s (%s)", file, result.Decision, result.RuleID)
+		}
+	}
+	// other .claude/state files stay under the normal write rules
+	ctx := makeCtx("Write", map[string]interface{}{"file_path": "/repo/.claude/state/active-task.json", "content": "x"})
+	if result := EvaluateRules(ctx); result.RuleID == "R02:no-write-protected-paths" {
+		t.Fatalf("active-task.json must not be caught by the queue protection, got %s", result.Decision)
+	}
+}
