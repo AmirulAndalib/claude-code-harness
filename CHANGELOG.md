@@ -6,6 +6,21 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Fixed
+
+- **secret-read floor: `~/` vs absolute allowlist, and write-only `cat >`**:
+  `HARNESS_RUNTIME_FLOOR_SECRET_ALLOW` compared command tokens and declarations
+  as raw strings, so a declared `/Users/<home>/LocalWork/` missed
+  `~/LocalWork/.../.env`. Matching now expands a leading `~/` on both sides
+  (process home directory). That is spelling normalization, not a wider
+  allowlist. Bare `~` / `~/` stay invalid. `$HOME` and `~user` are not
+  expanded. Separately, `cat > file` / `cat >> file` / `cat > file <<EOF`
+  with no input file was treated as a read verb, so a later
+  `AISDR_ENV_FILE=.../.env bash script` in the same Bash string was denied.
+  Write-only `cat` is no longer a secret-read verb. `cat FILE`,
+  `cat FILE > out`, `cat FILE>/out`, `cat > out FILE`, and `cat < FILE`
+  still deny.
+
 ## [5.14.0] - 2026-08-31
 
 ### Added
