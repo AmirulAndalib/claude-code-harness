@@ -699,6 +699,74 @@ func TestCheckSecretRead_InvalidConfigFailsSafeDeny(t *testing.T) {
 	}
 }
 
+func TestCheckSecretRead_TildeCommandMatchesExpandedHomePrefix(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir: %v", err)
+	}
+	t.Setenv("HARNESS_RUNTIME_FLOOR_SECRET_ALLOW", home+"/LocalWork/")
+
+	d := CheckCommand("cat ~/LocalWork/Code/app/.env", Context{})
+	if d.Stopped {
+		t.Fatalf("tilde command token should match expanded home prefix, got category %s reason %q", d.Category, d.Reason)
+	}
+}
+
+func TestCheckSecretRead_WriteCatHeredocEnvAssignPasses(t *testing.T) {
+	cmd := "cat > script <<'SH'\n" +
+		"echo start\n" +
+		"SH\n" +
+		"AISDR_ENV_FILE=~/LocalWork/.env bash script"
+
+	d := CheckCommand(cmd, Context{})
+	if d.Stopped {
+		t.Fatalf("write-only cat plus env-assign must not trip secret-read, got category %s reason %q", d.Category, d.Reason)
+	}
+}
+
+func TestCheckSecretRead_CatDotenvRedirectStdoutStillDenies(t *testing.T) {
+	cases := []string{
+		"cat .env > out",
+		"cat .env>/tmp/x",
+	}
+	for _, cmd := range cases {
+		t.Run(cmd, func(t *testing.T) {
+			d := CheckCommand(cmd, Context{})
+			if !d.Stopped || d.Category != CategorySecretRead {
+				t.Fatalf("expected secret-read deny for %q, got Stopped=%v Category=%s", cmd, d.Stopped, d.Category)
+			}
+		})
+	}
+}
+
+func TestCheckSecretRead_TildeSSHKeyDeniesDespiteHomePrefix(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir: %v", err)
+	}
+	t.Setenv("HARNESS_RUNTIME_FLOOR_SECRET_ALLOW", home+"/LocalWork/")
+
+	d := CheckCommand("cat ~/.ssh/id_rsa", Context{})
+	if !d.Stopped || d.Category != CategorySecretRead {
+		t.Fatalf("ssh key must deny even with LocalWork home prefix, got Stopped=%v Category=%s", d.Stopped, d.Category)
+	}
+}
+
+func TestCheckSecretRead_WriteCatOperandOrStdinStillDenies(t *testing.T) {
+	cases := []string{
+		"cat > out .env",
+		"cat < .env",
+	}
+	for _, cmd := range cases {
+		t.Run(cmd, func(t *testing.T) {
+			d := CheckCommand(cmd, Context{})
+			if !d.Stopped || d.Category != CategorySecretRead {
+				t.Fatalf("expected secret-read deny for %q, got Stopped=%v Category=%s", cmd, d.Stopped, d.Category)
+			}
+		})
+	}
+}
+
 func writeRuntimeFloorConfig(t *testing.T, root, body string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(root, ".claude-code-harness.config.json"), []byte(body), 0o600); err != nil {

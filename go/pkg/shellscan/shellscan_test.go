@@ -474,6 +474,89 @@ func TestStripNonExecutableText_KeepsBodyPipedToInterpreter(t *testing.T) {
 	}
 }
 
+func TestInspectVerbInvocations_CatRedirectsAndOperands(t *testing.T) {
+	cases := []struct {
+		name      string
+		command   string
+		wantPos   []string
+		wantRedir []string
+		wantFound bool
+		wantOK    bool
+	}{
+		{
+			name:      "write-only cat heredoc",
+			command:   "cat > script <<'SH'",
+			wantPos:   nil,
+			wantRedir: []string{">", "<<"},
+			wantFound: true,
+			wantOK:    true,
+		},
+		{
+			name:      "cat dotenv",
+			command:   "cat .env",
+			wantPos:   []string{".env"},
+			wantFound: true,
+			wantOK:    true,
+		},
+		{
+			name:      "cat dotenv glued stdout redirect",
+			command:   "cat .env>/tmp/x",
+			wantPos:   []string{".env"},
+			wantRedir: []string{">"},
+			wantFound: true,
+			wantOK:    true,
+		},
+		{
+			name:      "cat stdout then dotenv operand",
+			command:   "cat > out .env",
+			wantPos:   []string{".env"},
+			wantRedir: []string{">"},
+			wantFound: true,
+			wantOK:    true,
+		},
+		{
+			name:      "cat stdin redirect",
+			command:   "cat < .env",
+			wantPos:   nil,
+			wantRedir: []string{"<"},
+			wantFound: true,
+			wantOK:    true,
+		},
+		{
+			name:    "redirect without target is ambiguous",
+			command: "cat >",
+			wantOK:  false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			invocations, ok := InspectVerbInvocations(tc.command, "cat")
+			if ok != tc.wantOK {
+				t.Fatalf("InspectVerbInvocations(%q).ok = %v, want %v", tc.command, ok, tc.wantOK)
+			}
+			if !tc.wantOK {
+				return
+			}
+			if !tc.wantFound {
+				if len(invocations) != 0 {
+					t.Fatalf("expected no invocations, got %#v", invocations)
+				}
+				return
+			}
+			if len(invocations) != 1 {
+				t.Fatalf("invocations = %#v, want 1", invocations)
+			}
+			if !reflect.DeepEqual(invocations[0].Positional, tc.wantPos) {
+				t.Fatalf("Positional = %#v, want %#v", invocations[0].Positional, tc.wantPos)
+			}
+			if !reflect.DeepEqual(invocations[0].Redirects, tc.wantRedir) {
+				t.Fatalf("Redirects = %#v, want %#v", invocations[0].Redirects, tc.wantRedir)
+			}
+		})
+	}
+}
+
 func TestStripNonExecutableText_QuotedHeredocMarkerDoesNotHideCommands(t *testing.T) {
 	for _, command := range []string{
 		"printf '<<EOF'\nrm -rf /outside",

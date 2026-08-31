@@ -882,3 +882,83 @@ func tokenize(segment string) []string {
 	flush()
 	return tokens
 }
+
+// VerbInvocation is one invocation of a named command after shell tokenization.
+// Redirects holds operators only ("<", ">", "<<", ">>"), not their targets.
+// Secret-path vocabulary does not belong here; callers classify the result.
+type VerbInvocation struct {
+	Positional []string
+	Redirects  []string
+}
+
+// InspectVerbInvocations returns each invocation of verb in command.
+// verb is matched as a command basename (case-insensitive) after assignments
+// and interpreter wrappers. ok is false when a redirect cannot be paired with
+// a target (callers should fail closed).
+func InspectVerbInvocations(command, verb string) (invocations []VerbInvocation, ok bool) {
+	want := strings.ToLower(strings.TrimSpace(verb))
+	if want == "" {
+		return nil, false
+	}
+	for _, segment := range splitCommandSegments(command) {
+		inv, found, segmentOK := inspectSegmentVerb(tokenize(segment), want)
+		if !segmentOK {
+			return nil, false
+		}
+		if found {
+			invocations = append(invocations, inv)
+		}
+	}
+	return invocations, true
+}
+
+func inspectSegmentVerb(tokens []string, want string) (VerbInvocation, bool, bool) {
+	for i := 0; i < len(tokens); i++ {
+		tok := tokens[i]
+		if isAssignment(tok) {
+			continue
+		}
+		if isRedirectionToken(tok) {
+			if i+1 >= len(tokens) || isRedirectionToken(tokens[i+1]) {
+				return VerbInvocation{}, false, false
+			}
+			i++
+			continue
+		}
+		name := commandName(tok)
+		if _, wrap := interpreterWrappers[name]; wrap {
+			continue
+		}
+		if name != want {
+			return VerbInvocation{}, false, true
+		}
+		inv, parseOK := parseVerbArgs(tokens[i+1:])
+		return inv, true, parseOK
+	}
+	return VerbInvocation{}, false, true
+}
+
+func parseVerbArgs(tokens []string) (VerbInvocation, bool) {
+	var inv VerbInvocation
+	options := true
+	for i := 0; i < len(tokens); i++ {
+		tok := tokens[i]
+		if isRedirectionToken(tok) {
+			if i+1 >= len(tokens) || isRedirectionToken(tokens[i+1]) {
+				return VerbInvocation{}, false
+			}
+			inv.Redirects = append(inv.Redirects, tok)
+			i++
+			continue
+		}
+		if options && tok == "--" {
+			options = false
+			continue
+		}
+		if options && len(tok) > 1 && tok[0] == '-' {
+			continue
+		}
+		inv.Positional = append(inv.Positional, tok)
+	}
+	return inv, true
+}
