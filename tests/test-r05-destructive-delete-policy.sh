@@ -227,7 +227,7 @@ CMD_GLOB="cd $DEFER_DIR && rm -rf ./build/*"
 
 # 5-pre. list CLI: pending 1 件が出る
 list_out="$("$HARNESS_BIN" deferred list "$DEFER_DIR" 2>&1)" || true
-if printf '%s' "$list_out" | grep -q "$DEFER_ID"; then
+if grep -q "$DEFER_ID" <<< "$list_out"; then
   pass "140.2: deferred list が pending の id を表示する"
 else
   fail "140.2: deferred list に id が出ない: $list_out"
