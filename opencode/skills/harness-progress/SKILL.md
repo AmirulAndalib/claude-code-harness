@@ -51,6 +51,7 @@ cost_estimate_usd:        <float, state file から>
 alerts:                    []   ← Phase 65.4.3 以降で populate
 generated_at:             <ISO8601 UTC>
 writing_lint_pending:     [{id, pattern, approve_command, pending_count}]  ← optional/additive (Phase 136.2)
+deferred_ops_pending:     [{id, command, approve_command, pending_count}]  ← optional/additive (Phase 140.2)
 ```
 
 ### writing_lint_pending (Phase 136.2)
@@ -86,6 +87,9 @@ bash scripts/progress-snapshot.sh \
 `progress-snapshot.v1` schema 準拠の JSON を出力する。内部で
 `scripts/writing-rule-list.sh --status pending --json` も呼び、`writing_lint_pending`
 を additive に組み込む (Phase 136.2。writing-rule-list.sh が無い/失敗する場合は空配列)。
+同様に `.claude/state/deferred-ops.jsonl` の `status: pending` 行を `deferred_ops_pending`
+として組み込む (Phase 140.2。ファイルが無い/壊れた行は読み飛ばして空配列)。表示するのは
+コピペ用の `bin/harness deferred approve <id>` 文字列で、押せるボタンではない。
 
 ### Step 2: HTML をレンダリング
 

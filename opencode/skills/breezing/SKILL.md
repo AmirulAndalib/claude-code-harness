@@ -419,6 +419,14 @@ heartbeat を増やして安心感を作るのではなく、status / log / drif
 `run_in_background: true` で投げた長時間 shell process（`gh run watch`、build --watch 等）は、ポーリングではなく **Monitor ツール**で stdout を逐次通知として拾う。Agent (Worker/Reviewer) の完了監視や短時間の一発コマンドには不要。
 使い分け表・典型パターンは [references/monitor-and-learning.md](${CLAUDE_SKILL_DIR}/references/monitor-and-learning.md) を参照。
 
+### 自主停止の禁止 (140.3、2026-08-22 の release run で 2 回発生した停止パターンの再発防止)
+
+以下は禁止行動。literal に列挙する (AUTOSTART pattern と同じ方式):
+
+- background 待ちで turn を終えて停止しない (turn を終えると background 子プロセスは残らない)
+- 「検証を待ちます」「確認します」「完了を待機します」で turn を終えない
+- 待つなら同期実行 (foreground / Monitor) で待ち切る。待てないものは保留として報告し、次のタスクへ進む
+
 ### Review Policy（全モード統一）
 
 Breezing モードでもレビューは **Codex exec 優先 → 内部 Reviewer フォールバック** の統一ポリシーに従う。
