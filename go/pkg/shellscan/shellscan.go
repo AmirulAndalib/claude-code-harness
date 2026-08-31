@@ -742,7 +742,12 @@ func commandName(token string) string {
 }
 
 func isRedirectionToken(token string) bool {
-	return token == "<" || token == ">" || token == "<<" || token == ">>"
+	switch token {
+	case "<", ">", "<<", ">>", "&>", ">&", "&>>":
+		return true
+	default:
+		return false
+	}
 }
 
 func appendUnique(targets []string, additions ...string) []string {
@@ -806,6 +811,10 @@ func splitCommandSegments(command string) []string {
 				width = 2
 			}
 		case '&':
+			// `&>` / `&>>` are redirections, not background or `&&`.
+			if i+1 < len(command) && command[i+1] == '>' {
+				continue
+			}
 			width = 1
 			if i+1 < len(command) && command[i+1] == '&' {
 				width = 2
@@ -863,11 +872,25 @@ func tokenize(segment string) []string {
 				flush()
 				continue
 			}
+			if char == '&' && i+1 < len(segment) && segment[i+1] == '>' {
+				flush()
+				token := "&>"
+				i++
+				if i+1 < len(segment) && segment[i+1] == '>' {
+					token = "&>>"
+					i++
+				}
+				tokens = append(tokens, token)
+				continue
+			}
 			if char == '<' || char == '>' {
 				flush()
 				token := string(char)
 				if i+1 < len(segment) && segment[i+1] == char {
 					token += string(char)
+					i++
+				} else if char == '>' && i+1 < len(segment) && segment[i+1] == '&' {
+					token = ">&"
 					i++
 				}
 				tokens = append(tokens, token)

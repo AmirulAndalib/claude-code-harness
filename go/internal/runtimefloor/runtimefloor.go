@@ -293,7 +293,7 @@ func isWriteOnlyCat(inv shellscan.VerbInvocation) bool {
 		return false
 	}
 	for _, redir := range inv.Redirects {
-		if redir != ">" && redir != ">>" && redir != "<<" {
+		if redir != ">" && redir != ">>" && redir != "<<" && redir != "&>" && redir != "&>>" && redir != ">&" {
 			return false
 		}
 	}

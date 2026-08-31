@@ -780,6 +780,26 @@ func TestCheckSecretRead_TildeDotParentSlashAllowStillDeniesSSH(t *testing.T) {
 	}
 }
 
+func TestCheckSecretRead_AndStdoutRedirectDoesNotHideSecretOperand(t *testing.T) {
+	// bash `&>` is stdout+stderr redirect, not a job separator. Splitting on
+	// the `&` used to make write-only cat skip the whole command, so a later
+	// secret operand was never scanned.
+	cases := []string{
+		"cat > out &> /dev/null .env",
+		"cat > out &>/dev/null .env",
+		"cat > out &> /dev/null ~/.ssh/id_rsa",
+	}
+	for _, cmd := range cases {
+		t.Run(cmd, func(t *testing.T) {
+			d := CheckCommand(cmd, Context{})
+			if !d.Stopped || d.Category != CategorySecretRead {
+				t.Fatalf("expected secret-read deny for %q, got Stopped=%v Category=%s reason %q",
+					cmd, d.Stopped, d.Category, d.Reason)
+			}
+		})
+	}
+}
+
 func TestCheckSecretRead_TildeAllowMatchesAbsoluteHomeToken(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

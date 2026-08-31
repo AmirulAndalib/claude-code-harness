@@ -527,6 +527,22 @@ func TestInspectVerbInvocations_CatRedirectsAndOperands(t *testing.T) {
 			command: "cat >",
 			wantOK:  false,
 		},
+		{
+			name:      "and-stdout redirect keeps secret operand",
+			command:   "cat > out &> /dev/null .env",
+			wantPos:   []string{".env"},
+			wantRedir: []string{">", "&>"},
+			wantFound: true,
+			wantOK:    true,
+		},
+		{
+			name:      "glued and-stdout redirect keeps secret operand",
+			command:   "cat > out &>/dev/null .env",
+			wantPos:   []string{".env"},
+			wantRedir: []string{">", "&>"},
+			wantFound: true,
+			wantOK:    true,
+		},
 	}
 
 	for _, tc := range cases {

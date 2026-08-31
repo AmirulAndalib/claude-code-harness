@@ -19,7 +19,8 @@ Change history for claude-code-harness.
   `AISDR_ENV_FILE=.../.env bash script` in the same Bash string was denied.
   Write-only `cat` is no longer a secret-read verb. `cat FILE`,
   `cat FILE > out`, `cat FILE>/out`, `cat > out FILE`, and `cat < FILE`
-  still deny.
+  still deny. `&>` / `&>>` are treated as redirections, not job separators,
+  so `cat > out &> /dev/null .env` still denies.
 
 ## [5.14.0] - 2026-08-31
 
