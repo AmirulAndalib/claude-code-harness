@@ -208,6 +208,9 @@ docs/presentation/11.png
 # Harness-mem 一時データ（ローカルのみ）
 /.harness-mem/
 
+# Local work-mode state (state.db); never commit
+/.harness/
+
 # 診断出力（一時ファイル）
 /output/
 
