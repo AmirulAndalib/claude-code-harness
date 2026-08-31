@@ -329,3 +329,56 @@ func TestR05_DeferDoesNotLeakIntoOtherRules(t *testing.T) {
 		t.Fatalf("R06 must win over the advisory warn approve under defer, got %s", result.RuleID)
 	}
 }
+
+// 140.2: an operator approval is spent exactly where the deny would have been
+// returned. The consumer receives the same stable id the deny advertised, and
+// a successful consume turns the call into an advisory approve so a later deny
+// rule in the same compound command still wins.
+func TestR05_DeferConsumesOperatorApproval(t *testing.T) {
+	command := "cd /anywhere && rm -rf ./build/*"
+	ctx := deferCtx(t, command)
+	wantID := DeferredOpID("R05:confirm-rm-rf", ctx.Input.CWD, command)
+	var gotID string
+	ctx.ConsumeDeferredOp = func(id string) bool {
+		gotID = id
+		return true
+	}
+	result := EvaluateRules(ctx)
+	if gotID != wantID {
+		t.Fatalf("consumer called with %q, want %q", gotID, wantID)
+	}
+	if result.Decision != hookproto.DecisionApprove {
+		t.Fatalf("expected approve after consume, got %s: %s", result.Decision, result.Reason)
+	}
+	if !strings.HasPrefix(result.SystemMessage, "R05_DEFER_APPROVED:") {
+		t.Fatalf("expected R05_DEFER_APPROVED message, got %q", result.SystemMessage)
+	}
+}
+
+// A consumer that finds no spent approval must leave the deny untouched, and a
+// nil consumer (no project root to hold a queue upstream) must not panic.
+func TestR05_DeferKeepsDenyWithoutApproval(t *testing.T) {
+	command := "cd /anywhere && rm -rf ./build/*"
+	ctx := deferCtx(t, command)
+	ctx.ConsumeDeferredOp = func(string) bool { return false }
+	if result := EvaluateRules(ctx); result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected deny when nothing is approved, got %s", result.Decision)
+	}
+	ctx.ConsumeDeferredOp = nil
+	if result := EvaluateRules(ctx); result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected deny with nil consumer, got %s", result.Decision)
+	}
+}
+
+// The consumed approval is advisory, exactly like the warn approval: a later
+// deny rule (R06 force push) in the same compound command still wins.
+func TestR05_DeferApprovalDoesNotPreemptLaterDenyRules(t *testing.T) {
+	force := "git push --" + "force origin main"
+	command := "rm -rf ./build/* && " + force
+	ctx := deferCtx(t, command)
+	ctx.ConsumeDeferredOp = func(string) bool { return true }
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionDeny || result.RuleID != "R06:no-force-push" {
+		t.Fatalf("expected R06 deny to win over consumed defer approval, got %s (%s)", result.Decision, result.RuleID)
+	}
+}

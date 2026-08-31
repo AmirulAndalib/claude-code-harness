@@ -354,6 +354,7 @@ func BuildContext(input hookproto.HookInput) hookproto.RuleContext {
 		ProtectedBranchPushPolicy: resolveProtectedBranchPushPolicy(input, projectRoot),
 		DestructiveDeletePolicy:   resolveDestructiveDeletePolicy(input, projectRoot),
 		ConsumePlanPreapproval:    newPlanPreapprovalConsumer(projectRoot, input),
+		ConsumeDeferredOp:         newDeferredOpConsumer(projectRoot),
 		ProtectedPathAskList:      resolveProtectedPathAskList(input, projectRoot),
 		TddEnforceLevel:           tddRuntime.Level,
 		TddHookEnabled:            tddRuntime.HookEnabled,

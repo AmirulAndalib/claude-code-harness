@@ -20,6 +20,12 @@
 #   .claude/state/session-cost.json から elapsed_minutes / cost_so_far_usd
 #   等を読む (なければ全部 0)
 #
+# Optional: --deferred-ops
+#   destructive_delete=defer の保留キュー (.claude/state/deferred-ops.jsonl) の
+#   パス。未指定時は Plans.md と同じディレクトリの .claude/state/deferred-ops.jsonl
+#   を読む (Phase 140.2)。ファイルが無い / 壊れている場合は deferred_ops_pending: []
+#   で fallback。
+#
 # Optional: --writing-lint-proposals
 #   scripts/writing-rule-list.sh --status pending --json に --proposals として
 #   forward する (Phase 136.2)。未指定時は writing-rule-list.sh の default
@@ -30,7 +36,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE' >&2
-Usage: progress-snapshot.sh --plans <path> --project <name> [--state-file <path>] [--writing-lint-proposals <path>]
+Usage: progress-snapshot.sh --plans <path> --project <name> [--state-file <path>] [--writing-lint-proposals <path>] [--deferred-ops <path>]
 
 Required:
   --plans <path>       Plans.md ファイルパス
@@ -44,6 +50,9 @@ Optional:
   --writing-lint-proposals <path>
                        writing-rule-list.sh --proposals に forward する path。
                        未指定なら writing-rule-list.sh の default を使う。
+  --deferred-ops <path>
+                       deferred-ops.jsonl の path (Phase 140.2)。未指定なら
+                       Plans.md と同じディレクトリの .claude/state/deferred-ops.jsonl。
 
 Exit: 0=success / 1=runtime error / 2=usage error
 USAGE
@@ -55,6 +64,7 @@ PLANS_PATH=""
 PROJECT=""
 STATE_FILE=""
 WRITING_LINT_PROPOSALS_PATH=""
+DEFERRED_OPS_PATH=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -62,6 +72,7 @@ while [[ $# -gt 0 ]]; do
     --project)    PROJECT="${2:-}"; shift 2 ;;
     --state-file) STATE_FILE="${2:-}"; shift 2 ;;
     --writing-lint-proposals) WRITING_LINT_PROPOSALS_PATH="${2:-}"; shift 2 ;;
+    --deferred-ops) DEFERRED_OPS_PATH="${2:-}"; shift 2 ;;
     -h|--help)    usage ;;
     *) echo "ERROR: unknown argument: $1" >&2; usage ;;
   esac
@@ -122,6 +133,13 @@ export COST_SO_FAR_PY="$COST_SO_FAR"
 export COST_ESTIMATE_PY="$COST_ESTIMATE"
 export WRITING_LINT_PENDING_JSON_PY="$WRITING_LINT_PENDING_JSON"
 
+# deferred_ops_pending (Phase 140.2): destructive_delete=defer の保留キュー。
+# 既定 path は Plans.md と同じディレクトリの .claude/state/deferred-ops.jsonl。
+if [[ -z "$DEFERRED_OPS_PATH" ]]; then
+  DEFERRED_OPS_PATH="$(dirname "$PLANS_PATH")/.claude/state/deferred-ops.jsonl"
+fi
+export DEFERRED_OPS_PATH_PY="$DEFERRED_OPS_PATH"
+
 exec python3 - <<'PYEOF'
 import os
 import re
@@ -161,6 +179,38 @@ writing_lint_pending = [
     }
     for rec in _pending_raw
     if isinstance(rec, dict)
+]
+
+# deferred_ops_pending (Phase 140.2): pending 行だけを surface に出す。
+# ファイル無し / 壊れた行は落とさず読み飛ばす ([] fallback)。
+deferred_ops_pending = []
+_deferred_path = os.environ.get("DEFERRED_OPS_PATH_PY", "")
+_deferred_pending_raw = []
+if _deferred_path and os.path.isfile(_deferred_path):
+    try:
+        with open(_deferred_path, encoding="utf-8") as fh:
+            for _line in fh:
+                _line = _line.strip()
+                if not _line:
+                    continue
+                try:
+                    _rec = json.loads(_line)
+                except ValueError:
+                    continue
+                if isinstance(_rec, dict) and _rec.get("status") == "pending":
+                    _deferred_pending_raw.append(_rec)
+    except OSError:
+        _deferred_pending_raw = []
+
+_deferred_count = len(_deferred_pending_raw)
+deferred_ops_pending = [
+    {
+        "id": rec.get("id", ""),
+        "command": rec.get("command", ""),
+        "approve_command": "bin/harness deferred approve {}".format(rec.get("id", "")),
+        "pending_count": _deferred_count,
+    }
+    for rec in _deferred_pending_raw
 ]
 
 # Plans.md の task 行を parse:
@@ -226,6 +276,7 @@ snapshot = {
     "_wip_count": len(wip),
     "_done_count": len(done),
     "writing_lint_pending": writing_lint_pending,
+    "deferred_ops_pending": deferred_ops_pending,
 }
 
 print(json.dumps(snapshot, ensure_ascii=False, indent=2))

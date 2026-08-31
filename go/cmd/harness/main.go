@@ -110,6 +110,8 @@ func main() {
 		runSession(os.Args[2:])
 	case "work-mode":
 		runWorkMode(os.Args[2:])
+	case "deferred":
+		runDeferred(os.Args[2:])
 	case "self-audit":
 		runSelfAudit(os.Args[2:])
 	case "retired-alias":
@@ -166,6 +168,8 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "    --file <path>         Read content from file instead of stdin")
 	fmt.Fprintln(os.Stderr, "  sprint-contract <task-id> [plans-file] [output-file]  Generate sprint-contract JSON")
 	fmt.Fprintln(os.Stderr, "  status                  Show all tracked agent states")
+	fmt.Fprintln(os.Stderr, "  deferred list           List pending deferred ops (destructive_delete=defer queue)")
+	fmt.Fprintln(os.Stderr, "  deferred approve <id>   Approve one deferred op: the next identical run is allowed once")
 	fmt.Fprintln(os.Stderr, "  init [root]             Create harness.toml template in project root")
 	fmt.Fprintln(os.Stderr, "  sync [root]             Generate CC files from harness.toml")
 	fmt.Fprintln(os.Stderr, "  validate [skills|agents|all] [root]  Validate SKILL.md / agent frontmatter")

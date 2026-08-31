@@ -154,7 +154,12 @@ type RuleContext struct {
 	// ConsumePlanPreapproval is supplied by internal/guardrail. Policy rules
 	// call it only at a specific ask branch so state is consumed only when that
 	// rule would otherwise interrupt the operation.
-	ConsumePlanPreapproval  func(operation, command string) bool
+	ConsumePlanPreapproval func(operation, command string) bool
+	// ConsumeDeferredOp is supplied by internal/guardrail (140.2). The R05
+	// defer branch calls it with the operation's DeferredOpID right before
+	// returning deny; a spent operator approval turns that one call into an
+	// advisory approve. nil when there is no project root to hold a queue.
+	ConsumeDeferredOp       func(id string) bool
 	ProtectedPathAskList    []ProtectedPathAskEntry
 	TddEnforceLevel         string // off, central, or max
 	TddHookEnabled          bool

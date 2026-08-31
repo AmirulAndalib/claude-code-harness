@@ -301,6 +301,19 @@ var Rules = []GuardRule{
 			// ask, exactly like warn.
 			if deletePolicy == DestructiveDeletePolicyDefer && ctx.ProjectRoot != "" {
 				id := DeferredOpID("R05:confirm-rm-rf", ctx.Input.CWD, command)
+				// 140.2: an operator approval (bin/harness deferred approve
+				// <id>) is spent here to let exactly one run through. Advisory,
+				// like the warn approve: a later deny rule in the same compound
+				// command still wins — and burns the approval, same accepted
+				// trade-off as plan preapproval. The guardrail layer records
+				// the consumed execution with policy=defer.
+				if ctx.ConsumeDeferredOp != nil && ctx.ConsumeDeferredOp(id) {
+					return &hookproto.HookResult{
+						Decision:      hookproto.DecisionApprove,
+						SystemMessage: fmt.Sprintf("R05_DEFER_APPROVED: deferred op %s approved by operator; executing once and recording in .claude/state/destructive-delete.jsonl:\n%s", id, command),
+						Advisory:      true,
+					}
+				}
 				return &hookproto.HookResult{
 					Decision: hookproto.DecisionDeny,
 					Reason:   DeferredOpReason(id, command),

@@ -308,3 +308,126 @@ func TestBuildContextDestructiveDeletePolicyDeferFromEnv(t *testing.T) {
 		t.Fatalf("DestructiveDeletePolicy = %q, want defer", ctx.DestructiveDeletePolicy)
 	}
 }
+
+// 140.2 lifecycle end-to-end through EvaluatePreTool: deny + queue → operator
+// approve → the next identical run is allowed exactly once (recorded with
+// policy=defer, queue entry consumed) → the run after that is denied again and
+// re-queued as a fresh pending line with the same id.
+func TestEvaluatePreTool_DeferApproveAllowsExactlyOnce(t *testing.T) {
+	clearGuardrailKnobEnv(t)
+	dir := deferProject(t)
+	command := "cd " + dir + " && rm -rf ./build/*"
+
+	// 1. deny + queue
+	if result := EvaluatePreTool(bashInput(dir, command)); result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected initial deny, got %s", result.Decision)
+	}
+	ops := readDeferredOps(t, dir)
+	if len(ops) != 1 || ops[0].Status != deferredOpStatusPending {
+		t.Fatalf("expected 1 pending queue entry, got %+v", ops)
+	}
+	id := ops[0].ID
+
+	// 2. operator approves
+	if err := ApproveDeferredOp(dir, id); err != nil {
+		t.Fatalf("ApproveDeferredOp: %v", err)
+	}
+	ops = readDeferredOps(t, dir)
+	if len(ops) != 1 || ops[0].Status != deferredOpStatusApproved || ops[0].ApprovedAt == "" {
+		t.Fatalf("expected approved entry with approved_at, got %+v", ops)
+	}
+
+	// 3. next identical run is allowed once, recorded with policy=defer
+	result := EvaluatePreTool(bashInput(dir, command))
+	if result.Decision != hookproto.DecisionApprove {
+		t.Fatalf("expected approve after operator approval, got %s: %s", result.Decision, result.Reason)
+	}
+	if !strings.HasPrefix(result.SystemMessage, "R05_DEFER_APPROVED:") {
+		t.Fatalf("expected R05_DEFER_APPROVED message, got %q", result.SystemMessage)
+	}
+	records := readDestructiveDeleteRecords(t, dir)
+	if len(records) != 1 || records[0].Policy != "defer" {
+		t.Fatalf("expected 1 record with policy=defer, got %+v", records)
+	}
+	ops = readDeferredOps(t, dir)
+	if len(ops) != 1 || ops[0].Status != deferredOpStatusConsumed || ops[0].ConsumedAt == "" {
+		t.Fatalf("expected consumed entry with consumed_at, got %+v", ops)
+	}
+
+	// 4. the approval is spent: deny again + fresh pending line, same id
+	if result := EvaluatePreTool(bashInput(dir, command)); result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected deny after the approval was spent, got %s", result.Decision)
+	}
+	ops = readDeferredOps(t, dir)
+	if len(ops) != 2 || ops[1].Status != deferredOpStatusPending || ops[1].ID != id {
+		t.Fatalf("expected re-queued pending line with the same id, got %+v", ops)
+	}
+}
+
+// approve targets only the single pending line with the id: a consumed line
+// with the same id is untouched, an unknown id fails loudly, and unparseable
+// lines survive the rewrite verbatim.
+func TestApproveDeferredOp_FlipsPendingOnlyAndPreservesDamagedLines(t *testing.T) {
+	dir := t.TempDir()
+	stateDir := filepath.Join(dir, ".claude", "state")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	queue := filepath.Join(stateDir, deferredOpsFile)
+	damaged := "{not json"
+	lines := damaged + "\n" +
+		`{"id":"aaaaaaaaaaaa","command":"x","rule_id":"R05:confirm-rm-rf","policy":"defer","reason":"r","status":"consumed"}` + "\n" +
+		`{"id":"aaaaaaaaaaaa","command":"x","rule_id":"R05:confirm-rm-rf","policy":"defer","reason":"r","status":"pending"}` + "\n"
+	if err := os.WriteFile(queue, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ApproveDeferredOp(dir, "bbbbbbbbbbbb"); err == nil {
+		t.Fatal("expected error for unknown id")
+	}
+	if err := ApproveDeferredOp(dir, "aaaaaaaaaaaa"); err != nil {
+		t.Fatalf("ApproveDeferredOp: %v", err)
+	}
+	data, err := os.ReadFile(queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, damaged) {
+		t.Fatalf("damaged line was dropped by the rewrite:\n%s", content)
+	}
+	if strings.Count(content, `"status":"approved"`) != 1 ||
+		strings.Count(content, `"status":"consumed"`) != 1 {
+		t.Fatalf("expected exactly the pending line flipped, got:\n%s", content)
+	}
+	// approving again must fail: nothing is pending any more
+	if err := ApproveDeferredOp(dir, "aaaaaaaaaaaa"); err == nil {
+		t.Fatal("expected error when no pending line remains")
+	}
+}
+
+// ListDeferredOps returns entries in file order and skips damaged lines for
+// display without touching the file.
+func TestListDeferredOps_SkipsDamagedLines(t *testing.T) {
+	dir := t.TempDir()
+	stateDir := filepath.Join(dir, ".claude", "state")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	queue := filepath.Join(stateDir, deferredOpsFile)
+	lines := "{broken\n" +
+		`{"id":"cccccccccccc","command":"y","rule_id":"R05:confirm-rm-rf","policy":"defer","reason":"r","status":"pending"}` + "\n"
+	if err := os.WriteFile(queue, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	views, err := ListDeferredOps(dir)
+	if err != nil {
+		t.Fatalf("ListDeferredOps: %v", err)
+	}
+	if len(views) != 1 || views[0].ID != "cccccccccccc" || views[0].Status != "pending" {
+		t.Fatalf("unexpected views: %+v", views)
+	}
+	if views, err = ListDeferredOps(t.TempDir()); err != nil || views != nil {
+		t.Fatalf("missing file must yield nil, nil; got %+v, %v", views, err)
+	}
+}
