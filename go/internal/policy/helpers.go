@@ -85,8 +85,10 @@ var protectedPathRules = []protectedPathRule{
 	// the review trail, so direct Write/Edit (R02) and shell writes (R03) are
 	// denied. The guardrail process itself writes them from Go, not through a
 	// tool call, so enforcement is unaffected. Residual: an interpreter
-	// (python -c etc.) can still write the file — same accepted class as the
-	// R05 symlink residual; R16 closes the approve-CLI channel.
+	// (python -c etc.) or a plain `rm <file>` (no -rf, so R05 does not match)
+	// can still write or erase the file — either destroys the review trail but
+	// neither can GRANT an approval; same accepted class as the R05 symlink
+	// residual. R16 closes the approve-CLI channel.
 	{protectedPathDeny, "guardrail approval queue / audit record", regexp.MustCompile(`(?:^|/)\.claude/state/(?:deferred-ops|destructive-delete)\.jsonl$`)},
 
 	// ask: agent capability surfaces and editor automation settings
