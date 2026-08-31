@@ -48,6 +48,8 @@ var (
 	}
 
 	secretReadVerbs = regexp.MustCompile(`(?i)\b(?:cat|less|head|grep|cp|more|tail|sed)\b`)
+	// cat is classified separately: write-only cat is not a read verb.
+	secretReadVerbsExceptCat = regexp.MustCompile(`(?i)\b(?:less|head|grep|cp|more|tail|sed)\b`)
 
 	ghReleaseDeletePattern = struct {
 		pattern string
@@ -230,6 +232,9 @@ func checkSecretRead(cmd string, ctx Context) Decision {
 	if !secretReadVerbs.MatchString(scannable) {
 		return Decision{}
 	}
+	if !hasSecretReadVerb(scannable) {
+		return Decision{}
+	}
 
 	indicators := []struct {
 		pattern string
@@ -259,11 +264,48 @@ func checkSecretRead(cmd string, ctx Context) Decision {
 	return Decision{}
 }
 
+// hasSecretReadVerb reports whether scannable still contains a secret-read
+// verb after write-only cat invocations are ignored. Write-only means that
+// cat has zero positional file operands, no stdin redirect "<", and only
+// stdout/heredoc redirects (">", ">>", "<<"). Ambiguous tokenization fails
+// closed (treat cat as a read verb). cp/sed/grep/head/tail are unchanged.
+func hasSecretReadVerb(scannable string) bool {
+	if secretReadVerbsExceptCat.MatchString(scannable) {
+		return true
+	}
+	invocations, ok := shellscan.InspectVerbInvocations(scannable, "cat")
+	if !ok || len(invocations) == 0 {
+		return true
+	}
+	for _, inv := range invocations {
+		if !isWriteOnlyCat(inv) {
+			return true
+		}
+	}
+	return false
+}
+
+func isWriteOnlyCat(inv shellscan.VerbInvocation) bool {
+	if len(inv.Positional) > 0 {
+		return false
+	}
+	if len(inv.Redirects) == 0 {
+		return false
+	}
+	for _, redir := range inv.Redirects {
+		if redir != ">" && redir != ">>" && redir != "<<" && redir != "&>" && redir != "&>>" && redir != ">&" {
+			return false
+		}
+	}
+	return true
+}
+
 // secretAllowPatterns returns the operator-declared secret-read allowlist from
 // HARNESS_RUNTIME_FLOOR_SECRET_ALLOW (comma-separated path prefixes / globs)
 // plus project-local .claude-code-harness.config.json runtimefloor.secretAllow.
-// Empty entries and blanket wildcards ("*" / "**") are dropped: the allowlist
-// only relaxes EXPLICITLY declared paths and never turns the whole category off.
+// Empty entries, blanket wildcards ("*" / "**"), and root-equivalent prefixes
+// ("/" / "~" / "~/") are dropped: the allowlist only relaxes EXPLICITLY
+// declared paths and never turns the whole category off.
 // If a project config exists but cannot be parsed, fail safe by ignoring all
 // declarations, including env, so secret-read stays deny-by-default.
 func secretAllowPatterns(ctx Context) []string {
@@ -284,7 +326,7 @@ func envSecretAllowPatterns() []string {
 	var out []string
 	for _, p := range strings.Split(raw, ",") {
 		p = strings.TrimSpace(strings.Trim(strings.TrimSpace(p), `"'`))
-		if p == "" || p == "*" || p == "**" || p == "/" {
+		if invalidSecretAllowPattern(p) {
 			continue
 		}
 		out = append(out, p)
@@ -352,7 +394,7 @@ func configSecretAllowPatterns(ctx Context) ([]string, bool, bool) {
 	var out []string
 	for _, raw := range cfg.RuntimeFloor.SecretAllow {
 		p := strings.TrimSpace(strings.Trim(strings.TrimSpace(raw), `"'`))
-		if p == "" || p == "*" || p == "**" || p == "/" {
+		if invalidSecretAllowPattern(p) {
 			continue
 		}
 		if filepath.IsAbs(p) {
@@ -447,15 +489,28 @@ func resolveProjectRoot(ctx Context) (string, string, bool) {
 	}
 }
 
+func invalidSecretAllowPattern(p string) bool {
+	return p == "" || p == "*" || p == "**" || p == "/" || p == "~" || p == "~/"
+}
+
 // isAllowlistedSecretPath reports whether a secret path token is covered by an
-// operator-declared allowlist entry. A match is a path prefix, a full-path glob,
-// or a basename glob. An empty allowlist never matches (deny-by-default).
+// operator-declared allowlist entry. ~/ is expanded on both the token and the
+// pattern before prefix/glob matching. An empty allowlist never matches.
 func isAllowlistedSecretPath(token string, patterns []string) bool {
 	if token == "" || len(patterns) == 0 {
 		return false
 	}
 	token = strings.Trim(token, `"'`)
+	token = expandTildeSecretToken(token)
 	for _, pat := range patterns {
+		if invalidSecretAllowPattern(pat) {
+			continue
+		}
+		expanded, drop := expandTildeSecretPattern(pat)
+		if drop {
+			continue
+		}
+		pat = expanded
 		if strings.HasPrefix(token, pat) {
 			return true
 		}
@@ -467,6 +522,62 @@ func isAllowlistedSecretPath(token string, patterns []string) bool {
 		}
 	}
 	return false
+}
+
+// expandTildeSecretToken expands a leading ~/ on a command token via
+// expandPathTarget (Join-cleans . / ..) so ~/LocalWork/./app/.env still
+// matches an allow prefix home/LocalWork/. Home resolution failure keeps
+// the lexical form. $HOME, ~user, and os.ExpandEnv are not expanded.
+func expandTildeSecretToken(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path
+	}
+	expanded, ok := expandPathTarget(path)
+	if !ok || expanded == "" {
+		return path
+	}
+	if strings.HasSuffix(path, "/") && !strings.HasSuffix(expanded, string(filepath.Separator)) {
+		expanded += string(filepath.Separator)
+	}
+	return expanded
+}
+
+// expandTildeSecretPattern expands a leading ~/ on an allowlist pattern by
+// concatenating home + "/" + rest without Join-clean, so ~/. / ~/./ / ~// /
+// ~/.. cannot collapse into $HOME or its parent. Trailing slash is kept.
+// After expansion, a tilde pattern that is /, $HOME, $HOME/, or not strictly
+// inside $HOME is dropped (all-open). Non-tilde patterns are unchanged.
+// Home resolution failure keeps the lexical form (fail-closed).
+func expandTildeSecretPattern(path string) (string, bool) {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path, false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path, false
+	}
+	var expanded string
+	if path == "~" {
+		expanded = home
+	} else {
+		expanded = home + "/" + strings.TrimPrefix(path, "~/")
+	}
+	if tildePatternNotStrictlyInsideHome(expanded, home) {
+		return path, true
+	}
+	return expanded, false
+}
+
+func tildePatternNotStrictlyInsideHome(expanded, home string) bool {
+	home = filepath.Clean(home)
+	cleaned := filepath.Clean(expanded)
+	if cleaned == string(filepath.Separator) || cleaned == home {
+		return true
+	}
+	if expanded == home || expanded == home+string(filepath.Separator) {
+		return true
+	}
+	return !strings.HasPrefix(cleaned, home+string(filepath.Separator))
 }
 
 // enclosingToken extracts the whitespace-delimited token of s that contains byte

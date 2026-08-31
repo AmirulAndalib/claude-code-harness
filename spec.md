@@ -84,8 +84,16 @@ enabled):
    network egress is denied unless the destination host is explicitly declared,
    and secret reads are denied unless the exact path is explicitly declared.
    The only relaxation secret-read allowlisting provides is for named paths; it
-   must never mean broad filesystem access. Empty strings, a bare `*`, or any
-   other all-open declaration are invalid and resolve to deny. Effective
+   must never mean broad filesystem access. Empty strings, a bare `*`, `/`, `~`,
+   `~/`, or any other all-open declaration are invalid and resolve to deny.
+   Environment allowlist matching expands a leading `~/` on both the command
+   token and the declaration using the process home directory; that is spelling
+   normalization, not a wider named-path set. `$HOME` and `~user` are not
+   expanded. After expansion, a declaration that is the home directory itself
+   or is not strictly inside it (including `~/.`, `~/./`, `~//`, `~/..`) is
+   discarded. A `cat` that only writes (`>` / `>>` / a heredoc, with no
+   positional input file and no stdin `<`) is not a secret-read verb; `cat FILE`
+   and `cat FILE > out` remain denied. Effective
    declarations are the union of `HARNESS_RUNTIME_FLOOR_SECRET_ALLOW` and the
    project config `.claude-code-harness.config.json` key
    `runtimefloor.secretAllow`. If project config is unreadable, malformed, or

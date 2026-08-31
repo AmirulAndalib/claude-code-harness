@@ -324,4 +324,29 @@ Hermes Agent (NousResearch) からは「可逆性の厚さが自律の許可量�
 
 **共有ファイル lane (Invariant 1)**: `tests/validate-plugin.sh` の owner は 142.7 のみ。`skills/maintenance/` は 142.3、`skills/japanese-writing-drafter/` と `go/internal/writinglint/` は 142.4 → 142.5 の順で直列。`Plans.md` / `CHANGELOG.md` / `spec.md` は worker 編集禁止 (Lead が統合時に編集)。生成物 (binary / mirror) は統合後に trunk で 1 回再生成 (Invariant 3)。
 
-**レビューで挙がったが本 Phase に含めない候補 (未起票、operator 判断待ち)**: (i) runtime floor secret-read の誤検知: jq のフィールド参照構文が拡張子パターンに一致して read-only コマンドが deny された (2026-08-24 に 1 回、2026-08-25 の Plans.md 追記コマンド中に 1 回、2026-08-26 の本リリース作業中の `git diff` grep でも 1 回、計 3 回実測)。command 文字列走査を「ファイル引数の位置にある token」に限定する精緻化が候補。(ii) 配布先 (installed plugin) で `.claude-plugin/settings.json` の permissions deny が読まれていない可能性の実測検証。効いていなければ死んだ deny リストを同梱していることになる。(iii) `docs/research/official-feature-inventory` の内容を踏まえた機構層の個別委譲判断。
+**レビューで挙がったが本 Phase に含めない候補 (未起票、operator 判断待ち)**: (i) runtime floor secret-read の誤検知: jq のフィールド参照構文が拡張子パターンに一致して read-only コマンドが deny された (2026-08-24 に 1 回、2026-08-25 の Plans.md 追記コマンド中に 1 回、2026-08-26 の本リリース作業中の `git diff` grep でも 1 回、計 3 回実測)。command 文字列走査を「ファイル引数の位置にある token」に限定する精緻化が候補。**Phase 144 はこれを閉じない**（`jq .key` 単独は既に PASS。file-arg 精緻化は別設計）。(ii) 配布先 (installed plugin) で `.claude-plugin/settings.json` の permissions deny が読まれていない可能性の実測検証。効いていなければ死んだ deny リストを同梱していることになる。(iii) `docs/research/official-feature-inventory` の内容を踏まえた機構層の個別委譲判断。
+
+---
+
+## Phase 144: secret-read 床の照合バグ — `~/` と write-only `cat >` (2026-08-30 起票)
+
+Purpose: AISDR NQC ログインで `cat > script <<'SH'` と `AISDR_ENV_FILE=~/LocalWork/.../.env bash script` が同一 Bash 文字列にあると `RUNTIME_FLOOR:secret-read` が deny した。`HARNESS_RUNTIME_FLOOR_SECRET_ALLOW` は既に `/Users/.../LocalWork/` を宣言済み。床の走査対象はコマンド文字列のまま（子プロセスは見ない）。allowlist を広げない。deny→ask にしない。
+
+**Spec delta**:
+- path: `spec.md`（Runtime Floor secret-read allowlist）+ `docs/runtime-floor-secret-allowlist.md`
+- change: env allowlist 照合は lexical 同一綴りではなく、コマンド token と宣言の両方で `~/` を `UserHomeDir` 展開してから prefix 照合する（綴り正規化であり named path 集合の widen ではない）。裸の `~` / `~/` は `/` と同様 invalid。write-only `cat >` / `cat >>`（positional 入力も stdin redirect `<` も無い）は secret-read 動詞にしない。`cat FILE` / `cat FILE > out` / `cat FILE>/out` / `cat < FILE` は deny のまま。
+- why: 宣言済み work root の `~/` と絶対 path が不一致で公式 skill 以外の合法パイプラインが止まる。部分文字列 `cat >` 除外は `cat .env > out` を漏らす。
+
+**team_validation_mode**: subagent（Product / Architecture / Security / QA / Skeptic）。Required = tilde 両辺展開 + write-only cat のオペランド解析。Reject = deny→ask、子プロセス走査、`$HOME` ExpandEnv、naive `cat >` 部分一致、jq leftover (i) の同梱、Phase 142 残件。
+
+**formatter_baseline**: configured（`gofmt` / `go test` / `go vet`）。action: none。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 144.1 | `[lane:gate]` `[tdd:required]` secret-read 照合: (1) `isAllowlistedSecretPath` で token と allow パターンの両方を `expandPathTarget` 相当で `~/` 展開してから HasPrefix（HOME 解決失敗は fail-closed、lexical に落とす。`$HOME` / `~user` は触らない。裸 `~/` は無効）。(2) write-only `cat`（stdout/heredoc redirect のみ・positional 0・`<` なし）は動詞にしない。`tokenize` を使い `>` を切る。parse 失敗は deny。`cp`/`sed`/`grep` には広げない | RED を先に実測してから GREEN: (a) `cat ~/LocalWork/Code/app/.env` × allow=`$HOME/LocalWork/` → PASS, (b) `cat > script <<'SH'\necho start\nSH\nAISDR_ENV_FILE=~/LocalWork/.env bash script` allow なし → PASS, (c) `cat .env` DENY, (d) `cat .env > out` と `cat .env>/tmp/x` DENY, (e) `cat ~/.ssh/id_rsa` × 同じ home prefix allow → DENY, (f) `cat > out .env` と `cat < .env` DENY, (g) `cd go && go test ./internal/runtimefloor/ -count=1` PASS, (h) `gofmt -l` 空, (i) `go vet ./internal/runtimefloor/` 空 | - | cc:完了 [4565555] |
+| 144.2 | `[lane:fast]` `[tdd:skip:docs-only]` Spec/docs/CHANGELOG: `spec.md` の secret-read allowlist 文、`docs/runtime-floor-secret-allowlist.md` の「The environment match is lexical. Use the same absolute or `~/` spelling」を展開契約へ置換、CHANGELOG Unreleased に誤検知 2 件（tilde / write-only cat） | (a) docs が「両辺 `~/` 展開。named path 集合は増えない」と書く, (b) 裸 `~/` 無効を明記, (c) `cat .env > out` は deny のままを明記, (d) `git diff --check` PASS | 144.1 | cc:完了 [888e45fd] |
+
+## 事前確認
+- 事項: なし（実装は fixture path のみ。実 `.env` を読まない。push / 破壊操作なし）
+  理由: 144.1 は `runtimefloor` の単体テストと照合ロジック。144.2 は docs。
+  scope: Phase 144 / Task 144.1-144.2

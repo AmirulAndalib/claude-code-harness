@@ -11,7 +11,7 @@ tokens, keys, or other operator-provided secrets.
 - Project config should declare only the specific project-local file paths a run
   needs. `HARNESS_RUNTIME_FLOOR_SECRET_ALLOW` additionally accepts
   comma-separated path prefixes for operator-managed work roots.
-- Empty strings, `*`, `**`, and `/` are invalid. Treat any all-open style
+- Empty strings, `*`, `**`, `/`, `~`, and `~/` are invalid. Treat any all-open style
   declaration as deny, not as a wildcard.
 - The effective allowlist is the union of:
   - `HARNESS_RUNTIME_FLOOR_SECRET_ALLOW`
@@ -65,9 +65,17 @@ similarly named sibling does not match by prefix:
 export HARNESS_RUNTIME_FLOOR_SECRET_ALLOW="/Users/alice/orca/workspaces/,/Users/alice/new-worktrees/"
 ```
 
-The environment match is lexical. Use the same absolute or `~/` spelling that
-the pipeline command uses. This declaration cannot disable the category:
-`*`, `**`, and `/` are discarded.
+The environment match expands a leading `~/` on both the command token and the
+declaration (process home directory) before prefix comparison. Absolute and
+`~/` spellings of the same named root therefore match. That does not add
+undeclared paths. `$HOME` and `~user` are not expanded. Home resolution
+failure keeps the lexical form (fail-closed). This declaration cannot disable
+the category: `*`, `**`, `/`, `~`, and `~/` are discarded.
+
+A `cat` that only writes a file (`cat > out`, `cat >> out`, `cat > out <<EOF`,
+with no positional input and no stdin `<`) is not a secret-read. `cat FILE`,
+`cat FILE > out`, `cat FILE>/out`, `cat > out FILE`, and `cat < FILE` still
+deny when FILE is a secret path.
 
 ## Pipeline Example
 

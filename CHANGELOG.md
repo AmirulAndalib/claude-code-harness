@@ -6,6 +6,24 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [5.14.1] - 2026-08-31
+
+### Fixed
+
+- **secret-read floor: `~/` vs absolute allowlist, and write-only `cat >`**:
+  `HARNESS_RUNTIME_FLOOR_SECRET_ALLOW` compared command tokens and declarations
+  as raw strings, so a declared `/Users/<home>/LocalWork/` missed
+  `~/LocalWork/.../.env`. Matching now expands a leading `~/` on both sides
+  (process home directory). That is spelling normalization, not a wider
+  allowlist. Bare `~` / `~/` stay invalid. `$HOME` and `~user` are not
+  expanded. Separately, `cat > file` / `cat >> file` / `cat > file <<EOF`
+  with no input file was treated as a read verb, so a later
+  `AISDR_ENV_FILE=.../.env bash script` in the same Bash string was denied.
+  Write-only `cat` is no longer a secret-read verb. `cat FILE`,
+  `cat FILE > out`, `cat FILE>/out`, `cat > out FILE`, and `cat < FILE`
+  still deny. `&>` / `&>>` are treated as redirections, not job separators,
+  so `cat > out &> /dev/null .env` still denies.
+
 ## [5.14.0] - 2026-08-31
 
 ### Added
@@ -6195,7 +6213,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.14.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.14.1...HEAD
+[5.14.1]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.14.0...v5.14.1
 [5.14.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.13.2...v5.14.0
 [5.13.2]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.13.1...v5.13.2
 [5.13.1]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.13.0...v5.13.1
