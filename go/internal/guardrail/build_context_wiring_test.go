@@ -176,6 +176,19 @@ var wiringCases = []wiringCase{
 		},
 	},
 	{
+		field: "ConsumeDeferredOp",
+		prepare: func(t *testing.T, root string) hookproto.HookInput {
+			// live producer: recordDeferredOp writes .claude/state/deferred-ops.jsonl
+			// on a defer deny, and `harness deferred approve <id>` flips it (140.2).
+			return wiringInput(root)
+		},
+		check: func(t *testing.T, ctx hookproto.RuleContext) {
+			if ctx.ConsumeDeferredOp == nil {
+				t.Fatalf("ConsumeDeferredOp consumer not attached")
+			}
+		},
+	},
+	{
 		field: "ProtectedPathAskList",
 		prepare: func(t *testing.T, root string) hookproto.HookInput {
 			// live producer: harness.toml [[safety.guardrail.protectedPathAskList]]

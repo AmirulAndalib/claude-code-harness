@@ -138,6 +138,24 @@
           "pending_count": {"type": "integer", "minimum": 0}
         }
       }
+    },
+    "deferred_ops_pending": {
+      "type": "array",
+      "description": "Optional/additive (Phase 140.2). Pending (status=pending) entries of .claude/state/deferred-ops.jsonl — deletions that destructive_delete=defer refused and queued for the operator. Absent or empty hides the whole section in progress.html.template. Each item repeats pending_count so the section-only templating can show the total once while listing every item's copy-paste approve command.",
+      "items": {
+        "type": "object",
+        "required": ["id", "command", "approve_command", "pending_count"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string"},
+          "command": {"type": "string"},
+          "approve_command": {
+            "type": "string",
+            "description": "Copy-paste command string, e.g. 'bin/harness deferred approve <id>'. Not a clickable button — the operator runs it manually in a terminal."
+          },
+          "pending_count": {"type": "integer", "minimum": 0}
+        }
+      }
     }
   }
 }

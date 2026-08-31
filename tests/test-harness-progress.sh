@@ -283,6 +283,83 @@ else
 fi
 
 # ============================================================
+# Phase 140.2: deferred_ops_pending (保留中の削除操作キュー表示)
+# ============================================================
+
+# (c) schema additive: deferred_ops_pending は required に無い optional field
+if jq -e '
+  (.properties.deferred_ops_pending.type == "array") and
+  (.required | index("deferred_ops_pending") == null)
+' "$SCHEMA" >/dev/null 2>&1; then
+  pass "(c) schema: deferred_ops_pending is additive (optional array, not in required[])"
+else
+  fail "(c) schema: deferred_ops_pending missing or incorrectly marked required"
+fi
+
+# (a) pending fixture → snapshot → HTML に approve コマンド文字列が出る
+DEFERRED_FIXTURE="$TMP_DIR/deferred-ops.jsonl"
+cat > "$DEFERRED_FIXTURE" <<'JSONL'
+{"id": "abc123def456", "timestamp": "2026-08-31T00:00:00Z", "command": "cd /tmp/x && rm -rf ./build/*", "rule_id": "R05:confirm-rm-rf", "policy": "defer", "reason": "backstop", "status": "pending"}
+{"id": "eeee00001111", "timestamp": "2026-08-31T00:01:00Z", "command": "rm -rf ./dist/*", "rule_id": "R05:confirm-rm-rf", "policy": "defer", "reason": "backstop", "status": "consumed"}
+JSONL
+
+SNAP7="$TMP_DIR/snap7.json"
+bash "$SNAPSHOT_SCRIPT" --plans "$FIXTURE1" --project "case7" \
+  --deferred-ops "$DEFERRED_FIXTURE" > "$SNAP7"
+
+if jq -e '
+  (.deferred_ops_pending | length == 1) and
+  (.deferred_ops_pending[0].id == "abc123def456") and
+  (.deferred_ops_pending[0].approve_command == "bin/harness deferred approve abc123def456") and
+  (.deferred_ops_pending[0].pending_count == 1)
+' "$SNAP7" >/dev/null 2>&1; then
+  pass "(a) Case 7: snapshot deferred_ops_pending has only pending items with approve_command"
+else
+  fail "(a) Case 7: snapshot incorrect. content: $(cat "$SNAP7")"
+fi
+
+HTML7="$TMP_DIR/html7.html"
+bash "$RENDER_SCRIPT" --template progress --data "$SNAP7" --out "$HTML7" 2>"$TMP_DIR/r7-stderr.txt"
+
+if grep -qF "bin/harness deferred approve abc123def456" "$HTML7"; then
+  pass "(a) Case 7: rendered HTML contains the copy-paste deferred approve command"
+else
+  fail "(a) Case 7: rendered HTML missing deferred approve command string"
+fi
+
+# (b) pending 0 件 (consumed のみ) → セクション非表示
+DEFERRED_EMPTY="$TMP_DIR/deferred-ops-empty.jsonl"
+printf '{"id": "eeee00001111", "status": "consumed", "command": "x"}\n' > "$DEFERRED_EMPTY"
+
+SNAP8="$TMP_DIR/snap8.json"
+bash "$SNAPSHOT_SCRIPT" --plans "$FIXTURE1" --project "case8" \
+  --deferred-ops "$DEFERRED_EMPTY" > "$SNAP8"
+
+if jq -e '.deferred_ops_pending | length == 0' "$SNAP8" >/dev/null 2>&1; then
+  pass "(b) Case 8: snapshot deferred_ops_pending is empty when nothing is pending"
+else
+  fail "(b) Case 8: snapshot deferred_ops_pending not empty. content: $(cat "$SNAP8")"
+fi
+
+HTML8="$TMP_DIR/html8.html"
+bash "$RENDER_SCRIPT" --template progress --data "$SNAP8" --out "$HTML8" 2>"$TMP_DIR/r8-stderr.txt"
+
+if grep -q 'class="do-row"' "$HTML8" || grep -q "保留中の削除操作" "$HTML8"; then
+  fail "(b) Case 8: rendered HTML shows the deferred-ops section despite 0 pending items"
+else
+  pass "(b) Case 8: rendered HTML hides the deferred-ops section when nothing is pending"
+fi
+
+# fixture 無し (default path 不在) でも snapshot は落ちず [] fallback
+SNAP9="$TMP_DIR/snap9.json"
+bash "$SNAPSHOT_SCRIPT" --plans "$FIXTURE1" --project "case9" > "$SNAP9"
+if jq -e '.deferred_ops_pending | length == 0' "$SNAP9" >/dev/null 2>&1; then
+  pass "(b) Case 9: missing deferred-ops file falls back to empty array"
+else
+  fail "(b) Case 9: missing deferred-ops file did not fall back. content: $(cat "$SNAP9")"
+fi
+
+# ============================================================
 # 共通: missing Plans.md → exit 1
 # ============================================================
 

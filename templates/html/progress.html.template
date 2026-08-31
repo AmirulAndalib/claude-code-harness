@@ -211,7 +211,9 @@
      の件数だけ繰り返し出力される。見出しと注記は 1 回だけ表示すればよいので、
      先頭以外の重複を CSS の一般兄弟結合子で隠す (JS 不使用)。 */
   .writing-lint-pending .wl-header ~ .wl-header,
-  .writing-lint-pending .wl-note ~ .wl-note {
+  .writing-lint-pending .wl-note ~ .wl-note,
+  .deferred-ops-pending .wl-header ~ .wl-header,
+  .deferred-ops-pending .wl-note ~ .wl-note {
     display: none;
   }
   .wl-row {
@@ -318,6 +320,15 @@
       <div class="wl-pattern">{{pattern}}</div>
       <code class="wl-cmd">{{approve_command}}</code>
     </div>{{/writing_lint_pending}}
+  </section>
+
+  <section class="deferred-ops-pending">{{#deferred_ops_pending}}
+    <h2 class="wl-header do-header">保留中の削除操作 ({{pending_count}} 件)</h2>
+    <div class="wl-note do-note">実行を止めて保留にした削除コマンドです。ボタンではありません。内容を確認し、許可するなら下のコマンドをターミナルにそのままコピペして実行してください (次の 1 回だけ通ります)。</div>
+    <div class="wl-row do-row">
+      <div class="wl-pattern"><code>{{command}}</code></div>
+      <code class="wl-cmd">{{approve_command}}</code>
+    </div>{{/deferred_ops_pending}}
   </section>
 
   <section class="audit-trail" style="margin-top:32px;padding:16px 20px;background:#F5F4F1;border:1px solid #E5E5E5;border-radius:4px;font-size:0.85em;color:#52524C;">

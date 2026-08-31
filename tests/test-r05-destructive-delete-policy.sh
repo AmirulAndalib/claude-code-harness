@@ -16,6 +16,8 @@
 #   3. warn でも root 外の絶対パスは allow にならず、記録もされない
 #   4. defer (140.1): warn なら ask になる場面が deny + .claude/state/deferred-ops.jsonl 1 行に
 #      なる。同一コマンド再試行でキューが増えない。局所綴りの warn 経路は不変
+#   5. 140.2: `harness deferred approve <id>` の後、同一コマンドの再実行が「次の 1 回だけ」
+#      allow になり (consume)、その次はまた deny + 再キューされる。未 approve の別 id は deny のまま
 #
 # Usage: bash tests/test-r05-destructive-delete-policy.sh
 
@@ -213,6 +215,93 @@ if [ "$decision" = "allow" ] && [ "$(record_count "$DEFER_DIR")" = "1" ] && [ "$
   pass "defer: 局所的な綴りは warn のまま allow + 記録、キューには積まれない"
 else
   fail "defer: 局所綴りで decision=$decision / warn 記録 $(record_count "$DEFER_DIR") / キュー $(deferred_count "$DEFER_DIR")"
+fi
+
+# ============================================================
+# 5. 140.2: deferred approve → 次の 1 回だけ allow (consume)
+# ============================================================
+
+QUEUE_FILE="$DEFER_DIR/.claude/state/deferred-ops.jsonl"
+DEFER_ID="$(jq -r 'select(.status == "pending") | .id' "$QUEUE_FILE" | head -1)"
+CMD_GLOB="cd $DEFER_DIR && rm -rf ./build/*"
+
+# 5-pre. list CLI: pending 1 件が出る
+list_out="$("$HARNESS_BIN" deferred list "$DEFER_DIR" 2>&1)" || true
+if grep -q "$DEFER_ID" <<< "$list_out"; then
+  pass "140.2: deferred list が pending の id を表示する"
+else
+  fail "140.2: deferred list に id が出ない: $list_out"
+fi
+
+# 5a. approve CLI が pending → approved に flip する
+if "$HARNESS_BIN" deferred approve "$DEFER_ID" "$DEFER_DIR" >/dev/null 2>"$WORK_DIR/approve.err"; then
+  pass "140.2: deferred approve <id> が成功する"
+else
+  fail "140.2: deferred approve が失敗した: $(cat "$WORK_DIR/approve.err")"
+fi
+if jq -e --arg id "$DEFER_ID" 'select(.id == $id and .status == "approved")' "$QUEUE_FILE" >/dev/null 2>&1; then
+  pass "140.2: キュー行が status=approved に更新される (履歴は消えない)"
+else
+  fail "140.2: approved 行が無い: $(cat "$QUEUE_FILE")"
+fi
+
+# 5b. approve 後の再実行は allow になり、defer として記録される
+decision="$(run_hook "$DEFER_DIR" "$CMD_GLOB")"
+if [ "$decision" = "allow" ]; then
+  pass "140.2 (a): approve 後の同一コマンド再実行が allow になる"
+else
+  fail "140.2 (a): approve 後も $decision のまま"
+fi
+if jq -e 'select(.policy == "defer")' "$DEFER_DIR/.claude/state/destructive-delete.jsonl" >/dev/null 2>&1; then
+  pass "140.2: consume された実行が policy=defer で destructive-delete.jsonl に記録される"
+else
+  fail "140.2: defer-approved の実行記録が無い: $(cat "$DEFER_DIR/.claude/state/destructive-delete.jsonl" 2>/dev/null)"
+fi
+if jq -e --arg id "$DEFER_ID" 'select(.id == $id and .status == "consumed")' "$QUEUE_FILE" >/dev/null 2>&1; then
+  pass "140.2: consume でキュー行が status=consumed になる"
+else
+  fail "140.2: consumed 行が無い: $(cat "$QUEUE_FILE")"
+fi
+
+# 5c. consume は 1 回きり: 次の実行は deny に戻り、新しい pending 行が積まれる
+decision="$(run_hook "$DEFER_DIR" "$CMD_GLOB")"
+pending_after="$(jq -r --arg id "$DEFER_ID" 'select(.id == $id and .status == "pending") | .id' "$QUEUE_FILE" | wc -l | tr -d ' ')"
+if [ "$decision" = "deny" ] && [ "$pending_after" = "1" ]; then
+  pass "140.2: consume は 1 回きり。次の実行は deny に戻り、pending が 1 行だけ再キューされる"
+else
+  fail "140.2: consume 後の再実行 decision=$decision / 再キュー pending $pending_after 行"
+fi
+
+# 5d. 未 approve の別操作は deny のまま (b)
+mkdir -p "$DEFER_DIR/dist/y"
+CMD_OTHER="cd $DEFER_DIR && rm -rf ./dist/*"
+decision="$(run_hook "$DEFER_DIR" "$CMD_OTHER")"
+decision2="$(run_hook "$DEFER_DIR" "$CMD_OTHER")"
+if [ "$decision" = "deny" ] && [ "$decision2" = "deny" ]; then
+  pass "140.2 (b): 未 approve の保留操作は何度実行しても deny のまま"
+else
+  fail "140.2 (b): 未 approve が deny でない ($decision / $decision2)"
+fi
+
+# 5e2. R16: agent の Bash 経由 approve は hook が deny する (operator の直接実行は対象外)
+decision="$(run_hook "$DEFER_DIR" "bin/harness deferred approve $DEFER_ID $DEFER_DIR")"
+if [ "$decision" = "deny" ]; then
+  pass "R16: agent の Bash 経由 'deferred approve' は deny される (self-approve 遮断)"
+else
+  fail "R16: self-approve が deny されない ($decision)"
+fi
+decision="$(run_hook "$DEFER_DIR" "bin/harness deferred list $DEFER_DIR")"
+if [ "$decision" != "deny" ]; then
+  pass "R16: 'deferred list' (報告経路) は deny されない ($decision)"
+else
+  fail "R16: list まで deny された"
+fi
+
+# 5e. 存在しない / pending でない id の approve は失敗する
+if "$HARNESS_BIN" deferred approve "ffffffffffff" "$DEFER_DIR" >/dev/null 2>&1; then
+  fail "140.2: 存在しない id の approve が成功してしまった"
+else
+  pass "140.2: 存在しない id の approve は非ゼロ終了する"
 fi
 
 echo "PASS=$PASS FAIL=$FAIL"

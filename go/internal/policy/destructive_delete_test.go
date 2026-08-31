@@ -329,3 +329,117 @@ func TestR05_DeferDoesNotLeakIntoOtherRules(t *testing.T) {
 		t.Fatalf("R06 must win over the advisory warn approve under defer, got %s", result.RuleID)
 	}
 }
+
+// 140.2: an operator approval is spent exactly where the deny would have been
+// returned. The consumer receives the same stable id the deny advertised, and
+// a successful consume turns the call into an advisory approve so a later deny
+// rule in the same compound command still wins.
+func TestR05_DeferConsumesOperatorApproval(t *testing.T) {
+	command := "cd /anywhere && rm -rf ./build/*"
+	ctx := deferCtx(t, command)
+	wantID := DeferredOpID("R05:confirm-rm-rf", ctx.Input.CWD, command)
+	var gotID string
+	ctx.ConsumeDeferredOp = func(id string) bool {
+		gotID = id
+		return true
+	}
+	result := EvaluateRules(ctx)
+	if gotID != wantID {
+		t.Fatalf("consumer called with %q, want %q", gotID, wantID)
+	}
+	if result.Decision != hookproto.DecisionApprove {
+		t.Fatalf("expected approve after consume, got %s: %s", result.Decision, result.Reason)
+	}
+	if !strings.HasPrefix(result.SystemMessage, "R05_DEFER_APPROVED:") {
+		t.Fatalf("expected R05_DEFER_APPROVED message, got %q", result.SystemMessage)
+	}
+}
+
+// A consumer that finds no spent approval must leave the deny untouched, and a
+// nil consumer (no project root to hold a queue upstream) must not panic.
+func TestR05_DeferKeepsDenyWithoutApproval(t *testing.T) {
+	command := "cd /anywhere && rm -rf ./build/*"
+	ctx := deferCtx(t, command)
+	ctx.ConsumeDeferredOp = func(string) bool { return false }
+	if result := EvaluateRules(ctx); result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected deny when nothing is approved, got %s", result.Decision)
+	}
+	ctx.ConsumeDeferredOp = nil
+	if result := EvaluateRules(ctx); result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected deny with nil consumer, got %s", result.Decision)
+	}
+}
+
+// The consumed approval is advisory, exactly like the warn approval: a later
+// deny rule (R06 force push) in the same compound command still wins.
+func TestR05_DeferApprovalDoesNotPreemptLaterDenyRules(t *testing.T) {
+	force := "git push --" + "force origin main"
+	command := "rm -rf ./build/* && " + force
+	ctx := deferCtx(t, command)
+	ctx.ConsumeDeferredOp = func(string) bool { return true }
+	result := EvaluateRules(ctx)
+	if result.Decision != hookproto.DecisionDeny || result.RuleID != "R06:no-force-push" {
+		t.Fatalf("expected R06 deny to win over consumed defer approval, got %s (%s)", result.Decision, result.RuleID)
+	}
+}
+
+// R16 (140.2 review follow-up): the approve CLI is operator-only. An agent
+// Bash call invoking it — any spelling that reaches the harness binary — is
+// denied, while `deferred list` (the reporting path the R05_DEFER contract
+// asks for) stays allowed.
+func TestR16_DeniesAgentSelfApproveOfDeferredOps(t *testing.T) {
+	denied := []string{
+		"bin/harness deferred approve abc123def456",
+		"harness deferred approve abc123def456",
+		"cd /repo && ./bin/harness deferred approve abc123def456 /repo",
+		"HARNESS_X=1 harness deferred  approve abc123def456",
+	}
+	for _, command := range denied {
+		t.Run(command, func(t *testing.T) {
+			ctx := makeCtx("Bash", map[string]interface{}{"command": command})
+			result := EvaluateRules(ctx)
+			if result.Decision != hookproto.DecisionDeny || result.RuleID != "R16:no-self-approve-deferred" {
+				t.Fatalf("expected R16 deny, got %s (%s)", result.Decision, result.RuleID)
+			}
+		})
+	}
+}
+
+func TestR16_AllowsDeferredListAndUnrelatedCommands(t *testing.T) {
+	allowed := []string{
+		"bin/harness deferred list",
+		"bin/harness deferred list --json /repo",
+		"echo deferred approve", // no harness invocation
+		"git commit -m 'deferred approve flow'",
+	}
+	for _, command := range allowed {
+		t.Run(command, func(t *testing.T) {
+			ctx := makeCtx("Bash", map[string]interface{}{"command": command})
+			result := EvaluateRules(ctx)
+			if result.RuleID == "R16:no-self-approve-deferred" {
+				t.Fatalf("R16 must not match %q, got %s", command, result.Decision)
+			}
+		})
+	}
+}
+
+// R02/R03 (140.2 review follow-up): the queue and its audit record are the
+// operator's approval surface — direct tool writes are denied so an agent
+// cannot forge "status":"approved" lines or erase the review trail.
+func TestR16_QueueAndAuditFilesAreWriteProtected(t *testing.T) {
+	for _, file := range []string{
+		"/repo/.claude/state/deferred-ops.jsonl",
+		"/repo/.claude/state/destructive-delete.jsonl",
+	} {
+		ctx := makeCtx("Write", map[string]interface{}{"file_path": file, "content": "x"})
+		result := EvaluateRules(ctx)
+		if result.Decision != hookproto.DecisionDeny || result.RuleID != "R02:no-write-protected-paths" {
+			t.Fatalf("expected R02 deny for %s, got %s (%s)", file, result.Decision, result.RuleID)
+		}
+	}
+	// other .claude/state files stay under the normal write rules
+	ctx := makeCtx("Write", map[string]interface{}{"file_path": "/repo/.claude/state/active-task.json", "content": "x"})
+	if result := EvaluateRules(ctx); result.RuleID == "R02:no-write-protected-paths" {
+		t.Fatalf("active-task.json must not be caught by the queue protection, got %s", result.Decision)
+	}
+}

@@ -254,8 +254,20 @@ The difference is what happens where `warn` would still `ask`:
   cwd finds its pending entry and is not queued twice while still being denied.
 - Without a resolvable project root there is nowhere to queue, so the rule
   falls back to `ask` exactly like `warn` does.
-- Approval of a queued entry is the 140.2 CLI (`bin/harness deferred list /
-  approve <id>`); until then the operator reviews the file directly.
+- Approval of a queued entry is the 140.2 CLI: `bin/harness deferred list`
+  shows pending entries with a copy-paste approve command, and
+  `bin/harness deferred approve <id>` flips the single pending line with that
+  id to `approved`. The **next identical run** (same rule, cwd and command) is
+  then allowed exactly once: the guardrail consumes the approval
+  (`approved → consumed`, one-shot, same consume shape as plan preapproval),
+  injects an `R05_DEFER_APPROVED` message and records the execution in
+  `destructive-delete.jsonl` with `policy: defer`. After that the same command
+  denies and re-queues again. There is no "approve all" and no auto-approval
+  path. The progress surface lists pending entries with the approve command
+  (`deferred_ops_pending`, additive, Phase 140.2). Like the warn approval, the
+  consumed approval is advisory: a later deny rule in the same compound command
+  still wins (and spends the approval — accepted, same trade-off as plan
+  preapproval).
 
 `WorkMode` retains its existing
 R05 bypass. Destruction outside the task worktree remains a hard deny in the

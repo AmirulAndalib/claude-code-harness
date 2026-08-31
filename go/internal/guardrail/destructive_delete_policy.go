@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Chachamaru127/claude-code-harness/go/internal/auditlog"
 	"github.com/Chachamaru127/claude-code-harness/go/internal/policy"
 	"github.com/Chachamaru127/claude-code-harness/go/pkg/config"
 	"github.com/Chachamaru127/claude-code-harness/go/pkg/hookproto"
@@ -90,13 +91,20 @@ func recordDestructiveDeleteWarning(projectRoot string, input hookproto.HookInpu
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		return
 	}
+	// A consumed defer approval (R05_DEFER_APPROVED prefix) is the operator's
+	// one-shot approval being spent, not the agent's own warn judgement; label
+	// it policy=defer so the audit trail stays truthful.
+	recordPolicy := policy.DestructiveDeletePolicyWarn
+	if strings.HasPrefix(result.SystemMessage, "R05_DEFER_APPROVED:") {
+		recordPolicy = policy.DestructiveDeletePolicyDefer
+	}
 	entry := destructiveDeleteRecordEntry{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		SessionID: input.SessionID,
 		AgentID:   input.AgentID,
 		CWD:       input.CWD,
 		Command:   command,
-		Policy:    policy.DestructiveDeletePolicyWarn,
+		Policy:    recordPolicy,
 		RuleID:    result.RuleID,
 	}
 	data, err := json.Marshal(entry)
@@ -122,22 +130,32 @@ func isDestructiveDeleteWarnApproval(result hookproto.HookResult) bool {
 
 // deferredOpEntry is one line of .claude/state/deferred-ops.jsonl.
 type deferredOpEntry struct {
-	ID        string `json:"id"`
-	Timestamp string `json:"timestamp"`
-	SessionID string `json:"session_id,omitempty"`
-	AgentID   string `json:"agent_id,omitempty"`
-	CWD       string `json:"cwd,omitempty"`
-	Command   string `json:"command"`
-	RuleID    string `json:"rule_id"`
-	Policy    string `json:"policy"`
-	Reason    string `json:"reason"`
-	Status    string `json:"status"`
+	ID         string `json:"id"`
+	Timestamp  string `json:"timestamp"`
+	SessionID  string `json:"session_id,omitempty"`
+	AgentID    string `json:"agent_id,omitempty"`
+	CWD        string `json:"cwd,omitempty"`
+	Command    string `json:"command"`
+	RuleID     string `json:"rule_id"`
+	Policy     string `json:"policy"`
+	Reason     string `json:"reason"`
+	Status     string `json:"status"`
+	ApprovedAt string `json:"approved_at,omitempty"`
+	ApprovedBy string `json:"approved_by,omitempty"`
+	ConsumedAt string `json:"consumed_at,omitempty"`
 }
 
-// deferredOpStatusPending marks an entry nobody has approved yet. 140.2's
-// approve CLI is expected to flip it (or append a resolution line) rather than
-// delete history.
-const deferredOpStatusPending = "pending"
+// Deferred-op lifecycle (140.2): pending → approved (bin/harness deferred
+// approve <id>) → consumed (the guardrail lets the next identical run through
+// exactly once). History is flipped in place, never deleted; a later identical
+// command re-queues a NEW pending line with the same id, because the dedup
+// check only looks at pending entries. By construction at most one pending
+// line per id exists at a time, so "approve <id>" flips that single line.
+const (
+	deferredOpStatusPending  = "pending"
+	deferredOpStatusApproved = "approved"
+	deferredOpStatusConsumed = "consumed"
+)
 
 // isDestructiveDeleteDeferral reports whether a policy result is the R05
 // defer-mode deny (deny + R05_DEFER reason), i.e. an operation that must be
@@ -164,6 +182,19 @@ func recordDeferredOp(projectRoot string, input hookproto.HookInput, result hook
 		return
 	}
 	path := filepath.Join(stateDir, deferredOpsFile)
+	// The dedup check and the append must be one critical section (140.2
+	// review): unlocked, (a) two concurrent identical commands can both pass
+	// the pending check and queue duplicate pending lines with the same id,
+	// and (b) an append landing between flipDeferredOpStatus's read and its
+	// atomic rename is silently lost. Same lock as the flip path.
+	_ = auditlog.WithFileLock(path+".lock", func() error {
+		appendDeferredOpLocked(path, id, result.RuleID, input, command)
+		return nil
+	})
+}
+
+// appendDeferredOpLocked runs under the queue file lock.
+func appendDeferredOpLocked(path, id, ruleID string, input hookproto.HookInput, command string) {
 	if hasPendingDeferredOp(path, id) {
 		return
 	}
@@ -174,7 +205,7 @@ func recordDeferredOp(projectRoot string, input hookproto.HookInput, result hook
 		AgentID:   input.AgentID,
 		CWD:       input.CWD,
 		Command:   command,
-		RuleID:    result.RuleID,
+		RuleID:    ruleID,
 		Policy:    policy.DestructiveDeletePolicyDefer,
 		Reason:    "blast-radius backstop: target is not statically inside the project root (out-of-root spelling, `..`, unresolved $VAR, glob, or bare `.`), so warn could not approve it and an unattended run must not stop on a prompt",
 		Status:    deferredOpStatusPending,
@@ -216,4 +247,196 @@ func hasPendingDeferredOp(path, id string) bool {
 		}
 	}
 	return false
+}
+
+// deferredOpLine is one physical line of deferred-ops.jsonl. Unparseable lines
+// are carried through rewrites verbatim: a damaged line must never cost the
+// operator queued history.
+type deferredOpLine struct {
+	raw   string
+	entry *deferredOpEntry
+}
+
+func readDeferredOpLines(path string) ([]deferredOpLine, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var lines []deferredOpLine
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		raw := scanner.Text()
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		line := deferredOpLine{raw: raw}
+		var e deferredOpEntry
+		if err := json.Unmarshal([]byte(raw), &e); err == nil {
+			line.entry = &e
+		}
+		lines = append(lines, line)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return lines, nil
+}
+
+func writeDeferredOpLines(path string, lines []deferredOpLine) error {
+	var buf strings.Builder
+	for _, line := range lines {
+		if line.entry != nil {
+			data, err := json.Marshal(line.entry)
+			if err != nil {
+				return err
+			}
+			buf.Write(data)
+		} else {
+			buf.WriteString(line.raw)
+		}
+		buf.WriteByte('\n')
+	}
+	tempFile, err := os.CreateTemp(filepath.Dir(path), ".deferred-ops-*.tmp")
+	if err != nil {
+		return err
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath)
+	if err := tempFile.Chmod(0o644); err != nil {
+		tempFile.Close()
+		return err
+	}
+	if _, err := tempFile.WriteString(buf.String()); err != nil {
+		tempFile.Close()
+		return err
+	}
+	if err := tempFile.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, path)
+}
+
+// flipDeferredOpStatus rewrites the single line with the given id and expected
+// current status under the queue's file lock. Returns true when a line was
+// flipped.
+func flipDeferredOpStatus(projectRoot, id, fromStatus, toStatus string) (bool, error) {
+	path := filepath.Join(projectRoot, ".claude", "state", deferredOpsFile)
+	if _, err := os.Stat(path); err != nil {
+		return false, nil
+	}
+	flipped := false
+	now := time.Now().UTC().Format(time.RFC3339)
+	err := auditlog.WithFileLock(path+".lock", func() error {
+		lines, err := readDeferredOpLines(path)
+		if err != nil {
+			return err
+		}
+		for _, line := range lines {
+			if line.entry == nil || line.entry.ID != id || line.entry.Status != fromStatus {
+				continue
+			}
+			line.entry.Status = toStatus
+			switch toStatus {
+			case deferredOpStatusApproved:
+				line.entry.ApprovedAt = now
+				line.entry.ApprovedBy = approvedByIdentity()
+			case deferredOpStatusConsumed:
+				line.entry.ConsumedAt = now
+			}
+			flipped = true
+			break
+		}
+		if !flipped {
+			return nil
+		}
+		return writeDeferredOpLines(path, lines)
+	})
+	if err != nil {
+		return false, err
+	}
+	return flipped, nil
+}
+
+// approvedByIdentity records who ran the approve CLI. Best-effort audit
+// breadcrumb (an agent-run approve is blocked upstream by R16, not here).
+func approvedByIdentity() string {
+	if user := strings.TrimSpace(os.Getenv("USER")); user != "" {
+		return "cli:" + user
+	}
+	return "cli"
+}
+
+// ApproveDeferredOp flips a pending queue entry to approved. It is the CLI
+// entry point for `bin/harness deferred approve <id>`: the operator's explicit
+// action, so unlike the hook-side helpers it returns errors loudly.
+func ApproveDeferredOp(projectRoot, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("deferred op id is required")
+	}
+	flipped, err := flipDeferredOpStatus(projectRoot, id, deferredOpStatusPending, deferredOpStatusApproved)
+	if err != nil {
+		return err
+	}
+	if !flipped {
+		return fmt.Errorf("no pending deferred op with id %s in .claude/state/%s", id, deferredOpsFile)
+	}
+	return nil
+}
+
+// ListDeferredOps returns the parsed queue entries in file order. The CLI's
+// list view filters by status; unparseable lines are skipped for display but
+// preserved on disk.
+func ListDeferredOps(projectRoot string) ([]DeferredOpView, error) {
+	path := filepath.Join(projectRoot, ".claude", "state", deferredOpsFile)
+	lines, err := readDeferredOpLines(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var views []DeferredOpView
+	for _, line := range lines {
+		if line.entry == nil {
+			continue
+		}
+		views = append(views, DeferredOpView{
+			ID:        line.entry.ID,
+			Timestamp: line.entry.Timestamp,
+			CWD:       line.entry.CWD,
+			Command:   line.entry.Command,
+			Status:    line.entry.Status,
+		})
+	}
+	return views, nil
+}
+
+// DeferredOpView is the read-only projection of a queue entry for the CLI.
+type DeferredOpView struct {
+	ID        string `json:"id"`
+	Timestamp string `json:"timestamp"`
+	CWD       string `json:"cwd,omitempty"`
+	Command   string `json:"command"`
+	Status    string `json:"status"`
+}
+
+// newDeferredOpConsumer supplies ctx.ConsumeDeferredOp: the R05 defer branch
+// calls it with the operation's DeferredOpID right before returning deny, and
+// an operator-approved entry is spent (approved → consumed) to let exactly one
+// run through. Mirrors newPlanPreapprovalConsumer: consuming inside Evaluate
+// means a compound command that a LATER deny rule (R06 etc.) still blocks
+// burns the approval without executing — accepted, same as plan preapproval.
+func newDeferredOpConsumer(projectRoot string) func(id string) bool {
+	if projectRoot == "" {
+		return nil
+	}
+	return func(id string) bool {
+		flipped, err := flipDeferredOpStatus(projectRoot, id, deferredOpStatusApproved, deferredOpStatusConsumed)
+		if err != nil {
+			return false
+		}
+		return flipped
+	}
 }

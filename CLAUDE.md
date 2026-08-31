@@ -108,7 +108,7 @@ Details: [docs/CLAUDE-commands.md](docs/CLAUDE-commands.md)
 
 ## Permission Boundaries
 
-以下は settings.json の deny/ask とガードレールエンジン (R01-R15) の組み合わせ。
+以下は settings.json の deny/ask とガードレールエンジン (R01-R16) の組み合わせ。
 **層の役割は非対称**であることに注意 — deny 相当の遮断は operator の settings
 (user scope `~/.claude/settings.json` 等) の permissions 層が担い、ガードレール層は
 ルールごとに deny / ask / 警告つき許可のいずれかを返す (2026-08-11 実測で確認)。
@@ -166,7 +166,7 @@ Details: [.claude/rules/test-quality.md](.claude/rules/test-quality.md) / [.clau
 Harness が目指す 3 層の野望 (土台 → てっぺん)。詳細は [spec.md](spec.md) (Purpose / Execution Backend Contract / Mode 1・Mode 2)。
 
 - **L1 判断専念**: AI が plan / 実装 / 比較 / 検証 evidence を準備し、operator (人間) は最終判断のみ行う。
-- **L2 ツール非依存 (tool-agnostic)**: 同一 Harness (R01-R15 + plan/work/review/release) が Claude / Codex / Cursor の「どれからでも」効く。1 つの policy engine が 3 host を native hook 経由で adjudicate する (複製でなく routing)。harness が駆動する向きと、host「から」使う向きの両方を対等にサポート。
+- **L2 ツール非依存 (tool-agnostic)**: 同一 Harness (R01-R16 + plan/work/review/release) が Claude / Codex / Cursor の「どれからでも」効く。1 つの policy engine が 3 host を native hook 経由で adjudicate する (複製でなく routing)。harness が駆動する向きと、host「から」使う向きの両方を対等にサポート。
 - **L3 協調 (collaboration, 将来の本丸)**: 複数ツールが同一プロジェクトを、人間をコピペ係にせず協調する。Mode 1 = 完全自律オーケストレーション (v1 は Lead=Claude 固定)、Mode 2 = 人間在席の peer co-drive (live notice messaging)。フル peer-Lead 協調は段階導入。
 
 ## Codex / Cursor hook 誤解防止
@@ -175,7 +175,7 @@ Codex / Cursor の hook について繰り返し起きた誤解を固定する�
 
 - **FACT-1 (generated, not inline)**: Codex / Cursor は一級の hook ホスト。hook は config.toml に inline で書かれず、`harness gen` が生成する `.codex/hooks.json` / `.cursor/hooks.json` (gitignore された build artifact) に入る。すべて `bin/harness hook pre-tool --host <h>` を呼ぶ。
 - **FACT-2 (no inline != no hooks)**: 「config.toml に inline hooks が無い」は「config の中に書かない」の意味であって「hook が無い」ではない。この 2 つを混同しない。
-- **FACT-3 (enforcement wired / delivery wired)**: hook は 2 層。(a) enforcement (PreToolUse → R01-R15 policy engine) は 3 host 対称に配線済みで `harness gen` が生成する。(b) Mode 2 delivery (inbox-check / monitor 受信) も生成配線済み — `GenerateDeliveryHooksJSON` は Phase 105.9 [b82143fe] で `harness gen` に接続され、生成される Codex/Cursor hooks.json に inbox-check (turn 境界 delivery) が入る。identity は Phase 121.2 で runtime env 解決 (`inbox check --from-env`、`{{TEAM}}`/`{{AGENT}}` placeholder は撤去)。Claude host の Stop 配線は Phase 121.3 で tracked `hooks/hooks.json` + `.claude-plugin/hooks.json` に追加 (env 展開 + stdin session_id fallback)。live monitor は opt-in で既定 OFF。
+- **FACT-3 (enforcement wired / delivery wired)**: hook は 2 層。(a) enforcement (PreToolUse → R01-R16 policy engine) は 3 host 対称に配線済みで `harness gen` が生成する。(b) Mode 2 delivery (inbox-check / monitor 受信) も生成配線済み — `GenerateDeliveryHooksJSON` は Phase 105.9 [b82143fe] で `harness gen` に接続され、生成される Codex/Cursor hooks.json に inbox-check (turn 境界 delivery) が入る。identity は Phase 121.2 で runtime env 解決 (`inbox check --from-env`、`{{TEAM}}`/`{{AGENT}}` placeholder は撤去)。Claude host の Stop 配線は Phase 121.3 で tracked `hooks/hooks.json` + `.claude-plugin/hooks.json` に追加 (env 展開 + stdin session_id fallback)。live monitor は opt-in で既定 OFF。
 - **FACT-4 (materialize して確認)**: あるホストが capability を欠くと結論する前に、必ず `harness gen` 出力を実際に materialize して中身を確認する。config コメントだけで「無い」と断定しない。not_observed != absent。
 
 <!-- harness-integrity: last-audit=2026-05-18 -->
