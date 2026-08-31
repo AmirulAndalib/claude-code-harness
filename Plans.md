@@ -246,9 +246,9 @@ lifecycle、ledger の実行 evidence を含む。
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
 | 140.1 | `destructive_delete: defer` 追加: R05 の確認相当場面で ask の代わりに deny を返し、reason に行動契約 (「保留キューに積んだ / 再試行禁止 / 他タスクを継続 / 終了時に保留一覧を報告」) を埋め込む。操作は `.claude/state/deferred-ops.jsonl` (timestamp / session_id / rule_id / command / 判定理由) へ追記 | (a) defer 設定で deny + キュー 1 行の実バイナリ probe, (b) 同一コマンド再試行でキューが重複せず deny 継続, (c) 既存 ask/warn 挙動の regression なし | - | cc:done |
-| 140.2 | 保留キューの承認 flow: `bin/harness deferred list / approve <id>` CLI。approve は既存 plan preapproval (`ConsumePlanPreapproval`) と同じ consume 機構で「次の 1 回」を通す。progress surface に保留 N 件 + コピペ用 approve コマンドを表示 (136.2 の承認待ちキュー表示と同型) | (a) approve 後の再実行が allow になる probe, (b) 未 approve は deny のまま, (c) surface 表示の render test | 140.1 | cc:todo |
-| 140.3 | エージェント自主停止の禁止文言: harness-release / breezing / harness-work の SKILL.md に「background 待ちで停止しない (停止すると background 子は残らない)」「『検証を待ちます』『確認します』で turn を終えない。同期実行で待つか、保留として報告して次へ進む」を AUTOSTART pattern と同じ literal 列挙で追加。2026-08-22 の release run で 2 回発生した停止パターンが再現ケース | (a) 該当 SKILL.md に禁止文言, (b) mirror 同期 PASS | - | cc:todo |
-| 140.4 | defer を他の configurable ask へ一般化するか判定: R12 (main push) は operator 例外として ask 維持が既定。R04 は work-mode で既にカバー。判定結果と根拠を decisions.md へ記録 | (a) decisions.md に判定エントリ | 140.1 | cc:todo |
+| 140.2 | 保留キューの承認 flow: `bin/harness deferred list / approve <id>` CLI。approve は既存 plan preapproval (`ConsumePlanPreapproval`) と同じ consume 機構で「次の 1 回」を通す。progress surface に保留 N 件 + コピペ用 approve コマンドを表示 (136.2 の承認待ちキュー表示と同型) | (a) approve 後の再実行が allow になる probe, (b) 未 approve は deny のまま, (c) surface 表示の render test | 140.1 | cc:done [2b7f098d; deferred list/approve CLI + approved→consumed one-shot consume + R05_DEFER_APPROVED advisory + policy=defer 記録 + deferred_ops_pending surface。probe 24/24] |
+| 140.3 | エージェント自主停止の禁止文言: harness-release / breezing / harness-work の SKILL.md に「background 待ちで停止しない (停止すると background 子は残らない)」「『検証を待ちます』『確認します』で turn を終えない。同期実行で待つか、保留として報告して次へ進む」を AUTOSTART pattern と同じ literal 列挙で追加。2026-08-22 の release run で 2 回発生した停止パターンが再現ケース | (a) 該当 SKILL.md に禁止文言, (b) mirror 同期 PASS | - | cc:done [43895fa1; 3 SKILL.md に禁止文言 literal 列挙 + mirror in-sync] |
+| 140.4 | defer を他の configurable ask へ一般化するか判定: R12 (main push) は operator 例外として ask 維持が既定。R04 は work-mode で既にカバー。判定結果と根拠を decisions.md へ記録 | (a) decisions.md に判定エントリ | 140.1 | cc:done [43895fa1; D73 を decisions.md へ記録 (defer は R05 限定、R12=configurable 3 値 / R04=work-mode で既済。成立 3 条件を明文化)] |
 
 ---
 
