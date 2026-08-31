@@ -767,6 +767,32 @@ func TestCheckSecretRead_WriteCatOperandOrStdinStillDenies(t *testing.T) {
 	}
 }
 
+func TestCheckSecretRead_TildeDotParentSlashAllowStillDeniesSSH(t *testing.T) {
+	for _, allow := range []string{"~/.", "~/./", "~//", "~/.."} {
+		t.Run(allow, func(t *testing.T) {
+			t.Setenv("HARNESS_RUNTIME_FLOOR_SECRET_ALLOW", allow)
+			d := CheckCommand("cat ~/.ssh/id_rsa", Context{})
+			if !d.Stopped || d.Category != CategorySecretRead {
+				t.Fatalf("allow %q must not open ssh key, got Stopped=%v Category=%s reason %q",
+					allow, d.Stopped, d.Category, d.Reason)
+			}
+		})
+	}
+}
+
+func TestCheckSecretRead_TildeAllowMatchesAbsoluteHomeToken(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("UserHomeDir: %v", err)
+	}
+	t.Setenv("HARNESS_RUNTIME_FLOOR_SECRET_ALLOW", "~/LocalWork/")
+
+	d := CheckCommand("cat "+home+"/LocalWork/Code/app/.env", Context{})
+	if d.Stopped {
+		t.Fatalf("tilde allow prefix should match absolute home token, got category %s reason %q", d.Category, d.Reason)
+	}
+}
+
 func writeRuntimeFloorConfig(t *testing.T, root, body string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(root, ".claude-code-harness.config.json"), []byte(body), 0o600); err != nil {

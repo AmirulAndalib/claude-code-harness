@@ -501,15 +501,16 @@ func isAllowlistedSecretPath(token string, patterns []string) bool {
 		return false
 	}
 	token = strings.Trim(token, `"'`)
-	token = expandTildeForSecretMatch(token)
+	token = expandTildeSecretToken(token)
 	for _, pat := range patterns {
 		if invalidSecretAllowPattern(pat) {
 			continue
 		}
-		pat = expandTildeForSecretMatch(pat)
-		if invalidSecretAllowPattern(pat) {
+		expanded, drop := expandTildeSecretPattern(pat)
+		if drop {
 			continue
 		}
+		pat = expanded
 		if strings.HasPrefix(token, pat) {
 			return true
 		}
@@ -523,11 +524,11 @@ func isAllowlistedSecretPath(token string, patterns []string) bool {
 	return false
 }
 
-// expandTildeForSecretMatch expands a leading ~/ (or bare ~) via
-// expandPathTarget. Home resolution failure keeps the lexical form (never an
-// empty string). $HOME, ~user, and os.ExpandEnv are not expanded. Trailing
-// slash on the input is preserved so prefix matching does not widen.
-func expandTildeForSecretMatch(path string) string {
+// expandTildeSecretToken expands a leading ~/ on a command token via
+// expandPathTarget (Join-cleans . / ..) so ~/LocalWork/./app/.env still
+// matches an allow prefix home/LocalWork/. Home resolution failure keeps
+// the lexical form. $HOME, ~user, and os.ExpandEnv are not expanded.
+func expandTildeSecretToken(path string) string {
 	if path != "~" && !strings.HasPrefix(path, "~/") {
 		return path
 	}
@@ -539,6 +540,44 @@ func expandTildeForSecretMatch(path string) string {
 		expanded += string(filepath.Separator)
 	}
 	return expanded
+}
+
+// expandTildeSecretPattern expands a leading ~/ on an allowlist pattern by
+// concatenating home + "/" + rest without Join-clean, so ~/. / ~/./ / ~// /
+// ~/.. cannot collapse into $HOME or its parent. Trailing slash is kept.
+// After expansion, a tilde pattern that is /, $HOME, $HOME/, or not strictly
+// inside $HOME is dropped (all-open). Non-tilde patterns are unchanged.
+// Home resolution failure keeps the lexical form (fail-closed).
+func expandTildeSecretPattern(path string) (string, bool) {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path, false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path, false
+	}
+	var expanded string
+	if path == "~" {
+		expanded = home
+	} else {
+		expanded = home + "/" + strings.TrimPrefix(path, "~/")
+	}
+	if tildePatternNotStrictlyInsideHome(expanded, home) {
+		return path, true
+	}
+	return expanded, false
+}
+
+func tildePatternNotStrictlyInsideHome(expanded, home string) bool {
+	home = filepath.Clean(home)
+	cleaned := filepath.Clean(expanded)
+	if cleaned == string(filepath.Separator) || cleaned == home {
+		return true
+	}
+	if expanded == home || expanded == home+string(filepath.Separator) {
+		return true
+	}
+	return !strings.HasPrefix(cleaned, home+string(filepath.Separator))
 }
 
 // enclosingToken extracts the whitespace-delimited token of s that contains byte
