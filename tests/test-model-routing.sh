@@ -415,8 +415,12 @@ grep -qx -- 'exec' "${TMP_DIR}/args-worker-max.txt" || {
   echo "max worker route must use codex exec"
   exit 1
 }
-grep -qx -- '-C' "${TMP_DIR}/args-worker-max.txt" || {
-  echo "raw max worker route must preserve -C"
+awk -v expected="${TMP_DIR}" '
+  previous == "--cd" && $0 == expected { found = 1 }
+  { previous = $0 }
+  END { exit !found }
+' "${TMP_DIR}/args-worker-max.txt" || {
+  echo "raw max worker route must pair --cd with the target cwd"
   exit 1
 }
 grep -qx -- "${TMP_DIR}" "${TMP_DIR}/args-worker-max.txt" || {

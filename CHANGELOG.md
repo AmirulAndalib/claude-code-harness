@@ -28,6 +28,8 @@ Change history for claude-code-harness.
 
 ### Fixed
 
+- Keep handoff timestamps numeric during session initialization and resume
+  on both GNU and BSD systems, so Linux can restore structured handoffs.
 - Isolate advisor configuration regression tests from the operator's active
   settings while continuing to verify explicit project model choices.
 - Normalize supported working-directory aliases before native companion
