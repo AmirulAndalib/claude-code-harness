@@ -409,8 +409,8 @@ Purpose: 追加依頼の公式 prompting guide を CCH の全 active prompt 面�
 | ID | Task | DoD | Depends | Status |
 |----|------|-----|---------|--------|
 | 147.1 | `[lane:gate]` `[tdd:required]` 独立レビュー、指摘修正、再レビュー | 元の要求と差分を3視点で確認。critical / major 0、独立 APPROVE、修正前後の検証記録 | - | cc:done [実設定依存、cwd別名、Linux引数上限、巨大status、lane分類を修正。3視点APPROVE、26/16/49回帰と実Linux3件PASS] |
-| 147.2 | `[lane:release]` `[tdd:skip:validation-review]` 配布検証と作業コミット | plugin / consistency / mirror / release preflight が合格。警告の根拠を記録し、対象変更だけコミット | 147.1 | cc:WIP |
-| 147.3 | `[lane:release]` `[tdd:skip:release-metadata]` 推奨バージョンの公開 | 全 version 面を同期。PR の CI 成功後 main へマージし、到達可能な commit に semver tag を作成 | 147.2 | cc:TODO |
+| 147.2 | `[lane:release]` `[tdd:skip:validation-review]` 配布検証と作業コミット | plugin / consistency / mirror / release preflight が合格。警告の根拠を記録し、対象変更だけコミット | 147.1 | cc:done [レビュー済み214ファイルを16843659に記録。clean preflight24合格/5警告/0失敗、警告方針を保存] |
+| 147.3 | `[lane:release]` `[tdd:skip:release-metadata]` 推奨バージョンの公開 | 全 version 面を同期。PR の CI 成功後 main へマージし、到達可能な commit に semver tag を作成 | 147.2 | cc:WIP |
 | 147.4 | `[lane:release]` `[tdd:skip:release-verification]` 公開結果の読戻し | GitHub Release が公開済み。4環境の配布物、版数、digest を確認。完了マーカーと証拠を保持 | 147.3 | cc:TODO |
 
 **完了条件**: main、タグ、GitHub Release、4環境の配布物が同じリリースを示し、未解決の critical / major がない。
