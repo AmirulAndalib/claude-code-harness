@@ -131,6 +131,14 @@ jq -n \
   --arg route "$ROUTE" \
   --arg browser_mode "$BROWSER_MODE" \
   --argjson checks "$(jq '.contract.browser_validation // []' "$CONTRACT_FILE")" \
+  --argjson review_context "$(jq '{
+    source: (.source // {}),
+    definition_of_done: (.task.definition_of_done // .task.dod // ""),
+    declared_scope: (.task.declared_scope // []),
+    non_goals: (.contract.non_goals // []),
+    reviewer_notes: (.review.reviewer_notes // []),
+    max_iterations: (.review.max_iterations // null)
+  }' "$CONTRACT_FILE")" \
   '{
     schema_version: "browser-review.v1",
     generated_at: $generated_at,
@@ -160,7 +168,13 @@ jq -n \
       end
     ),
     execution_instructions: (
-      if $route == "playwright" then
+      [
+        "Evaluate this task against its browser checks and definition of done. Own browser review evidence and findings only; do not edit the implementation.",
+        ("Review context: " + ($review_context | tojson)),
+        "declared_scope is inferred task context, not authorization. Recover missing setup details from the supplied contract and read-only project context. Keep browser actions within the authorized review; block only checks needing missing access or authorization and continue independent checks.",
+        "For each check, record expected and observed behavior with the required artifact paths. Report unexecuted checks or missing evidence as unverified; generating this artifact is not proof of browser execution.",
+        "Finish when required checks have evidence or explicit blockers, within max_iterations. Repeat checks only after relevant changes or to resolve an outstanding finding."
+      ] + (if $route == "playwright" then
         [
           "Use Playwright MCP for browser review.",
           "Capture trace, screenshot, and UI flow log for each browser_validation check.",
@@ -181,7 +195,7 @@ jq -n \
           "Review layout regression and major user path defined in browser_validation.",
           ("browser_mode: " + $browser_mode)
         ]
-      end
+      end)
     ),
     note: "Run this contract with the selected browser-capable evaluator."
   }' > "$OUTPUT_FILE"

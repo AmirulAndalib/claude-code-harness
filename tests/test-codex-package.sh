@@ -619,9 +619,10 @@ for required_text in \
   'Those two filenames are backed up and replaced even when the existing' \
   '| Codex-native `$breezing` implementation Worker |' \
   '| `$breezing --codex` implementation Worker |' \
-  '| Routed Codex review / managed Reviewer |' \
+  '| Routed Codex review |' \
+  '| Managed native Reviewer |' \
   '`gpt-5.6-luna` / `max`' \
-  '`gpt-5.6-sol` / `xhigh`' \
+  '`gpt-6-astra` / `xhigh`' \
   '`features.default_mode_request_user_input = true`' \
   'Explicit `true` or `false` values already present in the user config are preserved' \
   'top-level `model` unset for the main Codex session'; do

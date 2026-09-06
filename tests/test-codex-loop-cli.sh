@@ -44,13 +44,13 @@ task_id="$1"
 state_dir="${PROJECT_ROOT}/.claude/state/contracts"
 mkdir -p "${state_dir}"
 path="${state_dir}/${task_id}.sprint-contract.json"
-advisor_json='{"enabled":false,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":[],"model_policy":{"claude_default":"opus","codex_default":"gpt-5.6-sol"}}'
+advisor_json='{"enabled":false,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":[],"model_policy":{"claude_default":"claude-fable-5-1","codex_default":"gpt-6-astra"}}'
 if [ "${FAKE_ADVISOR_MODE:-off}" = "preflight" ]; then
-  advisor_json='{"enabled":true,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":["security-sensitive"],"model_policy":{"claude_default":"opus","codex_default":"gpt-5.6-sol"}}'
+  advisor_json='{"enabled":true,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":["security-sensitive"],"model_policy":{"claude_default":"claude-fable-5-1","codex_default":"gpt-6-astra"}}'
 elif [ "${FAKE_ADVISOR_MODE:-off}" = "retry" ]; then
-  advisor_json='{"enabled":true,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":[],"model_policy":{"claude_default":"opus","codex_default":"gpt-5.6-sol"}}'
+  advisor_json='{"enabled":true,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":[],"model_policy":{"claude_default":"claude-fable-5-1","codex_default":"gpt-6-astra"}}'
 elif [ "${FAKE_ADVISOR_MODE:-off}" = "plateau" ]; then
-  advisor_json='{"enabled":true,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":[],"model_policy":{"claude_default":"opus","codex_default":"gpt-5.6-sol"}}'
+  advisor_json='{"enabled":true,"mode":"on-demand","max_consults":3,"retry_threshold":2,"pre_escalation_consult":true,"triggers":[],"model_policy":{"claude_default":"claude-fable-5-1","codex_default":"gpt-6-astra"}}'
 fi
 cat > "${path}" <<JSON
 {
@@ -146,6 +146,10 @@ if [ "${cmd}" != "exec" ]; then
   echo "unknown fake codex command: ${cmd}" >&2
   exit 2
 fi
+if [ -n "${FAKE_CODEX_CAPTURE_ARGS:-}" ]; then
+  printf '%s\n' "$@" > "${FAKE_CODEX_CAPTURE_ARGS}"
+  printf '%s\n' "${CODEX_HOME:-}" > "${FAKE_CODEX_CAPTURE_ARGS}.home"
+fi
 
 case "${FAKE_CODEX_MODE:-success}" in
   fail)
@@ -154,10 +158,10 @@ case "${FAKE_CODEX_MODE:-success}" in
     exit 42
     ;;
   slow)
+    trap 'if [ -n "${FAKE_CODEX_TERM_FILE:-}" ]; then echo terminated > "${FAKE_CODEX_TERM_FILE}"; fi; exit 143' TERM INT
     if [ -n "${FAKE_CODEX_PID_FILE:-}" ]; then
       printf '%s\n' "$$" > "${FAKE_CODEX_PID_FILE}"
     fi
-    trap 'if [ -n "${FAKE_CODEX_TERM_FILE:-}" ]; then echo terminated > "${FAKE_CODEX_TERM_FILE}"; fi; exit 143' TERM INT
     while true; do
       sleep 1
     done
@@ -179,6 +183,7 @@ EOF
 set -euo pipefail
 request_file=""
 response_file=""
+model=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --request-file)
@@ -189,7 +194,11 @@ while [ $# -gt 0 ]; do
       response_file="${2:-}"
       shift 2
       ;;
-    --model|--timeout-sec)
+    --model)
+      model="${2:-}"
+      shift 2
+      ;;
+    --timeout-sec)
       shift 2
       ;;
     *)
@@ -199,6 +208,9 @@ while [ $# -gt 0 ]; do
 done
 [ -n "${request_file}" ] || exit 2
 [ -n "${response_file}" ] || exit 2
+if [ -n "${FAKE_ADVISOR_CAPTURE_CALL:-}" ]; then
+  printf 'MODEL=%s\nPROJECT_ROOT=%s\n' "${model}" "${PROJECT_ROOT:-}" > "${FAKE_ADVISOR_CAPTURE_CALL}"
+fi
 decision="${FAKE_ADVISOR_DECISION:-PLAN}"
 stop_reason="null"
 if [ "${decision}" = "STOP" ]; then
@@ -347,11 +359,13 @@ case "\${cmd}" in
     if [ -f "\${STATE_DIR}/cancelled" ]; then
       status="cancelled"
     fi
-    if [ "\${MODE}" = "retry" ] && [ "\${status}" = "completed" ]; then
-      printf '{"job":{"id":"fake-job-1","status":"completed","title":"Codex Task"},"storedJob":{"status":"completed","result":{"rawOutput":"RESULT: BLOCKED\\nsummary"}}}\n'
-    else
-      printf '{"job":{"id":"fake-job-1","status":"%s","title":"Codex Task"},"storedJob":{"status":"%s","result":{"rawOutput":"RESULT: %s\\nsummary"}}}\n' "\${status}" "\${status}" "\$( [ "\${status}" = "completed" ] && echo APPROVED || echo BLOCKED )"
-    fi
+    python3 - "\${status}" "\${MODE}" <<'PYRESULT'
+import json, sys
+status, mode = sys.argv[1:3]
+verdict = "APPROVED" if status == "completed" and mode != "retry" else "BLOCKED"
+print(json.dumps({"job": {"id": "fake-job-1", "status": status, "title": "Codex Task"},
+                  "storedJob": {"status": status, "result": {"rawOutput": "RESULT: " + verdict + "\nsummary"}}}))
+PYRESULT
     ;;
   cancel)
     touch "\${STATE_DIR}/cancelled"
@@ -509,6 +523,33 @@ PY
   return 1
 }
 
+run_local_worker_inherits_profile_case() {
+  local effort="$1"
+  local tmp
+  tmp="$(mktemp -d)"
+  local repo="${tmp}/repo"
+  local job_id="local-profile-${effort}"
+  setup_fake_tools "${tmp}" "complete"
+  setup_local_worker_job "${repo}" "${job_id}"
+  mkdir -p "${tmp}/codex-profile"
+  printf 'model = "gpt-6-astra"\nmodel_reasoning_effort = "%s"\n' "${effort}" > "${tmp}/codex-profile/config.toml"
+
+  PROJECT_ROOT="${repo}" \
+  CODEX_HOME="${tmp}/codex-profile" \
+  PATH="${tmp}/bin:${PATH}" \
+  FAKE_CODEX_MODE=success \
+  FAKE_CODEX_CAPTURE_ARGS="${tmp}/codex.args" \
+  bash "${LOOP_SCRIPT}" local-task-worker --job-id "${job_id}" >/dev/null 2>&1
+
+  if ! grep -Eq -- '^(-m|--model)(=|$)|model_reasoning_effort|^--effort(=|$)' "${tmp}/codex.args" \
+    && [ "$(cat "${tmp}/codex.args.home")" = "${tmp}/codex-profile" ]; then
+    pass "local worker: inherits Astra/${effort} profile without model or effort flags"
+  else
+    fail "local worker: overrides caller's Astra/${effort} profile"
+  fi
+  cleanup_tmp "${tmp}"
+}
+
 run_local_worker_failure_case() {
   local tmp
   tmp="$(mktemp -d)"
@@ -571,7 +612,8 @@ EOF
 
   local tries=0
   while [ "${tries}" -lt 40 ]; do
-    if jq -e '.childPid != null' "${repo}/.claude/state/codex-loop/jobs/${job_id}.json" >/dev/null 2>&1; then
+    # The fixture PID is published after its TERM trap is installed.
+    if [ -s "${codex_pid_file}" ] && jq -e '.childPid != null' "${repo}/.claude/state/codex-loop/jobs/${job_id}.json" >/dev/null 2>&1; then
       break
     fi
     sleep 0.1
@@ -1333,14 +1375,21 @@ EOF
 }
 
 run_advisor_preflight_case() {
+  local expected_model="${1:-gpt-6-astra}"
+  local project_model="${2:-}"
+  local per_run_model="${3:-}"
   local tmp
   tmp="$(mktemp -d)"
   local repo="${tmp}/repo"
   mkdir -p "${repo}"
   setup_repo "${repo}"
   setup_fake_tools "${tmp}" "advisor-preflight"
+  if [ -n "${project_model}" ]; then
+    printf 'advisor:\n  codex_model: %s\n' "${project_model}" > "${repo}/.claude-code-harness.config.yaml"
+  fi
 
   PROJECT_ROOT="${repo}" \
+  CODEX_ADVISOR_MODEL="${per_run_model}" \
   CODEX_LOOP_TASK_DRIVER=companion \
   CODEX_LOOP_ADVISOR_SCRIPT="${tmp}/bin/fake-advisor.sh" \
   CODEX_LOOP_COMPANION="${tmp}/bin/fake-companion.sh" \
@@ -1356,13 +1405,20 @@ run_advisor_preflight_case() {
   CODEX_LOOP_POLL_INTERVAL_SEC=1 \
   FAKE_ADVISOR_MODE=preflight \
   FAKE_ADVISOR_DECISION=PLAN \
+  FAKE_ADVISOR_CAPTURE_CALL="${tmp}/advisor.call" \
   bash "${LOOP_SCRIPT}" start all --max-cycles 1 --pacing worker >/dev/null
 
   poll_for_status "${repo}/.claude/state/codex-loop/run.json" "completed" || fail "advisor preflight: run did not finish"
-  jq -e '.consultations == 1 and .last_decision == "PLAN" and (.last_trigger | contains("high-risk-preflight")) and .last_model == "gpt-5.6-sol"' \
+  jq -e --arg model "${expected_model}" '.consultations == 1 and .last_decision == "PLAN" and (.last_trigger | contains("high-risk-preflight")) and .last_model == $model' \
     "${repo}/.claude/state/codex-loop/run.json" >/dev/null \
     && pass "advisor preflight: status JSON records consultation" \
     || fail "advisor preflight: status JSON missing advisor fields"
+  if [ "$(sed -n 's/^MODEL=//p' "${tmp}/advisor.call")" = "${expected_model}" ] \
+    && [ "$(sed -n 's/^PROJECT_ROOT=//p' "${tmp}/advisor.call")" = "${repo}" ]; then
+    pass "advisor preflight: ${expected_model} and target project forwarded"
+  else
+    fail "advisor preflight: resolved model or target project not forwarded"
+  fi
 
   cleanup_tmp "${tmp}"
 }
@@ -1606,6 +1662,12 @@ run_reentry_guard_case() {
   cleanup_tmp "${tmp}"
 }
 
+if [ "${HARNESS_CODEX_LOOP_TEST_SOURCE_ONLY:-0}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+run_local_worker_inherits_profile_case low
+run_local_worker_inherits_profile_case ultra
 run_local_worker_failure_case
 run_local_worker_cancel_case
 run_completion_case
@@ -1626,6 +1688,8 @@ run_breezing_batch_case
 run_breezing_blocked_case
 run_start_reset_case
 run_advisor_preflight_case
+run_advisor_preflight_case gpt-5.6-sol gpt-5.6-sol
+run_advisor_preflight_case gpt-6-astra gpt-5.6-sol gpt-6-astra
 run_advisor_duplicate_case
 run_advisor_stop_case
 run_plateau_advisor_case

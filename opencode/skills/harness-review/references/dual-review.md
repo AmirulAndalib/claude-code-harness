@@ -14,6 +14,8 @@ Claude Reviewer と Codex Reviewer を並行実行し、異なるモデル視点
 
 ## 実行フロー
 
+両 Reviewer に同じ元の要求、目的、DoD、担当範囲、承認元、plan/spec/contract、対象の base/head と実際の差分、検証証拠を渡す。各 Reviewer は作者と会話状態を共有しない読み取り専用の文脈で評価する。利用可能な委譲手段と設定済み同時実行上限を使い、Lead は待機中も証拠の照合や統合準備を進める。
+
 1. Codex の利用可否を確認する
 
    ```bash

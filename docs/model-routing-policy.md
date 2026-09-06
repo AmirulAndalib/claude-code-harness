@@ -1,7 +1,7 @@
 # Model Routing Policy
 
 Status: adopted
-Last updated: 2026-08-22
+Last updated: 2026-09-05
 
 This document defines the default model and reasoning-effort routing for
 Claude Code, Codex, Cursor, and Grok in Harness workflows.
@@ -26,9 +26,9 @@ agent frontmatter, or wrapper arguments.
 
 ## Official Evidence
 
-Claude Code supports model aliases and explicit model IDs. `opusplan` uses Opus
-in plan mode and Sonnet in execution mode, which matches Harness' Plan -> Work
-split. Claude Code settings can pin `model`, restrict `availableModels`, and set
+Claude Code supports model aliases and explicit model IDs. The legacy `opusplan`
+alias uses Opus in plan mode and Sonnet in execution mode; the September routes
+below select Fable 5.1 explicitly. Claude Code settings can pin `model`, restrict `availableModels`, and set
 default alias targets through `ANTHROPIC_DEFAULT_*_MODEL` environment variables.
 Official docs: https://code.claude.com/docs/en/model-config
 
@@ -37,39 +37,50 @@ Claude Code effort is configurable through `/effort`, `/model`, `--effort`,
 Frontmatter overrides the session level, while `CLAUDE_CODE_EFFORT_LEVEL`
 overrides both. Official docs: https://code.claude.com/docs/en/model-config
 
+On the verified Claude Code 2.1.261 runtime, a saved
+`modelSettings.<canonical-model-id>.effortLevel` takes precedence over the shared
+`effortLevel`; an explicit session `--effort` wins over both. The `[1m]` suffix
+does not create a separate saved effort key. Preserve an existing per-model
+choice instead of reporting the shared setting as the effective value.
+
 Claude subagents can set `model` to an alias, full model ID, or `inherit`.
-Resolution order is `CLAUDE_CODE_SUBAGENT_MODEL`, per-invocation model,
-frontmatter model, then main conversation model. Therefore Harness must not set
-`CLAUDE_CODE_SUBAGENT_MODEL` by default because it would flatten per-agent
-routing. Official docs: https://code.claude.com/docs/en/sub-agents
+Since Claude Code 2.1.251, resolution order is per-invocation model,
+frontmatter model, `CLAUDE_CODE_SUBAGENT_MODEL`, then main conversation model.
+An explicit `inherit` selects the parent model. Since 2.1.257,
+`CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` restores the global forced override.
+Keep that force flag unset when using role-specific models. An existing
+Sonnet default does not flatten the roles on the verified 2.1.261 runtime.
+Official docs: https://code.claude.com/docs/en/sub-agents#choose-a-model
 
-Anthropic's current lineup is the Claude 5 family: Fable 5 (Mythos-class, the
-most intelligent generally available model), Opus 5 for complex reasoning and
-agentic coding, Sonnet 5 as the best speed / intelligence balance, and Haiku
-4.5 as the fastest model. Harness retired Opus 4.8 from its claude catalog on
-2026-07-25 (operator decision): brain = Opus 5, review = Fable 5,
-worker = Sonnet 5. Official docs:
-https://platform.claude.com/docs/en/about-claude/models/overview
+The September 2026 Claude router uses Fable 5.1 for deep-planning and advisor defaults,
+Sonnet 5 for workers, and Haiku 4.5 for lightweight reading. The separate
+native security reviewer remains Sonnet 5. Fable's standard effort is `high`;
+benchmark results do not justify raising every role's effort. Official docs:
+https://code.claude.com/docs/en/model-config and
+https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5-1
 
-Codex offers `gpt-5.6-luna`, `gpt-5.6-sol` / `gpt-5.6-terra` as its top coding
-tiers, with `gpt-5.6-luna` also used at low effort for lighter coding tasks and
-subagents, and
-`gpt-5.3-codex-spark` as an optional research-preview fast iteration model for
-ChatGPT Pro users. Harness routes the dedicated Codex implementation worker
-(`worker`) to `gpt-5.6-luna` at `max`; generic `standard`, `deep`, `review`, and
-`advisor` remain on
-`gpt-5.6-sol` at `xhigh` (operator decision 2026-08-22). The central router is
+Codex frontier roles use `gpt-6-astra`. Harness keeps `gpt-5.6-luna` at low
+effort for lightweight reading and at `max` for the dedicated implementation
+worker. The September refresh retains the existing `xhigh` effort on generic
+`standard`, `deep`, `review`, and `advisor` roles rather than inferring a new
+effort from the user's prompt. The central router is
 the SSOT for these companion role defaults; the managed worker custom agent is
 the native worker-route SSOT. Official docs:
 https://developers.openai.com/codex/models
 
 Codex config supports `model`, `review_model`, `model_reasoning_effort`, and
 agent concurrency settings such as `agents.max_threads` / `agents.max_depth`.
-Custom Codex agents can set their own `model`, `model_reasoning_effort`, and
-`sandbox_mode` in the official format; the managed worker contract below does
-not currently declare `sandbox_mode`. Official docs:
+Custom Codex agents can set their own `model` and `model_reasoning_effort`.
+Codex 0.153.4 accepts `sandbox_mode` in a role file but does not project it into
+the spawned agent's permissions; native children inherit the parent's permission
+configuration. A role file alone is not filesystem isolation. Harness's
+companion review path supplies the read-only execution context. The managed
+worker contract below does not declare `sandbox_mode`. Official docs:
 https://developers.openai.com/codex/config-reference and
 https://developers.openai.com/codex/subagents
+Implementation and permission-inheritance tests:
+https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/core/src/agent/role.rs and
+https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/core/src/agent/role_tests.rs
 
 Cursor subagents support frontmatter `model: inherit|<model-id>`, `readonly`,
 and background execution. The Task tool accepts an explicit `model` parameter.
@@ -96,9 +107,9 @@ guaranteed for every Harness user.
 | --- | --- | --- | --- |
 | `lite` | `claude-haiku-4-5` or `haiku` | `low` or `medium` | read-only search, docs cleanup, simple summaries, cheap side research |
 | `standard` | `claude-sonnet-5` | `medium` by default, `high` for code-risk tasks | normal worker implementation, setup, tests, scoped refactors |
-| `deep` | `claude-opus-5` | `xhigh` | architecture, security, migration, cross-repo decisions, repeated failures |
-| `review` | `claude-fable-5` | `xhigh` | independent review; primary verdict tier (operator decision 2026-07-25) |
-| `advisor` | `claude-opus-5` | `xhigh` | PLAN / CORRECTION / STOP decisions after blocked execution |
+| `deep` | `claude-fable-5-1` | `high` | architecture, migration, cross-repo decisions, repeated failures |
+| `review` | `claude-fable-5-1` | `high` | routed independent review; native security reviewer remains Sonnet 5 |
+| `advisor` | `claude-fable-5-1` | `high` | PLAN / CORRECTION / STOP decisions after blocked execution |
 | `release` | `claude-sonnet-5` | `high` | release preflight, changelog, version/tag/GitHub Release checks |
 | `long-context` | `sonnet[1m]` | `high` | large repo reading, long sessions, context-heavy comparison |
 
@@ -106,11 +117,11 @@ Recommended Claude session default:
 
 ```json
 {
-  "model": "opusplan",
+  "model": "claude-fable-5-1",
   "availableModels": [
     "opusplan",
     "claude-opus-5",
-    "claude-fable-5",
+    "claude-fable-5-1",
     "claude-sonnet-5",
     "claude-haiku-4-5",
     "sonnet[1m]"
@@ -126,53 +137,69 @@ Recommended Claude session default:
 
 Notes:
 
-- `opusplan` is the preferred operator default because it naturally spends Opus
-  on planning and Sonnet on execution.
-- Keep `CLAUDE_CODE_SUBAGENT_MODEL` unset by default. Use it only as a temporary
-  emergency override, because it outranks per-agent model settings.
+- Fable 5.1/high is the operator baseline for this refresh. Existing session
+  context-window and effort selections stay explicit; this example is not an
+  instruction to overwrite user settings. `opusplan` remains an optional
+  operator choice.
+- A configured `CLAUDE_CODE_SUBAGENT_MODEL=claude-sonnet-5` is compatible with
+  role-specific models on Claude Code 2.1.251+. Keep the separate `_FORCE` flag
+  unset. Older versions have different precedence and need verification.
 - Do not set `max` in shared settings. `max` is session-only and should be used
   only for explicit one-off experiments.
 - `ultrathink` is a legacy free-text marker. Do not use it for durable routing.
   On the Claude 5 family, control reasoning depth with `effort` (`high`/`xhigh`),
   not prompt markers. If reasoning looks shallow on a hard task, raise effort
   rather than prompting around it.
-- `HARNESS_BRAIN_MODEL=fable` opts the `deep` / `advisor` tiers into
-  `claude-fable-5` (Fable 5). Unset, empty, `opus`, or `opus5` keeps
-  `claude-opus-5`; any other value exits 2 instead of falling back silently.
-  The opt-in is claude-host only and never changes the `standard` / `review`
-  tiers.
+- Unset, empty, or `HARNESS_BRAIN_MODEL=fable` uses Fable 5.1/high for `deep` /
+  `advisor`. Explicit `opus` or `opus5` uses Opus 5/xhigh. Unknown values exit 2.
+  This is Claude-host only and never changes `standard` / `review` tiers.
 
 ## Codex Routing
 
 | Harness tier | Codex model | Reasoning effort | Use cases |
 | --- | --- | --- | --- |
 | `lite` | `gpt-5.6-luna` | `low` | explorer subagents, simple docs, small cleanup, cheap parallel fan-out |
-| `standard` | `gpt-5.6-sol` | `xhigh` | generic implementation and setup compatibility path |
+| `standard` | `gpt-6-astra` | `xhigh` | general implementation and setup |
 | `worker` | `gpt-5.6-luna` | `max` | Breezing implementation, retries, and focused refactors |
-| `deep` | `gpt-5.6-sol` | `xhigh` | cross-file architecture, security, migrations, failed-loop recovery |
-| `review` | `gpt-5.6-sol` via `review_model` | `xhigh` | `/review`, companion review, adversarial diff review |
-| `advisor` | `gpt-5.6-sol` | `xhigh` | blocked-loop PLAN / CORRECTION / STOP decisions |
-| `release` | `gpt-5.6-sol` | `high` | release-preflight and PR closeout evidence |
+| `deep` | `gpt-6-astra` | `xhigh` | cross-file architecture, security, migrations, failed-loop recovery |
+| `review` | `gpt-6-astra` via `review_model` | `xhigh` | `/review`, companion review, adversarial diff review |
+| `advisor` | `gpt-6-astra` | `xhigh` | blocked-loop PLAN / CORRECTION / STOP decisions |
+| `release` | `gpt-6-astra` | `high` | release-preflight and PR closeout evidence |
 | `spark` | `gpt-5.3-codex-spark` | `low` | optional Pro-only real-time UI micro-iteration; never required |
 
-Recommended Codex baseline:
+Example Codex baseline for a newly configured session:
 
 ```toml
-model = "gpt-5.6-sol"
-model_reasoning_effort = "xhigh"
-review_model = "gpt-5.6-sol"
+model = "gpt-6-astra"
+model_reasoning_effort = "medium"
+review_model = "gpt-6-astra"
 
 [agents]
 max_threads = 8
 max_depth = 1
 ```
 
-This baseline is for the interactive Codex session and is not the native
+Preserve an existing valid interactive effort; the example is not a migration
+that changes low, high, or ultra. This baseline is not the native
 Breezing worker definition. `breezing --codex` uses the separate explicit
 `worker` route from `scripts/model-routing.sh` instead of inheriting the
 session baseline.
 
+The operator may change model or effort while work is in progress. Preserve
+that live choice rather than restoring an audit snapshot. CCH's role table is
+a default for its own dispatch path, not a lock on interactive settings or
+explicit `--model` / `--effort` requests. A change to the parent session alone
+does not retune all separately configured child roles. Automated environment
+updates modify only their declared CCH keys and preserve unrelated current
+values; a conflict on an owned key must be reported instead of overwritten.
+
 Recommended project-scoped Codex custom agents:
+
+The examples below show the configuration fields. For CCH-managed worker and
+reviewer roles, install the complete profiles generated from `hosts.toml`;
+their task, evidence, and authority instructions are part of the role contract.
+Prompt calibration and delivery surfaces are described in
+[prompt-calibration.md](prompt-calibration.md).
 
 ```toml
 # .codex/agents/explorer.toml
@@ -190,7 +217,7 @@ name = "worker"
 description = "Scoped implementation worker for a single task."
 model = "gpt-5.6-luna"
 model_reasoning_effort = "max"
-developer_instructions = "Implement only the assigned task, run focused checks, and report changed files and validation."
+developer_instructions = "Complete the assigned outcome within owned files and approval. Read the contract, recover missing context, honor required checks, and report changed files, observed results, and remaining gaps."
 ```
 
 Codex-native Breezing selects this managed custom agent with
@@ -213,21 +240,30 @@ https://developers.openai.com/codex/subagents
 # .codex/agents/reviewer.toml
 name = "reviewer"
 description = "Read-only reviewer for diffs, risk, and missing tests."
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
-developer_instructions = "Review evidence-first. Report prioritized findings with file and line references. Do not edit files."
+developer_instructions = "Review the actual artifact against the contract in a fresh context. Report actionable findings with file and line references and observed evidence using the requested schema. Do not edit files or invent requirements."
 ```
 
 Notes:
 
+- An inline `[agents.reviewer]` declaration takes precedence over an automatically
+  discovered `agents/reviewer.toml` in the same config layer. Setup binds the
+  managed file with `config_file = "agents/reviewer.toml"`; explicit custom
+  bindings remain operator-owned. Native loader readback must show the intended
+  role model and effort, not just the presence of the TOML file. See
+  https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/agent-roles/src/loader.rs
+- The reviewer file's `sandbox_mode` declaration does not enforce a separate
+  read-only filesystem boundary in Codex 0.153.4. Use the companion review
+  execution path when the review contract requires that boundary.
 - Codex CLI `codex exec` uses `--model` / `-m` for per-run model selection and
   `-c model_reasoning_effort="<level>"` for per-run effort overrides.
-- The official Codex companion 1.0.6 rejects `--effort max`. For the separate
+- The official Codex companion 1.0.6 rejects `--effort max` and `--effort ultra`. For the separate
   `breezing --codex` companion path, Harness resolves the central `worker`
-  route and normalizes `max` to raw `codex exec` config
+  route and normalizes `max` or `ultra` to Codex runtime config
   (`-c model_reasoning_effort="max"`) while preserving the routed model and
-  write/sandbox intent. Non-`max` explicit effort requests may stay on the
+  write/sandbox intent. Other explicit effort requests may stay on the
   companion path.
 - Any direct `codex exec` path must translate a Harness-level `--effort` into
   `-c model_reasoning_effort=...` rather than silently dropping it.
@@ -235,9 +271,60 @@ Notes:
   outcomes less predictable.
 - `agents.max_threads = 8` is acceptable for Harness breezing because lite
   routing sends cheap exploration to `gpt-5.6-luna` at low effort; if all children use
-  `gpt-5.6-sol xhigh`, lower concurrency first.
+  `gpt-6-astra xhigh`, lower concurrency first.
 - Do not make Codex fast mode the default. It is a latency/credit trade-off,
   not an intelligence tier.
+
+### Explicit settings and long-running sessions
+
+For a routed task, explicit model/effort arguments win. Supported `-c model=...`
+and `-c model_reasoning_effort=...` forms are normalized with the corresponding
+flags. An explicit `CODEX_EFFORT` wins over the role default. Invalid or ambiguous
+config overrides are rejected before dispatch. Beyond model and effort, only
+task `model_verbosity=low|medium|high` is supported; provider, MCP, permission,
+approval, and other config keys are not forwarded by this adapter. Prompt-based complexity cannot
+replace a resolved role effort. The legacy calculator is relevant only when
+model routing has been explicitly disabled.
+
+Task argument normalization also fixes the working directory and write intent
+used by both the primary-environment guard and execution. Equivalent write
+flags are canonicalized; ambiguous repeated working-directory or sandbox
+options are rejected. A relative prompt file is resolved against the selected
+working directory, and arguments after `--` are prompt text. Runtime-only
+options use Codex execution without being reinterpreted as companion prompt
+text. Unknown runtime options and new provider/profile/rule-override entry
+points are rejected before dispatch.
+`--add-dir` is accepted only for read-only tasks. Combining it with write
+intent is rejected because the guard checks one target working directory and
+does not authorize additional writable roots.
+
+The native `codex-loop` local driver inherits the interactive Codex configuration.
+The companion driver uses the task role. They are deliberate separate policies:
+a session configured as Astra/low or Astra/ultra is not evidence that every
+Breezing worker uses that combination. Inspect the selected driver and role.
+
+Advisor selection preserves explicit project configuration. A per-run
+`CODEX_ADVISOR_MODEL=gpt-6-astra` can select Astra without rewriting protected
+project settings; `--model` on the consultation command takes precedence.
+A missing project choice falls back to the central advisor route.
+
+The generic `task` path previously let prompt scoring lower the configured role
+effort. Honoring the existing `standard/xhigh` route can therefore increase the
+effective effort of those calls, including the companion loop driver. This is a
+correction to role propagation, not an edit to interactive user settings. Select
+a lower explicit effort for a bounded task when that is the intended trade-off.
+
+Codex 0.153.4 on the verified host advertises Astra `ultra` as maximum reasoning
+with automatic delegation. Its public model API documents effort only through
+`max`; never send Codex-specific values to that API. The official companion
+cannot represent every stateful mode with extended effort; reject unsupported
+background/resume/fresh combinations instead of silently changing effort.
+
+The optional `features.context_management.experimental_mode` setting enables
+experimental history/notes management in supported Codex sessions. The local
+CLI accepts the nested setting; this refresh does not enable an experimental
+feature or infer the account's plan eligibility. It complements, rather than
+replaces, the Harness task ledger and cross-session memory.
 
 ### Routed review transport (D70)
 
@@ -328,13 +415,13 @@ Notes:
 
 | Harness surface | Claude default | Codex default | Cursor default | Grok default | Why |
 | --- | --- | --- | --- | --- | --- |
-| Interactive operator session | `opusplan`, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `medium` | `grok-4.5`, `low` | strong default without forcing max spend |
-| `/harness-plan` | `opusplan` or Opus 5 for non-trivial planning | `gpt-5.6-sol`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.6`, `xhigh` | planning quality affects all downstream work |
+| Interactive operator session | Fable 5.1; preserve the user's saved effort | `gpt-6-astra`; preserve the user's saved effort | `composer-2.5-fast`, `medium` | `grok-4.5`, `low` | host session settings are separate from delegated role defaults |
+| `/harness-plan` deep role | Fable 5.1, `high` | `gpt-6-astra`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.6`, `xhigh` | planning quality affects all downstream work |
 | `worker` | Sonnet 5, `medium` to `high` | `gpt-5.6-luna`, `max` | `composer-2.5-fast`, `medium` | `grok-4.5`, `medium` | implementation benefits from iteration and tests |
 | `explorer` / read-only fan-out | Haiku 4.5, `low` | `gpt-5.6-luna`, `low` | `composer-2-fast`, `low` | `grok-4.5`, `low` | cheap context isolation |
-| `reviewer` | Fable 5, `xhigh` (primary verdict tier) | `gpt-5.6-sol`, `xhigh` | `composer-2.5-fast`, `xhigh` (fresh-context pre-review only; primary verdict on brain) | `grok-4.6`, `xhigh` | review is where deeper reasoning pays |
-| `advisor` | Opus 5, `xhigh` (Fable 5 via `HARNESS_BRAIN_MODEL=fable`) | `gpt-5.6-sol`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.6`, `xhigh` | blocked-loop decisions need high confidence |
-| `release` | Sonnet 5, `high` | `gpt-5.6-sol`, `high` | `composer-2.5-fast`, `high` | `grok-4.6`, `high` | procedural but public-facing |
+| `reviewer` route | Fable 5.1, `high`; isolated native `agents/reviewer.md` stays Sonnet 5 | `gpt-6-astra`, `xhigh` | `composer-2.5-fast`, `xhigh` (fresh-context pre-review only; primary verdict on brain) | `grok-4.6`, `xhigh` | separate the routed review role from the security isolation exception |
+| `advisor` | Fable 5.1, `high`; explicit `HARNESS_BRAIN_MODEL=opus` remains Opus 5/xhigh | `gpt-6-astra`, `xhigh` | `claude-fable-5`, `xhigh` | `grok-4.6`, `xhigh` | blocked-loop decisions need independent evidence |
+| `release` | Sonnet 5, `high` | `gpt-6-astra`, `high` | `composer-2.5-fast`, `high` | `grok-4.6`, `high` | procedural but public-facing |
 
 ## Non-Goals
 

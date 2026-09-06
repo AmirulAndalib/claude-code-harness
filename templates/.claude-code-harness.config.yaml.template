@@ -22,8 +22,8 @@ advisor:
   max_consults_per_task: 3
   retry_threshold: 2
   consult_before_user_escalation: true
-  claude_model: opus
-  codex_model: gpt-5.6-sol
+  claude_model: claude-fable-5-1
+  codex_model: gpt-6-astra
 
 cleanup:
   plans:

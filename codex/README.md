@@ -158,16 +158,36 @@ cp claude-code-harness/codex/.codex/config.toml "$CODEX_HOME/config.toml"
 
 ## Codex Breezing Role Routing
 
-Harness pins models for Breezing roles, not for the main Codex conversation.
-The recommended setup script activates the native profiles by placing them in
-the selected user or project `agents/` directory.
+Harness supplies separate model defaults for Breezing roles. The main Codex
+conversation keeps the operator's model and effort choices. Per-call overrides
+and operator-managed role settings apply to their respective paths; changing
+the parent conversation does not retune every worker and reviewer.
 
-| Invocation | Effective role path | Model / effort | Boundary |
+The recommended setup script installs the native profiles in the selected
+user or project `agents/` directory. It also binds the default reviewer
+declaration through `agents.reviewer.config_file`, so an existing inline
+declaration does not hide the managed profile. Custom bindings are preserved.
+Restart Codex after setup to load the profiles.
+
+| Invocation | Role path | Default model / effort | Boundary |
 |---|---|---|---|
 | Codex-native `$breezing` implementation Worker | Managed `worker.toml` selected as `agent_type: worker` | `gpt-5.6-luna` / `max` | Active only after setup installs the profile and Codex reloads it |
-| `$breezing --codex` implementation Worker | Central `worker` route; Harness translates unsupported companion `max` to raw `codex exec` reasoning config | `gpt-5.6-luna` / `max` | Fails visibly instead of silently lowering effort |
-| Routed Codex review / managed Reviewer | Review app-server route or managed `reviewer.toml` | `gpt-5.6-sol` / `xhigh`, read-only | Kept separate from the implementation Worker |
+| `$breezing --codex` implementation Worker | Central `worker` route through `scripts/codex-companion.sh` | `gpt-5.6-luna` / `max` | Preserves explicit model and effort; unsupported config is rejected before dispatch |
+| Routed Codex review | Companion review with explicit read-only execution | `gpt-6-astra` / `xhigh` | Kept separate from the implementation Worker |
+| Managed native Reviewer | `reviewer.toml` loaded through its config binding | `gpt-6-astra` / `xhigh` | Role instructions alone do not enforce filesystem isolation |
 | `$breezing --cursor` or another explicit backend | That backend's own route | Not set by the Codex profiles | No Codex model pin is inherited |
+
+General Codex `standard`, `deep`, and `advisor` routes also default to
+`gpt-6-astra` / `xhigh`. Lightweight reading uses `gpt-5.6-luna` / `low`, and
+the release route uses `gpt-6-astra` / `high`. The wrapper preserves explicit
+`max` and `ultra` via the Codex runtime instead of lowering the requested
+effort or guessing it from the prompt. See the
+[routing policy](../docs/model-routing-policy.md) for all roles and overrides.
+
+On the verified Codex 0.153.4 runtime, native children inherit their parent's
+execution permissions. A `sandbox_mode = "read-only"` entry in a role file
+does not itself impose a filesystem sandbox. Use the CCH companion review
+path when review execution must be read-only.
 
 - `features.multi_agent = true` and
   `features.default_mode_request_user_input = true` are added only when missing.

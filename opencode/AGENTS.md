@@ -14,7 +14,9 @@ This file provides guidance for Claude Code when working in this repository.
 ## Claude Code Feature Utilization
 
 <!-- Feature Table は docs/CLAUDE-feature-table.md に集約。ここに行を追加しない -->
-CC v2.1.111+ と Opus 4.7 の機能を活用。詳細: [docs/CLAUDE-feature-table.md](docs/CLAUDE-feature-table.md)
+CC v2.1.111+ の統合機能を活用。詳細: [docs/CLAUDE-feature-table.md](docs/CLAUDE-feature-table.md)
+Fable 5.1 / astra の担当別モデルと明示指定: [docs/model-routing-policy.md](docs/model-routing-policy.md)
+担当への目的、完成条件、証拠の受渡し: [docs/prompt-calibration.md](docs/prompt-calibration.md)
 長時間タスクの手順: [docs/long-running-harness.md](docs/long-running-harness.md)
 
 主要活用機能: Agent Memory, Worktree isolation, Agent hooks, PreCompact/PostCompact, PermissionDenied tracking, 1M Context Window

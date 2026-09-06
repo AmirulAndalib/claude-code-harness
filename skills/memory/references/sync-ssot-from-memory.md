@@ -23,6 +23,11 @@ Promote important observations recorded in memory systems (Harness Memory or Ser
 
 Auto-detected at execution, using available system.
 
+An explicit request to save or promote observations authorizes only the named
+memory scope. A request to assess what is worth keeping returns proposals and
+does not write them. Preserve the source request, observation IDs, reasons,
+and existing protected-path rules when handing promotion work to another agent.
+
 ---
 
 ## Step 0: Memory System Detection
@@ -39,7 +44,9 @@ if [ -d ".serena/memories" ]; then
 fi
 ```
 
-**If neither exists**: Switch to manual input mode.
+**If neither exists**: Recover the relevant observations from the supplied
+conversation and documented read-only project records first. Do not infer that
+no observations exist or query a private database directly.
 
 ---
 
@@ -178,11 +185,9 @@ Recording observation ID in SSOT entries prevents repeated promotion.
 
 ## Fallback on Failure
 
-If memory system is inaccessible:
-1. Ask user to paste observation content
-2. Apply same procedure
-
-```
-> Cannot access memory system.
-> Please paste the information you want to promote.
-```
+If the memory system is inaccessible, use supplied observations and documented
+read-only records when they establish the requested content and its source.
+If material content is still missing, ask for that specific observation and
+explain which source could not be recovered. Hold only that promotion;
+continue preparing independent, authorized candidates. Do not fabricate IDs,
+decisions, or permission to persist them.

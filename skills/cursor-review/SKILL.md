@@ -85,8 +85,13 @@ cursor:review "Phase 88.5 command namespace diff"
 Review this diff as an advisory second opinion.
 Base ref: ${BASE_REF}
 Requested scope: ${ARGUMENTS:-full diff}
+Requirement, purpose and DoD: <original request and completion criteria>
+Spec and validation evidence: <relevant paths and observed results>
 
 Focus on bugs, regressions, missing tests, and unsafe assumptions. Do not propose broad refactors.
+Use the supplied requirement, DoD, spec and validation evidence to assess the requested scope; inspect missing context read-only.
+For each finding, state its location, trigger, impact and checkable evidence. Separate hypotheses from observed defects; do not invent findings to fill a quota.
+Return an assessment only. Do not implement changes or treat the implementation worker's self-report as verification.
 
 Diff stat:
 ${DIFF_STAT}

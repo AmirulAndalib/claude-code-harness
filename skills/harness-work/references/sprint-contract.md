@@ -36,6 +36,8 @@ node "${HARNESS_PLUGIN_ROOT}/scripts/generate-sprint-contract.js" 32.1.1
 
 `generate-sprint-contract.js` 実行時、Lead は `spec_path` / `lane` / `stage` を Plans metadata から contract に載せ、research 完了後は `research_evidence` を追記する。TDD Red 後は `tdd_red_log` を載せ、review 後は `review_artifact`、PR closeout 後は `pr_closeout` を載せる。
 
+実際の委譲依頼には、contract の参照に加えて元の要求、目的と理由、担当範囲、制約、承認済み操作と元の指示を渡す。選択した plan、reviewer の補足条件、直前の advisor の助言を落とさない。contract の `approved` は検証条件の準備状態であり、元の指示にない操作の承認を作らない。
+
 **TDD 完了ゲート**: `[tdd:required]` タスクでは sprint contract に `tdd_red_log` または明示 `skip_tdd_reason` が無い限り完了扱いにしない（`cc:完了` 更新・cherry-pick・PR closeout すべて対象）。
 
 ## PR Closeout（review APPROVE 後）

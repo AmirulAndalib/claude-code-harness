@@ -350,3 +350,68 @@ Purpose: AISDR NQC ログインで `cat > script <<'SH'` と `AISDR_ENV_FILE=~/L
 - 事項: なし（実装は fixture path のみ。実 `.env` を読まない。push / 破壊操作なし）
   理由: 144.1 は `runtimefloor` の単体テストと照合ロジック。144.2 は docs。
   scope: Phase 144 / Task 144.1-144.2
+
+---
+
+## Phase 145: Fable 5.1 と GPT-6 astra の CCH 実行経路更新 (2026-09-05)
+
+Purpose: CLI 本体で選んだ新モデルを CCH の担当別実行でも利用できるようにし、実設定、連携処理、配布先を照合する。依頼元は本セッションの「私の環境でFable、astraをCCHでも活用できるに完全アップデート」。公開や権限拡張は含めない。
+
+**Spec delta**: `spec.md` Current Frontier Model Integration、`docs/model-routing-policy.md`、`docs/spec/execution-backends-and-distribution.md`。Claude の計画と相談は Fable 5.1/high、Codex の高度な担当は astra。既存の担当別推論量と軽量 worker を維持する。明示モデル、推論量、Codex ultra を渡し切る。Sonnet の隔離レビューは維持する。
+
+**team_validation_mode**: subagent。`model_evidence` が一次資料、`routing_audit` が Architecture/QA、`settings_audit` が Product/Security/Skeptic を担当。実環境では Claude 2.1.261、Codex 0.153.4、CCH CLI 5.1.0、Claude plugin 5.14.1、Codex plugin 5.12.0 の差を確認。過去記録は `.claude/memory/patterns.md` P16/P20 と D70 の配線契約を参照し、現在のコードで再検証した。
+
+**採否**: Required = model catalog、native advisor/reviewer profile、companion の明示指定と ultra、advisor/loop の実行経路、実環境の反映と読戻し、説明。Recommended = 完成条件と変更範囲を渡す指示。Optional = Codex の実験的 context_management。Reject = 全 worker の大型化、effort の一括引上げ、安全設定の変更、公開、同一仕事の有料比較。
+
+**formatter_baseline**: configured (`bash -n`, ShellCheck, `gofmt`, `go test`, `go vet`)。追加設定なし。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 145.1 | `[lane:gate]` `[tdd:required]` Claude/Codex catalog と native profile、advisor 既定の更新 | 新 ID、担当分離、explicit override、生成 profile の focused tests が PASS。旧設定の残存は別記 | - | cc:done [Fable 5.1/Astra catalog、native profile、生成物と explicit override の回帰 PASS] |
+| 145.2 | `[lane:gate]` `[tdd:required]` companion の ultra と明示 model/effort の伝播 | task と review で argv/config が保存される。unsupported mode は dispatch 前に停止。focused tests PASS | - | cc:done [frontier 25/25 PASS。config/model/effort と作業場所の伝播、write別名、追加root拒否を検証。Fable final APPROVE] |
+| 145.3 | `[lane:gate]` `[tdd:required]` loop と相談の実行経路照合 | route/override が実呼出しまで届く。既存の完了判定と承認境界を維持 | 145.1,145.2 | cc:done [advisor/loop focused tests PASS。実対象projectの設定解決、優先順位、CLI到達を照合] |
+| 145.4 | `[lane:fast]` `[tdd:skip:docs-only]` system card、設定、使い方の説明と仕様の同期 | 一次資料の条件とページ、変更前後、実際の設定、実測と未確認を分離。CHANGELOG と skill mirror 整合 | 145.1,145.2,145.3 | cc:done [system cardの評価条件と頁、個別設定と運用説明、CHANGELOG/spec/mirror同期] |
+| 145.5 | `[lane:gate]` `[tdd:required]` Claude/Codex 配布物の補助ファイル不足を修正し、この Mac の CCH 更新と実設定を照合 | 配布物から相談と loop worker が動く。active binary/plugin の出どころと hash、モデル解決、設定差分、復元方法を記録。秘密値は出さない | 145.1,145.2,145.3,145.4 | cc:done [R5の59対象とreviewer参照2項目、最終R6の7入口を反映。新規CLIの登録とprofile/skills/cacheを独立読戻し済み。手動model/effort保持] |
+| 145.6 | `[lane:gate]` `[tdd:skip:validation-review]` 必須検証と独立レビュー | validate-plugin/check-consistency/適切な focused tests と独立 review APPROVE。provider 実測の有無を明記 | 145.1,145.2,145.3,145.4,145.5 | cc:done [R6 validate152/0/0、consistency25、追加setup21/21、source/activation独立APPROVE。実FableレビューとAstra短時間実走は元経路の証拠として区別] |
+
+**実行境界**: ローカル実装と検証、依頼された CCH の利用環境更新を対象とする。保護対象の設定は差分を凍結した後、立花の「許可します。」を受けて今回限りのCCH関連差分を反映した。承認は `.claude/state/fable-astra/operator-approval-r5.json` に記録。秘密読取、追加課金、外部公開、権限設定変更の許可へ拡張しない。
+
+**TDD evidence**: `.claude/state/tdd-red-log/145.1.jsonl`（catalog/validator と 145.5 配布物）、`145.2.jsonl`（companion）、`145.3.jsonl`（advisor/loop）。145.1/145.2 の初回 raw log は未保存のため、観測 tool 出力からの再構成と明記。145.2 は初回45失敗と3 capture errorから開始し、最終25テスト PASS。追加rootの修正は raw RED 28失敗 → GREEN を保存。生成 profile を更新後、Go の hostgen/hookhandler/cmd/harness は PASS。
+
+## Phase 146: Fable / astra の指示とサブエージェントへの受渡し (2026-09-05)
+
+Purpose: 追加依頼の公式 prompting guide を CCH の全 active prompt 面に照合する。成果、変更範囲、完成条件、根拠を担当に渡し、承認済みの仕事を最後まで進める。モデル能力の改善量は未測定として扱う。
+
+**Spec delta**: `spec.md` Prompt Delivery Contract。目的と方法を分離し、入力欠落と再開時の情報欠落を修正する。既存の権限、モデル別 effort、Sonnet reviewer 隔離、TDD、bounded review、機械可読の返答形式は維持する。新 API transport、既定 OFF 機能の有効化、利用者の設定変更は含めない。
+
+**team_validation_mode**: subagent。`routing_audit` が全 prompt 面を棚卸し、`model_evidence` が指定2資料と Fable 5.1 の一次情報を照合済み。shell runtime / Go runtime / workflow prompts は所有ファイルを分けて並列実装し、独立レビューを行う。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 146.1 | `[lane:gate]` `[tdd:required]` loop / advisor の依頼と再開情報を保持 | 選択した計画、完成条件、推定 scope、失敗の具体的根拠が実際の呼出しに届く。未提供の承認は補作しない。再開で前回の相談指示を復元。RED / GREEN と既存の loop 回帰が PASS | - | cc:done [14入力配送ケースと49回帰PASS。相談成功記録をrun別に復元。長出力のARG_MAXを実測修正し、全文証拠と8KiB以内の参照付き要約を保持] |
+| 146.2 | `[lane:gate]` `[tdd:required]` Go team worker の指示欠落と opt-in review の返答契約を修正 | task description と修正所見が実 companion に届く。reviewer / brain に形式を伝え、否定された APPROVE を成功にしない。既定 OFF は維持。RED / GREEN と対象 Go tests が PASS | - | cc:done [元指示と修正案をworker/reviewer/brainに保持。cwd一致、strict JSON、race検証と対象Go全tests PASS。Go opt-in production未対応を別記] |
+| 146.3 | `[lane:fast]` `[tdd:skip:prompt-only]` 全 active prompt 面を監査し、役割ごとの指示を調整 | shared skills 23本、Codex差分3本、references、native agents / profiles、Go組込4本、setup常駐指示、hook を監査表に記録。必要な文面のみ変更し、固定監査 prompt と安全契約を保持 | - | cc:done [workflow 84/84監査、51修正/33保持。native/setup/embedded監査、手動設定優先、mirror再生成後の既存checks PASS] |
+| 146.4 | `[lane:gate]` `[tdd:required]` browser reviewer へ完成条件と対象情報を渡す | schema / browser route を維持し、contract の DoD / 推定 scope / non-goals / notes / 上限を execution_instructions に保持。3 route の捕捉で検証。推定 scope を承認にしない | - | cc:done [RED→GREEN、3 browser routesとschema維持、EN/JA rendering PASS] |
+| 146.5 | `[lane:gate]` `[tdd:skip:validation-review]` 配布、説明、検証、反映案の再作成 | mirror / native profile / Mac binary / 新 staging が一致。必須検証と独立 review APPROVE。個別設定の変更案を新しい prompt に合わせる。準備時の承認状態と実反映を分離して記録 | 146.1,146.2,146.3,146.4 | cc:done [R5で反映案を完成後、明示許可を受領。loader発見後のR6も850file一致、全152検証、独立APPROVE、新規起動の読戻しが完了] |
+
+**実行境界**: Phase 145 の R3 は変更前の検証済み候補として保持する。146 完了後の候補に置き換えてから 145.5 の有効化へ進む。元の作業ツリー、CJ-Plugin 正本、user config、既存 plugin cache はこの Phase で編集しない。
+
+**追加指示**: 「私が動的に変える分には許容されるようにして」。利用者の明示 model / effort と、反映直前の変更対象外の設定を尊重する。146.5 の反映案は古い監査値へ戻さず、CCH 対象キーの競合だけを可視化する。これは設定反映そのものの承認記録ではない。
+
+**最終状態**: `.claude/state/fable-astra/verification-r6.json`。Phase 145/146 の計11工程が完了。立花の「許可します。」を受けて保護設定の限定反映を実施した。R5の読戻しで発見したinline reviewer優先を参照2項目で修正し、setupの再発防止をR6に含めて切替済み。59項目の原記録、2項目の補完、R6の7入口切替は別receiptで保持。通常Codexは `xhigh`、Orcaは `high` を最終観測し、更新処理は選び直していない。native子の権限継承と、companion reviewによるread-only実行を区別する。
+
+## Phase 147: Fable / astra 更新の公開前レビューとリリース (2026-09-06)
+
+**目的**: Phase 145/146、最新仕様の README、日本語製品ガイドをまとめて検証し、公開配布物まで確認する。
+**承認元**: 2026-09-06 の依頼「リリースして問題ないか harness-review し OK 出るまで修正後再レビュー。OK 出たら推奨で harness-release」。レビュー合格後の通常の PR、main へのマージ、バージョンタグ、GitHub Release を含む。
+**範囲**: `work/fable-astra-20260905` の未公開変更。元の作業ツリーの無関係な変更と、個人の CLI 設定は含めない。
+
+| ID | Task | DoD | Depends | Status |
+|----|------|-----|---------|--------|
+| 147.1 | `[lane:gate]` `[tdd:required]` 独立レビュー、指摘修正、再レビュー | 元の要求と差分を3視点で確認。critical / major 0、独立 APPROVE、修正前後の検証記録 | - | cc:done [実設定依存、cwd別名、Linux引数上限、巨大status、lane分類を修正。3視点APPROVE、26/16/49回帰と実Linux3件PASS] |
+| 147.2 | `[lane:release]` `[tdd:skip:validation-review]` 配布検証と作業コミット | plugin / consistency / mirror / release preflight が合格。警告の根拠を記録し、対象変更だけコミット | 147.1 | cc:WIP |
+| 147.3 | `[lane:release]` `[tdd:skip:release-metadata]` 推奨バージョンの公開 | 全 version 面を同期。PR の CI 成功後 main へマージし、到達可能な commit に semver tag を作成 | 147.2 | cc:TODO |
+| 147.4 | `[lane:release]` `[tdd:skip:release-verification]` 公開結果の読戻し | GitHub Release が公開済み。4環境の配布物、版数、digest を確認。完了マーカーと証拠を保持 | 147.3 | cc:TODO |
+
+**完了条件**: main、タグ、GitHub Release、4環境の配布物が同じリリースを示し、未解決の critical / major がない。
+**検証記録**: `.claude/state/release-20260906/`。ローカル確認と公開後の確認を別に記録する。

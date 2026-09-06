@@ -71,6 +71,15 @@ Cursor (PM)          Claude Code (Worker)
 - [ ] Deploy to staging when applicable
 - [ ] Write completion reports
 
+### Task Contract
+
+- Pass the intended outcome, constraints, owned files or areas, completion criteria, and available evidence to the worker. Inferred scope is planning context, not authorization.
+- Recover missing details from supplied contracts and read-only project context. Continue authorized reversible work using reasonable, stated assumptions. A missing authorization, material specification decision, or protected operation blocks the dependent action; independent authorized work may continue.
+- Keep assessment-only requests as assessments. Workflow defaults do not authorize implementation, publication, or other gated actions.
+- Delegate independently verifiable outcomes with explicit ownership and the configured concurrency limit. The coordinator continues useful work and reuses workers for related follow-up. Independent review uses fresh context and keeps its bounded verdict contract.
+- Run required tests and collect evidence for completion criteria. Add or repeat tests only for new changes or unresolved concerns after required checks pass.
+- Report performed and verified work separately from plans, with evidence, unrun checks, and remaining blockers. Give decision reasons rather than private reasoning transcripts.
+
 ---
 
 ## 3. Task Tracking (`Plans.md`)
@@ -156,7 +165,7 @@ Example: `feat: add user authentication`
 | Symptom | Action |
 |---------|--------|
 | CI keeps failing | Try 3 fixes, then escalate to Cursor / PM |
-| Task scope is unclear | Ask Cursor / PM for clarification |
+| Task scope is unclear | Read the task contract and project context; ask Cursor / PM only for missing authorization or a material specification decision |
 | `Plans.md` is out of date | Run `/sync-status` and inspect the current state |
 
 ---

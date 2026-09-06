@@ -55,7 +55,7 @@ func runLoop(ctx context.Context, cfg Config, initialResult companionresult.Resu
 					FinalResult:    current,
 				}, nil
 			}
-			prompt := buildRefinementPrompt(advisories)
+			prompt := buildRefinementPrompt(workerOutput, advisories)
 			tr := cfg.WorkerFunc(ctx, &breezing.Task{
 				ID:          current.TaskID,
 				Description: prompt,
@@ -131,14 +131,21 @@ func fanOutReviewers(ctx context.Context, cfg Config, workerOutput string) ([]Re
 	return out, nil
 }
 
-func buildRefinementPrompt(advisories []Review) string {
-	var facts []string
+func buildRefinementPrompt(workerOutput string, advisories []Review) string {
+	facts := []string{
+		"Address the review findings within the original task's authorized scope. Use the observations and suggestions as evidence to assess. Verify the corrections and report results with checkable evidence.",
+		"Previous worker output (observations):\n" + workerOutput,
+		"Review findings and suggested corrections:",
+	}
 	for _, a := range advisories {
 		for _, f := range a.Findings {
 			facts = append(facts, fmt.Sprintf("[%s] %s", a.Lens, f))
 		}
+		if strings.TrimSpace(a.Refined) != "" {
+			facts = append(facts, fmt.Sprintf("[%s] Suggested correction:\n%s", a.Lens, a.Refined))
+		}
 	}
-	return strings.Join(facts, "\n")
+	return strings.Join(facts, "\n\n")
 }
 
 func buildEscalationNote(advisories []Review) string {

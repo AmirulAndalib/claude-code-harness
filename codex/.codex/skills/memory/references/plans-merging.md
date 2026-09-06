@@ -197,15 +197,18 @@ echo "  アーカイブ: $ARCHIVE_COUNT"
 ```bash
 if ! validate_plans_structure "$PLANS_FILE"; then
   echo "⚠️ Plans.md の構造を解析できませんでした"
-  echo "バックアップを保持し、新規テンプレートを使用します"
+  echo "元ファイルを保持し、タスク構造を確認するまでマージを保留します"
 
   # バックアップ
   cp "$PLANS_FILE" "${PLANS_FILE}.bak.$(date +%Y%m%d%H%M%S)"
 
-  # テンプレートを使用
-  use_template_instead=true
+  # 未確認のタスクを空と扱わず、置き換えを止める
+  merge_successful=false
+  return 1
 fi
 ```
+
+読み取り可能な既存ファイルと旧テンプレートから構造を回収する。なお不明な部分が残る場合は、該当箇所と保持すべき内容の判断だけを確認する。解析失敗は「タスクなし」の証拠ではない。
 
 ### 必須セクションがない場合
 

@@ -87,6 +87,34 @@ assert_absent "$CODEX_OUT" ".cursor-plugin"
 assert_absent "$CODEX_OUT" ".grok-plugin"
 assert_absent "$CODEX_OUT" ".cursor"
 
+for dist in "$CLAUDE_OUT" "$CODEX_OUT"; do
+  for rel in \
+    scripts/config-utils.sh \
+    scripts/run-advisor-consultation.sh \
+    scripts/build-weak-supervision-cues.sh \
+    scripts/lib/advisor-response.schema.json \
+    scripts/codex-loop.sh \
+    scripts/generate-sprint-contract.js \
+    scripts/lib/run-harness-subcommand.js \
+    scripts/plan-registry.sh \
+    scripts/enrich-sprint-contract.sh \
+    scripts/ensure-sprint-contract-ready.sh \
+    scripts/run-contract-review-checks.sh \
+    scripts/write-review-result.sh \
+    scripts/detect-review-plateau.sh \
+    scripts/auto-checkpoint.sh \
+    templates/schemas/plan-preapproval.v2.json \
+    templates/schemas/brief-card.v1.json \
+    templates/html/progress.html.template \
+    templates/.claude-code-harness.config.yaml.template; do
+    assert_present "$dist" "$rel"
+    cmp -s "$ROOT_DIR/$rel" "$dist/$rel" || fail "bundled runtime source differs: $rel"
+  done
+  for rel in .git .claude .env docs out reports scripts/sandbox-test scripts/evidence scripts/node_modules; do
+    assert_absent "$dist" "$rel"
+  done
+done
+
 # A Codex dist is a runtime package, not a presence-only bundle. Exercise the
 # routed Luna/max task path with a fake provider binary and an isolated HOME;
 # the real bundled harness binary performs both fingerprint captures.
@@ -110,6 +138,78 @@ fi
 if ! grep -Fq 'model_reasoning_effort="max"' "${TMP_ROOT}/codex-args.txt"; then
   fail "Codex dist routed task did not preserve worker max effort"
 fi
+
+# Execute the packaged advisor, work-contract helpers, and loop worker from a
+# consumer directory. Only the provider is stubbed; every Harness helper and
+# the platform binary must resolve inside the distribution under test.
+exercise_workflow_runtime() (
+  local dist="$1" host="$2"
+  local consumer="${TMP_ROOT}/${host}-workflow-consumer"
+  local fake_bin="${TMP_ROOT}/${host}-workflow-bin"
+  local fake_home="${TMP_ROOT}/${host}-workflow-home"
+  mkdir -p "$consumer" "$fake_bin" "$fake_home"
+  cat >"$fake_bin/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = --version ]; then
+  echo 'codex-cli 0.153.4'
+  exit 0
+fi
+[ "${1:-}" = exec ] || exit 91
+printf '%s\n' "$@" >"${DIST_PROVIDER_ARGS:?}"
+cat >"${DIST_PROVIDER_ARGS}.prompt"
+if [ "${DIST_PROVIDER_MODE:?}" = advisor ]; then
+  echo '{"schema_version":"advisor-response.v1","decision":"PLAN","summary":"Packaged advisor reached the provider.","executor_instructions":["Run the focused check."],"confidence":0.8,"stop_reason":null}'
+else
+  echo 'DIST_LOOP_STUB'
+fi
+EOF
+  chmod +x "$fake_bin/codex"
+  export HOME="$fake_home" CODEX_HOME="$fake_home"
+  export PATH="$fake_bin:$PATH" PROJECT_ROOT="$consumer"
+  export HARNESS_PLUGIN_ROOT="$dist" CLAUDE_PLUGIN_ROOT="$dist" HARNESS_INSTALL_ROOT="$dist"
+  unset CODEX_ADVISOR_COMPANION CODEX_ADVISOR_MODEL CODEX_MODEL CODEX_MODEL_TIER CODEX_EFFORT
+  cd "$consumer"
+  cat >request.json <<'EOF'
+{"schema_version":"advisor-request.v1","task_id":"1","reason_code":"retry-threshold","trigger_hash":"dist:1","question":"Which check should run next?","attempt":2,"last_error":"fixture","context_summary":["Distribution smoke test"]}
+EOF
+  DIST_PROVIDER_ARGS="$consumer/advisor.args" DIST_PROVIDER_MODE=advisor \
+    bash "$dist/scripts/run-advisor-consultation.sh" --request-file "$consumer/request.json" \
+      --response-file "$consumer/response.json" >"$consumer/advisor.stdout"
+  jq -e '.decision == "PLAN" and .schema_version == "advisor-response.v1"' response.json >/dev/null \
+    || fail "$host bundled advisor did not return a validated response"
+  grep -Fxq gpt-6-astra advisor.args || fail "$host bundled advisor did not request astra"
+  grep -Fq 'model_reasoning_effort="xhigh"' advisor.args || fail "$host bundled advisor lost xhigh effort"
+
+  cat >Plans.md <<'EOF'
+| Task | Content | DoD | Depends | Status |
+|------|---------|-----|---------|--------|
+| 1 | Exercise bundled helpers | Focused check passes | - | cc:TODO |
+EOF
+  node "$dist/scripts/generate-sprint-contract.js" 1 "$consumer/Plans.md" "$consumer/contract.json" >/dev/null
+  bash "$dist/scripts/enrich-sprint-contract.sh" "$consumer/contract.json" --check "Packaged helpers execute" --approve >/dev/null
+  bash "$dist/scripts/ensure-sprint-contract-ready.sh" "$consumer/contract.json" >/dev/null
+  jq -e '.task.id == "1" and .review.status == "approved"' contract.json >/dev/null \
+    || fail "$host bundled work-contract helpers failed"
+
+  local state="$consumer/.claude/state/codex-loop"
+  mkdir -p "$state/prompts" "$state/jobs"
+  printf 'Exercise the packaged loop worker.\n' >"$state/prompts/dist-worker.md"
+  jq -n --arg root "$consumer" --arg state "$state" '{
+    id:"dist-worker",status:"queued",phase:"queued",title:"Distribution smoke",
+    workspaceRoot:$root,jobClass:"task",write:true,
+    logFile:($state+"/jobs/dist-worker.log"),
+    request:{cwd:$root,promptFile:($state+"/prompts/dist-worker.md")}
+  }' >"$state/jobs/dist-worker.json"
+  DIST_PROVIDER_ARGS="$consumer/loop.args" DIST_PROVIDER_MODE=loop \
+    "$dist/bin/harness" codex-loop local-task-worker --job-id dist-worker
+  jq -e '.status == "completed" and .result.status == 0 and (.result.rawOutput | contains("DIST_LOOP_STUB"))' \
+    "$state/jobs/dist-worker.json" >/dev/null || fail "$host bundled loop worker failed"
+  assert_absent "$dist" .claude/state
+)
+
+exercise_workflow_runtime "$CLAUDE_OUT" claude
+exercise_workflow_runtime "$CODEX_OUT" codex
 
 assert_present "$CURSOR_OUT" ".cursor-plugin/plugin.json"
 assert_present "$CURSOR_OUT" "skills/harness-work/SKILL.md"
@@ -185,5 +285,37 @@ assert(codex.interface.displayName !== cursor.interface.displayName, "displayNam
 assert(grok.interface.displayName !== cursor.interface.displayName, "grok displayName must differ from cursor");
 assert(JSON.stringify(grok).includes("../") === false, "grok dist manifest must not contain ..");
 NODE
+
+# A small staged source tree tests filtering without placing synthetic private
+# files in the real checkout or pointing --out at any existing directory.
+FILTER_SOURCE="${TMP_ROOT}/filter-source"
+FILTER_OUT="${TMP_ROOT}/filter-out"
+mkdir -p "$FILTER_SOURCE"/{scripts/lib,hosts,.claude-plugin,skills,agents,hooks,output-styles,bin,templates}
+cp "$BUILD_SCRIPT" "$FILTER_SOURCE/scripts/build-host-plugin-dist.sh"
+cp "$ROOT_DIR/scripts/lib/host-registry.sh" "$FILTER_SOURCE/scripts/lib/host-registry.sh"
+cp "$ROOT_DIR/hosts/registry.json" "$FILTER_SOURCE/hosts/registry.json"
+cp "$ROOT_DIR/.claude-plugin/plugin.json" "$FILTER_SOURCE/.claude-plugin/plugin.json"
+cp "$ROOT_DIR/VERSION" "$FILTER_SOURCE/VERSION"
+printf '{}\n' >"$FILTER_SOURCE/hooks/hooks.json"
+printf 'echo runtime-source\n' >"$FILTER_SOURCE/scripts/required.sh"
+printf '{}\n' >"$FILTER_SOURCE/scripts/lib/runtime.schema.json"
+printf 'fixture: true\n' >"$FILTER_SOURCE/templates/.claude-code-harness.config.yaml.template"
+for rel in scripts/.hidden/fixture.sh scripts/node_modules/fixture.js scripts/evidence/fixture.sh \
+  scripts/sandbox-test/fixture.py scripts/out/fixture.sh templates/reports/fixture.md \
+  scripts/.secret.sh scripts/.env templates/.env .claude/state/fixture.json docs/fixture.md; do
+  mkdir -p "$(dirname "$FILTER_SOURCE/$rel")"
+  printf 'private-fixture\n' >"$FILTER_SOURCE/$rel"
+done
+printf 'outside-fixture\n' >"${TMP_ROOT}/outside-source.sh"
+ln -s "${TMP_ROOT}/outside-source.sh" "$FILTER_SOURCE/scripts/external.sh"
+ln -s "${TMP_ROOT}/outside-source.sh" "$FILTER_SOURCE/templates/external.json"
+bash "$FILTER_SOURCE/scripts/build-host-plugin-dist.sh" --host claude --out "$FILTER_OUT"
+for rel in scripts/required.sh scripts/lib/runtime.schema.json templates/.claude-code-harness.config.yaml.template; do
+  assert_present "$FILTER_OUT" "$rel"
+done
+for rel in scripts/.hidden scripts/node_modules scripts/evidence scripts/sandbox-test scripts/out \
+  templates/reports scripts/.secret.sh scripts/.env templates/.env scripts/external.sh templates/external.json .claude docs; do
+  assert_absent "$FILTER_OUT" "$rel"
+done
 
 echo "test-host-plugin-dist: ok"

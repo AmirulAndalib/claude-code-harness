@@ -1390,6 +1390,17 @@ merge_codex_agent_defaults() {
       if (is_role_table($0, "reviewer")) {
         reviewer_seen = 1
       }
+      # Only migrate the exact legacy setup role; additional fields are
+      # operator-owned, including config_file, model, effort, and permissions.
+      if (is_table($0)) {
+        in_reviewer = is_role_table($0, "reviewer")
+      } else if (in_reviewer && $0 !~ /^[[:space:]]*(#.*)?$/) {
+        if ($0 ~ /^[[:space:]]*description[[:space:]]*=[[:space:]]*"Codex reviewer worker for harness review and retake loops"[[:space:]]*(#.*)?$/) {
+          reviewer_default_description = 1
+        } else if ($0 !~ /^[[:space:]]*sandbox[[:space:]]*=[[:space:]]*"workspace-read-only"[[:space:]]*(#.*)?$/) {
+          reviewer_custom = 1
+        }
+      }
       if (is_role_table($0, "claude_implementer")) {
         claude_implementer_seen = 1
       }
@@ -1430,6 +1441,14 @@ merge_codex_agent_defaults() {
         in_memories = 1
         next
       }
+      if (is_role_table($0, "reviewer") && reviewer_default_description && !reviewer_custom) {
+        print
+        print "config_file = \"agents/reviewer.toml\""
+        printed += 2
+        in_agents = 0
+        in_memories = 0
+        next
+      }
       if (is_table($0)) {
         print
         printed += 1
@@ -1459,6 +1478,7 @@ merge_codex_agent_defaults() {
         print ""
         print "[agents.reviewer]"
         print "description = \"Codex reviewer worker for harness review and retake loops\""
+        print "config_file = \"agents/reviewer.toml\""
       }
       if (!claude_implementer_seen) {
         print ""
@@ -1568,6 +1588,7 @@ description = "Codex implementation worker for harness task execution"
 
 [agents.reviewer]
 description = "Codex reviewer worker for harness review and retake loops"
+config_file = "agents/reviewer.toml"
 
 [agents.claude_implementer]
 description = "Claude CLI delegated implementation worker (used when --claude)"

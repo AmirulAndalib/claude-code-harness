@@ -85,14 +85,14 @@ if ! host_registry_is_routing_host "$HOST"; then
   exit 2
 fi
 
-# Brain opt-in: HARNESS_BRAIN_MODEL switches the claude-host brain tiers
-# (deep/advisor) only. codex/cursor/grok catalogs are host-side and stay untouched.
-# 2026-07-25 operator decision: Opus 4.8 retired from the catalog entirely.
-# Lineup: brain = Opus 5, review = Fable 5, worker = Sonnet 5.
-CLAUDE_BRAIN_MODEL="claude-opus-5"
-case "${HARNESS_BRAIN_MODEL:-opus}" in
-  opus|opus5) ;;
-  fable) CLAUDE_BRAIN_MODEL="claude-fable-5" ;;
+# HARNESS_BRAIN_MODEL switches the Claude brain tiers (deep/advisor) only.
+# Fable 5.1 starts at high; an explicit Opus 5 selection retains its xhigh
+# contract. Other hosts and the independent Claude review route stay unchanged.
+CLAUDE_BRAIN_MODEL="claude-fable-5-1"
+CLAUDE_BRAIN_EFFORT="high"
+case "${HARNESS_BRAIN_MODEL:-fable}" in
+  fable) ;;
+  opus|opus5) CLAUDE_BRAIN_MODEL="claude-opus-5"; CLAUDE_BRAIN_EFFORT="xhigh" ;;
   *) echo "ERROR: unknown HARNESS_BRAIN_MODEL: ${HARNESS_BRAIN_MODEL} (use opus|opus5|fable)" >&2; exit 2 ;;
 esac
 
@@ -100,15 +100,14 @@ MODEL=""
 EFFORT=""
 
 if [ "$HOST" = "codex" ]; then
-  # Codex standard remains the compatibility Sol/xhigh route. Breezing
-  # implementation workers use the dedicated worker tier for Luna/max; the
-  # review tier stays independent so worker capacity cannot retune review.
+  # Frontier roles use astra with their existing effort. Breezing workers
+  # retain the dedicated Luna/max tier, independent of review capacity.
   case "$TIER" in
     lite) MODEL="gpt-5.6-luna"; EFFORT="low" ;;
-    standard|deep) MODEL="gpt-5.6-sol"; EFFORT="xhigh" ;;
+    standard|deep) MODEL="gpt-6-astra"; EFFORT="xhigh" ;;
     worker) MODEL="gpt-5.6-luna"; EFFORT="max" ;;
-    review|advisor) MODEL="gpt-5.6-sol"; EFFORT="xhigh" ;;
-    release|long-context) MODEL="gpt-5.6-sol"; EFFORT="high" ;;
+    review|advisor) MODEL="gpt-6-astra"; EFFORT="xhigh" ;;
+    release|long-context) MODEL="gpt-6-astra"; EFFORT="high" ;;
     spark) MODEL="gpt-5.3-codex-spark"; EFFORT="low" ;;
     *) echo "ERROR: unknown codex tier: $TIER" >&2; exit 2 ;;
   esac
@@ -164,8 +163,8 @@ else
   case "$TIER" in
     lite) MODEL="claude-haiku-4-5"; EFFORT="low" ;;
     standard) MODEL="claude-sonnet-5"; EFFORT="medium" ;;
-    deep|advisor) MODEL="$CLAUDE_BRAIN_MODEL"; EFFORT="xhigh" ;;
-    review) MODEL="claude-fable-5"; EFFORT="xhigh" ;;
+    deep|advisor) MODEL="$CLAUDE_BRAIN_MODEL"; EFFORT="$CLAUDE_BRAIN_EFFORT" ;;
+    review) MODEL="claude-fable-5-1"; EFFORT="high" ;;
     release) MODEL="claude-sonnet-5"; EFFORT="high" ;;
     long-context) MODEL="sonnet[1m]"; EFFORT="high" ;;
     spark) echo "ERROR: spark tier is codex-only" >&2; exit 2 ;;

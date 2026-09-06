@@ -41,8 +41,8 @@ jq -e '
   .advisor.max_consults == 3 and
   .advisor.retry_threshold == 2 and
   .advisor.pre_escalation_consult == true and
-  .advisor.model_policy.claude_default == "opus" and
-  .advisor.model_policy.codex_default == "gpt-5.6-sol" and
+  .advisor.model_policy.claude_default == "claude-fable-5-1" and
+  .advisor.model_policy.codex_default == "gpt-6-astra" and
   (.advisor.triggers | length) == 0 and
   (.contract.runtime_validation | type) == "array" and
   .contract.runtime_validation[0].command == "CI=true npm test"
@@ -81,8 +81,8 @@ jq -e '
   .advisor.max_consults == 3 and
   .advisor.retry_threshold == 2 and
   .advisor.pre_escalation_consult == true and
-  .advisor.model_policy.claude_default == "opus" and
-  .advisor.model_policy.codex_default == "gpt-5.6-sol" and
+  .advisor.model_policy.claude_default == "claude-fable-5-1" and
+  .advisor.model_policy.codex_default == "gpt-6-astra" and
   .advisor.triggers == ["needs-spike", "security-sensitive", "state-migration", "<!-- advisor:required -->"] and
   (.contract.risk_flags | index("security-sensitive")) != null and
   (.contract.risk_flags | index("state-migration")) != null

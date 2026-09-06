@@ -18,7 +18,7 @@ cursor-agent (Composer) に **read-only** で質問・調査・設計相談・�
 
 ```bash
 cursor:ask "この設計判断、Composer 視点でどう思う？"
-cursor:ask "TASK_BASE_REF からの diff を読んで、見落としを 3 つ挙げて"
+cursor:ask "TASK_BASE_REF からの diff を読んで、根拠のある見落としがあれば最大 3 つ挙げて"
 cursor:ask "harness-mem の cross-project N-call、楽観的すぎる前提はある？"
 ```
 
@@ -90,6 +90,7 @@ Step 0 で banner + 計画 (3 行以内) は出し切っているので、ここ
 ### Step 2: helper root 解決 + cursor-companion 直接実行
 
 `$ARGUMENTS` を質問文として渡す。**`--write` は絶対に付けない**。`scripts/cursor-companion.sh` を相対パスで呼ぶと consumer repo の cwd 直下に見えず exit するため、`CLAUDE_PLUGIN_ROOT` / `HARNESS_PLUGIN_ROOT` を hooks.json と同じ `valid_root` パターンで解決する (Issue #193 §2):
+質問の目的、対象、既知の根拠を質問本文に添え、結論の理由と検証可能な証拠を求める。内部の思考過程は求めない。
 
 ```bash
 QUESTION="$ARGUMENTS"
@@ -143,11 +144,8 @@ cursor の出力をそのまま貼らない。host (Claude/Codex) が読んで *
 - 注意点 / 追加調査が必要な点
 - 次の一手 (もしあれば)
 
-要約後、最後に literal で次の一文を出力する:
-
-```
-↑この結果は host が要約します。Enter キーで次へ進むか、新規 prompt で別の指示を出してください。
-```
+最終回答は実際の結論、参照箇所、未確認点を返す。「これから要約する」という予告だけで終了しない。
+助言は現物と照合して採否を判断し、相談だけの依頼から実装を開始しない。
 
 ## Trust Boundary
 

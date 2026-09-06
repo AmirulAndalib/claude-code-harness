@@ -26,7 +26,8 @@ description: "Generate a Plan Brief HTML for non-engineer vibecoders before impl
 ## 入力
 
 引数 `[task-description]` にユーザーの request を渡す。
-引数なしの場合は対話形式で受け取る。
+引数なしの場合は、会話の原依頼と選択済み計画から回収する。複数の候補が残って判断を変える場合だけ確認する。
+計画の目的、担当範囲、未決事項と合格条件を示し、計画概要の作成依頼から実装を始めない。
 
 ## 出力
 

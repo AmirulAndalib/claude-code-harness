@@ -322,6 +322,33 @@ model: claude-fable-5
 	}
 }
 
+func TestValidateSkills_Fable51Models(t *testing.T) {
+	for _, tc := range []struct {
+		model string
+		valid bool
+	}{
+		{model: "claude-fable-5-1", valid: true},
+		{model: "claude-fable-5-1[1m]", valid: true},
+		{model: "claude-fable-5-1[2m]", valid: false},
+		{model: "claude-fable-5-2", valid: false},
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSkillFile(t, dir, "fable51", "---\nname: fable51\ndescription: Fable 5.1 skill\nmodel: "+tc.model+"\neffort: high\n---\n")
+			errs, count := validateSkillsDir(filepath.Join(dir, "skills"))
+			if count != 1 {
+				t.Fatalf("expected 1 skill checked, got %d", count)
+			}
+			if tc.valid && len(errs) != 0 {
+				t.Errorf("%s must be accepted, got: %v", tc.model, errs)
+			}
+			if !tc.valid && !containsError(errs, "model") {
+				t.Errorf("%s must produce a model error, got: %v", tc.model, errs)
+			}
+		})
+	}
+}
+
 func TestValidateSkills_Opus5ModelAccepted(t *testing.T) {
 	dir := t.TempDir()
 	writeSkillFile(t, dir, "opus5-brain", `---
@@ -509,6 +536,22 @@ model: gpt-4-turbo
 	errs, _ := validateAgentsDir(filepath.Join(dir, "agents"))
 	if !containsError(errs, "model") {
 		t.Errorf("expected model validation error, got: %v", errs)
+	}
+}
+
+func TestValidateAgents_Fable51Models(t *testing.T) {
+	for _, model := range []string{"claude-fable-5-1", "claude-fable-5-1[1m]"} {
+		t.Run(model, func(t *testing.T) {
+			dir := t.TempDir()
+			writeAgentFile(t, dir, "fable51-advisor", "---\nname: fable51-advisor\ndescription: Fable 5.1 advisor\nmodel: "+model+"\neffort: high\n---\n")
+			errs, count := validateAgentsDir(filepath.Join(dir, "agents"))
+			if count != 1 {
+				t.Fatalf("expected 1 agent checked, got %d", count)
+			}
+			if len(errs) != 0 {
+				t.Errorf("%s must be accepted, got: %v", model, errs)
+			}
+		})
 	}
 }
 

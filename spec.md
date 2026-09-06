@@ -1,7 +1,7 @@
 # Claude Code Harness V2 Spec
 
-Status: draft SSOT for Phase 72 through Phase 105
-Last updated: 2026-07-05
+Status: SSOT through the Phase 145/146 frontier model and prompt update
+Last updated: 2026-09-06
 
 This file is the root product contract for Claude Code Harness V2.
 Plans.md is the task ledger. `spec.md` is the product contract.
@@ -212,6 +212,56 @@ Related sub-spec anchors: `docs/architecture/hokage-core.md`, `go/SPEC.md`, Host
 
 The chapter names above intentionally preserve the old `spec.md` headings so grep
 based audits can still find the contract location from the core file.
+
+## Prompt Delivery Contract
+
+Execution requests carry the intended outcome, relevant constraints, owned
+scope, completion criteria, and available evidence to the actual worker or
+advisor. A task description, review refinement, selected plan path, or prior
+advisor response must not disappear between orchestration and dispatch.
+Inferred scope is planning context, never proof of user authorization.
+
+Within an authorized task, agents choose the method and continue reversible
+work using reasonable, stated assumptions. They first recover required input
+from supplied contracts and read-only project context. A missing authorization,
+material specification decision, or protected operation still blocks the
+dependent action; independent authorized work may continue. Assessment-only
+requests remain assessments. Existing safety gates and explicit instructions
+take precedence over general workflow defaults.
+
+Delegation uses independently verifiable outcomes, explicit ownership, and
+the configured concurrency limits. The coordinator continues useful work and
+reuses a worker for related follow-up; independent review retains a fresh
+context and its bounded verdict contract. Required tests and evidence remain
+mandatory, with extra testing justified by new changes or unresolved concerns.
+Reports distinguish intended, performed, and verified actions and request
+decision reasons with checkable evidence, not private reasoning transcripts.
+
+Native agent permissions, model and effort routes, protected hook prompts,
+review schemas, and human-only settings are unchanged by prompt calibration.
+API-only features are not presented as enabled by CLI instructions.
+
+Model and effort defaults do not freeze the operator's choices. Explicit
+per-run selection and operator-owned profile settings remain authoritative
+for their respective execution paths. Agents must not infer permission to
+retune them from task wording. A scoped environment update preserves current
+unowned settings, including interactive model/effort changes made during the
+update; conflicts on the update's own keys remain visible. A parent setting
+change is not an instruction to retune every child role or relax its sandbox.
+
+## Current Frontier Model Integration
+
+The September 2026 model refresh uses Claude Fable 5.1 for the Claude router's
+deep-planning and advisor defaults and GPT-6 astra for Codex frontier routes. Lightweight workers
+remain separately routed. `docs/model-routing-policy.md` specifies the role
+table and exceptions, including the isolated Sonnet security reviewer.
+Explicit model and effort selections must survive companion dispatch, native
+agent generation, and supported loop execution. Codex `ultra` is a Codex
+runtime choice, not a claim that the public model API accepts that value.
+Unsupported transport combinations must fail visibly before dispatch.
+This changes model integration only; approval, permission, and review boundaries
+remain governed by the existing contracts above. Installation evidence and
+actual provider selection must be reported separately from local fixture tests.
 
 ## Non-Goals
 

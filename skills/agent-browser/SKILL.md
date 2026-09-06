@@ -18,7 +18,7 @@ argument-hint: "[url] [--headless]"
 
 ## トリガーフレーズ
 
-このスキルは以下のフレーズで自動起動します：
+agent-browser が明示指定された時に使う補助スキル。以下は扱える操作の例であり、自動起動の条件ではない:
 
 - 「ページを開いて」「URLを確認して」
 - 「クリックして」「入力して」「フォームに」
@@ -43,7 +43,7 @@ argument-hint: "[url] [--headless]"
 # インストール確認
 which agent-browser
 
-# 未インストールの場合
+# インストールを明示依頼され、未インストールの場合のみ
 npm install -g agent-browser
 agent-browser install
 ```
@@ -171,11 +171,11 @@ agent-browser --session admin snapshot -i -c
 
 | ツール | 推奨度 | 用途 |
 |--------|--------|------|
-| **agent-browser** | ★★★ | 第一選択。AI 向けスナップショットが強力 |
+| **agent-browser** | ★★★ | 明示指定された CLI によるスナップショット操作 |
 | chrome-devtools MCP | ★★☆ | Chrome が既に開いている場合 |
 | playwright MCP | ★★☆ | 複雑な E2E テスト |
 
-**原則**: まず agent-browser を試し、うまくいかない場合のみ MCP ツールを使用。
+**原則**: ユーザー指定のブラウザ経路を優先する。指定がなければ利用可能な Browser Use / Playwright 等の経路を使い、agent-browser の導入を前提にしない。
 
 ---
 

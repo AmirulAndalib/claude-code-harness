@@ -836,6 +836,24 @@ else
     fail_test "Claude/Codex model routing の契約テストに失敗 — 'bash tests/test-model-routing.sh' で詳細確認"
 fi
 
+if bash "$PLUGIN_ROOT/tests/test-frontier-model-catalog.sh" > /dev/null 2>&1; then
+    pass_test "Fable 5.1/Astra routes preserve explicit Opus selection and lightweight workers"
+else
+    fail_test "Frontier model catalog contract failed: bash tests/test-frontier-model-catalog.sh"
+fi
+
+if python3 "$PLUGIN_ROOT/tests/test-codex-companion-frontier.py" > /dev/null 2>&1; then
+    pass_test "Codex companion preserves explicit model/effort and ultra before provider dispatch"
+else
+    fail_test "Codex frontier companion contract failed: python3 tests/test-codex-companion-frontier.py"
+fi
+
+if python3 -B "$PLUGIN_ROOT/tests/test-codex-loop-prompt-delivery.py" > /dev/null 2>&1; then
+    pass_test "Loop workers and advisors retain task context, concrete failures, and prior guidance"
+else
+    fail_test "Loop prompt delivery contract failed: python3 -B tests/test-codex-loop-prompt-delivery.py"
+fi
+
 if bash "$PLUGIN_ROOT/tests/test-breezing-codex-worker-route.sh" > /dev/null 2>&1; then
     pass_test "D70: Codex Breezing managed worker profile・spawn shape・worker-tier pin が維持されています (test-breezing-codex-worker-route.sh)"
 else
@@ -843,9 +861,15 @@ else
 fi
 
 if bash "$PLUGIN_ROOT/tests/test-codex-reviewer-route.sh" > /dev/null 2>&1; then
-    pass_test "Codex reviewer は Sol/xhigh を per-run app-server config 経由で official envelope に適用します (test-codex-reviewer-route.sh)"
+    pass_test "Codex reviewer は Astra/xhigh を per-run app-server config 経由で official envelope に適用します (test-codex-reviewer-route.sh)"
 else
     fail_test "Codex reviewer の実効 model/effort 配線テストに失敗 — 'bash tests/test-codex-reviewer-route.sh' で詳細確認"
+fi
+
+if bash "$PLUGIN_ROOT/tests/test-codex-reviewer-loader.sh" > /dev/null 2>&1; then
+    pass_test "Codex setup binds the managed reviewer and preserves custom role settings (test-codex-reviewer-loader.sh)"
+else
+    fail_test "Codex reviewer loader setup regression failed; run bash tests/test-codex-reviewer-loader.sh"
 fi
 
 if bash "$PLUGIN_ROOT/tests/test-impl-backend.sh" > /dev/null 2>&1; then

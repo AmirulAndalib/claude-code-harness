@@ -64,7 +64,7 @@ assert_contains "$ROOT_DIR/README.md" "Codex Breezing role routing"
 assert_contains "$ROOT_DIR/README.md" 'Both implementation Workers use'
 assert_contains "$ROOT_DIR/README.md" '`gpt-5.6-luna` / `max`'
 assert_contains "$ROOT_DIR/README.md" 'the routed Codex review route uses'
-assert_contains "$ROOT_DIR/README.md" '`gpt-5.6-sol` /'
+assert_contains "$ROOT_DIR/README.md" '`gpt-6-astra` /'
 assert_contains "$ROOT_DIR/README.md" "main Codex session model stays unpinned"
 
 assert_contains "$ROOT_DIR/README_ja.md" "## 何を解決するか"
@@ -86,7 +86,7 @@ assert_contains "$ROOT_DIR/README_ja.md" "Codex Breezing の役割別ルーテ�
 assert_contains "$ROOT_DIR/README_ja.md" 'どちらの実装 Worker も'
 assert_contains "$ROOT_DIR/README_ja.md" '`gpt-5.6-luna` / `max`'
 assert_contains "$ROOT_DIR/README_ja.md" 'Codex review route は'
-assert_contains "$ROOT_DIR/README_ja.md" '`gpt-5.6-sol` /'
+assert_contains "$ROOT_DIR/README_ja.md" '`gpt-6-astra` /'
 assert_contains "$ROOT_DIR/README_ja.md" "メイン Codex セッションのモデルは固定しません"
 assert_not_contains "$ROOT_DIR/README_ja.md" "## The loop"
 assert_not_contains "$ROOT_DIR/README_ja.md" "## Install by tool"

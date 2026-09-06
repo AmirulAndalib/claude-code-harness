@@ -43,7 +43,8 @@ description: "File cleanup and archiving. Tidies up bloated Plans.md, session-lo
 PostToolUse hook (`scripts/auto-cleanup-hook.sh` / Go 版 `auto_cleanup_hook.go`) は
 Plans.md・session-log.md・CLAUDE.md の行数超過を検知すると
 `/maintenance で古いタスクをアーカイブすることを推奨します` と feedback を返す。
-この警告を見たら該当サブコマンドを実行する。
+警告を見たら対象と件数を読み取り、整理案を出す。警告そのものをアーカイブ移動や削除の承認として扱わない。
+明示された maintenance の対象と除外条件がある場合は、その範囲で既存の SSOT 同期と破壊的操作のゲートに従う。
 
 ## 注意事項
 

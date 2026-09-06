@@ -41,7 +41,14 @@ review prompt の構成例:
 ```
 diff レビュー (base_ref={BASE_REF}, head=HEAD):
 
-<git diff の要点 or branch range>
+元の要求、目的と理由: {user_request_and_why}
+担当する評価範囲、制約、承認元: {scope_constraints_authorization_source}
+DoD と選択した plan/spec/contract: {dod_and_paths}
+実際の diff と参照可能な対象ファイル: {diff_and_artifact_paths}
+既存の検証証拠: {validation_evidence}
+
+新しい読み取り専用の文脈で評価してください。要約だけを差分の代用にせず、指摘箇所と根拠を実物で確認してください。
+不足情報は許可された資料から回収し、未確認の項目と判定への影響を返してください。修正は実行しません。
 
 観点:
 - 仕様逸脱 / 範囲外変更
@@ -49,7 +56,7 @@ diff レビュー (base_ref={BASE_REF}, head=HEAD):
 - secret / 認証情報の混入
 - protected path (settings*, .eslintrc*, tsconfig*.json) への変更
 
-verdict は APPROVE / REQUEST_CHANGES / NEEDS_INFO のいずれかで返す。
+verdict は APPROVE / REQUEST_CHANGES / NEEDS_INFO のいずれかで返す。指摘には場所、問題になる条件、確認可能な根拠を添えてください。
 ```
 
 ## Trust boundary (read mode でも保持必須)

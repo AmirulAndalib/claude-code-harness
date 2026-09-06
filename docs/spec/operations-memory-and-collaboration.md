@@ -337,6 +337,23 @@ max-iteration cap is hit, after which it escalates to the human. The Sub-Lead
 reports up to the Lead, which aggregates. Workers still never message each other;
 all coordination is spoke->hub.
 
+Implementation boundary (2026-09-05): the Go opt-in
+`HARNESS_TEAM_HIERARCHY=sublead` is not operational. Its production planner
+invokes the current harness executable as `plan decompose --lane`, but
+`runPlan` emits a Markdown host prompt rather than the JSON mini-plan the
+planner expects. The default Go topology remains flat; do not enable sublead
+as part of prompt or model calibration. Mock-planner tests prove orchestration
+logic, not this production entrypoint. Enabling it requires a real harness
+subprocess returning the mini-plan and dispatching its subtasks to a test
+worker. This limitation does not change the manually orchestrated role design.
+
+The separate Go opt-in `HARNESS_REVIEW_ITERATE=on` also remains unavailable
+end to end: the production brain resolver expects `claude-companion.sh`, which
+is not supplied. Prompt, verdict, and dispatch tests use explicit fixtures and
+do not prove a working provider loop. Keep this option OFF until its production
+brain runner is implemented and verified. Normal skill/native reviewer flows
+are separate from this Go opt-in.
+
 Mode 2 — CCH-owned live notice messaging. Live, notice-guaranteed messaging
 between concurrent human-opened peer terminals (Mode 2 peers only) is owned by
 claude-code-harness, NOT the memory layer. Mode 2 transport is for peer

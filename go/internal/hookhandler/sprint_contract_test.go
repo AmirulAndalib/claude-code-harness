@@ -46,7 +46,7 @@ func TestSprintContractGenerator_RuntimeContract(t *testing.T) {
 	if doc.Advisor.MaxConsults != 3 || doc.Advisor.RetryThreshold != 2 || !doc.Advisor.PreEscalationConsult {
 		t.Fatalf("unexpected advisor thresholds: %+v", doc.Advisor)
 	}
-	if doc.Advisor.ModelPolicy.ClaudeDefault != "opus" || doc.Advisor.ModelPolicy.CodexDefault != "gpt-5.6-sol" {
+	if doc.Advisor.ModelPolicy.ClaudeDefault != "claude-fable-5-1" || doc.Advisor.ModelPolicy.CodexDefault != "gpt-6-astra" {
 		t.Fatalf("unexpected advisor model policy: %+v", doc.Advisor.ModelPolicy)
 	}
 	if len(doc.Advisor.Triggers) != 0 {

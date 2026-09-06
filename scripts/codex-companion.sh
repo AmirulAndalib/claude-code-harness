@@ -16,11 +16,10 @@
 # Subcommands: task, review, adversarial-review, setup, status, result, cancel
 #
 # Effort 伝播:
-#   task サブコマンド実行時に calculate-effort.sh で effort を計算し、
-#   --effort フラグで companion に渡す。calculate-effort.sh がない場合は
-#   環境変数 CODEX_EFFORT（未設定時: medium）にフォールバックする。
-#   official companion が受け付けない routed max は raw `codex exec` の
-#   `model_reasoning_effort="max"` config override へ正規化する。
+#   task は明示 CLI/config > CODEX_EFFORT > role routing の順で解決する。
+#   calculate-effort.sh は routing を明示的に無効化した互換経路だけで使う。
+#   official companion が受け付けない max / ultra は Codex runtime の
+#   `model_reasoning_effort` config へ渡す。公開 API の対応値とは別の契約。
 #
 # Worktree containment (Phase 92.2.2):
 #   task 実行の前後で `bin/harness wt fingerprint` を呼び、$HOME 機微パスへの
@@ -74,6 +73,20 @@ CODEX_REVIEW_ROUTE_RESOLVED=0
 CODEX_REVIEW_ROUTED_MODEL=""
 CODEX_REVIEW_ROUTED_EFFORT=""
 CODEX_LEDGER_EMITTED=0
+CODEX_NORMALIZED_ARGS=()
+CODEX_EXPLICIT_MODEL=""
+CODEX_EXPLICIT_EFFORT=""
+CODEX_TASK_EFFORT=""
+CODEX_STATE_MODE=""
+CODEX_HAS_OUTPUT_SCHEMA=0
+CODEX_HAS_EXTRA_CONFIG=0
+CODEX_TASK_PROMPT_FILE=""
+CODEX_TASK_WRITE_INTENT=0
+CODEX_TASK_EXPLICIT_SANDBOX=0
+CODEX_TARGET_CWD="${PWD}"
+CODEX_SEEN_OPTIONS="|"
+TASK_STDIN_CAPTURED=0
+TASK_STDIN_CONTENT=""
 REVIEW_COMPANION_ARGS=()
 REVIEW_EXPLICIT_MODEL=0
 REVIEW_EXPLICIT_MODEL_VALUE=""
@@ -145,7 +158,7 @@ run_task_with_fingerprint() {
 
 is_valid_codex_effort() {
   case "${1:-}" in
-    none|minimal|low|medium|high|xhigh|max) return 0 ;;
+    none|minimal|low|medium|high|xhigh|max|ultra) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -157,12 +170,259 @@ is_valid_codex_model() {
   esac
 }
 
+record_codex_override() {
+  local kind="$1" value="$2" previous=""
+  case "${kind}" in
+    model)
+      previous="${CODEX_EXPLICIT_MODEL}"
+      if ! is_valid_codex_model "${value}"; then
+        echo "ERROR: invalid ${SUBCOMMAND} model '${value}'; refusing provider dispatch." >&2
+        return 1
+      fi
+      ;;
+    effort)
+      previous="${CODEX_EXPLICIT_EFFORT}"
+      if ! is_valid_codex_effort "${value}"; then
+        echo "ERROR: invalid effort '${value}' for ${SUBCOMMAND}; refusing provider dispatch." >&2
+        return 1
+      fi
+      ;;
+  esac
+  # Do not let different parsers choose different winners for duplicate flags.
+  # This includes repeating the same value and mixing flags with -c overrides.
+  if [ -n "${previous}" ]; then
+    echo "ERROR: duplicate ${SUBCOMMAND} ${kind} override; refusing provider dispatch." >&2
+    return 1
+  fi
+  if [ "${kind}" = model ]; then CODEX_EXPLICIT_MODEL="${value}";
+  else CODEX_EXPLICIT_EFFORT="${value}"; fi
+  CODEX_NORMALIZED_ARGS+=("--${kind}" "${value}")
+}
+
+normalize_codex_config() {
+  local config="$1" key value quote
+  if [[ ! "${config}" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_.-]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+    echo "ERROR: unsupported ${SUBCOMMAND} config syntax; refusing provider dispatch." >&2
+    return 1
+  fi
+  key="${BASH_REMATCH[1]}"
+  value="${BASH_REMATCH[2]}"
+  value="${value%"${value##*[![:space:]]}"}"
+  case "${key}" in
+    model|model_reasoning_effort|model_verbosity)
+      # Model IDs and effort names contain no escapes. Accept a bare value or
+      # a matching TOML string; reject malformed strings before any dispatch.
+      case "${value}" in
+        \"*|\'*)
+          quote="${value:0:1}"
+          if [ "${#value}" -lt 2 ] || [ "${value: -1}" != "${quote}" ]; then
+            echo "ERROR: malformed ${SUBCOMMAND} config '${key}'; refusing provider dispatch." >&2
+            return 1
+          fi
+          value="${value:1:${#value}-2}"
+          ;;
+      esac
+      case "${key}" in
+        model) record_codex_override model "${value}" ;;
+        model_reasoning_effort) record_codex_override effort "${value}" ;;
+        model_verbosity)
+          if [ "${SUBCOMMAND}" != task ]; then
+            echo "ERROR: unsupported ${SUBCOMMAND} config '${key}'; refusing provider dispatch." >&2
+            return 1
+          fi
+          case "${value}" in
+            low|medium|high) ;;
+            *) echo "ERROR: invalid model_verbosity; refusing provider dispatch." >&2; return 1 ;;
+          esac
+          CODEX_HAS_EXTRA_CONFIG=1
+          CODEX_NORMALIZED_ARGS+=(-c "model_verbosity=\"${value}\"")
+          ;;
+      esac
+      ;;
+    *)
+      # This adapter changes model selection, not provider, MCP, approval, or
+      # permission configuration. Only the explicit model controls above are
+      # supported; unknown keys must not open a new runtime configuration path.
+      echo "ERROR: unsupported ${SUBCOMMAND} config '${key}'; refusing provider dispatch." >&2
+      return 1
+      ;;
+  esac
+}
+
+record_codex_option_once() {
+  case "${CODEX_SEEN_OPTIONS}" in
+    *"|$1|"*)
+      echo "ERROR: duplicate ${SUBCOMMAND} $1 option; refusing provider dispatch." >&2
+      return 1
+      ;;
+  esac
+  CODEX_SEEN_OPTIONS="${CODEX_SEEN_OPTIONS}$1|"
+}
+
+normalize_codex_overrides() {
+  CODEX_NORMALIZED_ARGS=("$1")
+  shift
+  local current key value inline option_args saw_add_dir=0
+  while [ $# -gt 0 ]; do
+    current="$1"
+    shift
+    if [ "${current}" = -- ]; then
+      CODEX_NORMALIZED_ARGS+=(-- "$@")
+      break
+    fi
+    key="${current%%=*}"
+    value=""
+    inline=0
+    option_args=("${current}")
+    if [ "${key}" != "${current}" ]; then value="${current#*=}"; inline=1; fi
+    case "${current}" in
+      -c=*|-C=*|-s=*) ;;
+      -c?*) key=-c; value="${current#-c}"; inline=1 ;;
+      -C?*) key=-C; value="${current#-C}"; inline=1 ;;
+      -s?*) key=-s; value="${current#-s}"; inline=1 ;;
+    esac
+    case "${key}" in
+      -m) key=--model ;;
+      --config) key=-c ;;
+      --cd|-C) key=--cwd ;;
+      -s) key=--sandbox ;;
+      -i) key=--image ;;
+      -o) key=--output-last-message ;;
+      --yolo) key=--dangerously-bypass-approvals-and-sandbox ;;
+    esac
+    case "${key}" in
+      --model|--effort|-c|--cwd|--json|--background|--resume-last|--resume|--fresh) ;;
+      --write|--sandbox|--output-schema|--prompt-file|--output-last-message|--image|--add-dir|--color|--ephemeral|--skip-git-repo-check|--full-auto|--dangerously-bypass-approvals-and-sandbox)
+        if [ "${SUBCOMMAND}" != task ]; then
+          echo "ERROR: unsupported ${SUBCOMMAND} option '${current}'; refusing provider dispatch." >&2
+          return 1
+        fi
+        ;;
+      --base|--scope|--wait|--uncommitted)
+        if [ "${SUBCOMMAND}" = task ]; then
+          echo "ERROR: unsupported task option '${current}'; refusing provider dispatch." >&2
+          return 1
+        fi
+        ;;
+      --commit)
+        echo "ERROR: review --commit target is unsupported by official companion; refusing provider dispatch." >&2
+        return 1
+        ;;
+      -) CODEX_NORMALIZED_ARGS+=("${current}"); continue ;;
+      -*)
+        # Runtime passthrough is an explicit list. New profile/provider/rule
+        # switches must not become new configuration entry points by accident.
+        echo "ERROR: unsupported ${SUBCOMMAND} option '${current}'; refusing provider dispatch." >&2
+        return 1
+        ;;
+      *) CODEX_NORMALIZED_ARGS+=("${current}"); continue ;;
+    esac
+    case "${key}" in
+      --write|--json|--background|--resume-last|--resume|--fresh|--wait|--uncommitted|--ephemeral|--skip-git-repo-check|--full-auto|--dangerously-bypass-approvals-and-sandbox)
+        case "${key}" in
+          --ephemeral|--skip-git-repo-check|--full-auto|--dangerously-bypass-approvals-and-sandbox)
+            if [ "${inline}" -eq 1 ]; then
+              echo "ERROR: ${SUBCOMMAND} ${key} does not accept a value; refusing provider dispatch." >&2
+              return 1
+            fi
+            ;;
+        esac
+        if [ "${inline}" -eq 0 ]; then value=true; fi
+        case "${value}" in
+          true|false) ;;
+          *) echo "ERROR: invalid boolean for ${SUBCOMMAND} ${key}; refusing provider dispatch." >&2; return 1 ;;
+        esac
+        record_codex_option_once "${key}" || return 1
+        [ "${value}" = false ] && continue
+        case "${key}" in
+          --write) CODEX_TASK_WRITE_INTENT=1 ;;
+          --full-auto|--dangerously-bypass-approvals-and-sandbox)
+            CODEX_TASK_WRITE_INTENT=1
+            CODEX_TASK_EXPLICIT_SANDBOX=1
+            ;;
+          --background|--resume-last|--resume|--fresh) CODEX_STATE_MODE="${key#--}" ;;
+        esac
+        # The guard, ledger and both providers see the same boolean spelling.
+        CODEX_NORMALIZED_ARGS+=("${key}")
+        ;;
+      *)
+        if [ "${inline}" -eq 0 ]; then
+          if [ $# -eq 0 ]; then
+            if [ "${key}" = --effort ]; then
+              echo "ERROR: ${SUBCOMMAND} --effort requires an effort value; refusing provider dispatch." >&2
+            else
+              echo "ERROR: ${SUBCOMMAND} ${key} requires a value; refusing provider dispatch." >&2
+            fi
+            return 1
+          fi
+          value="$1"
+          shift
+          option_args+=("${value}")
+          if [[ "${value}" == -* ]]; then
+            echo "ERROR: ${SUBCOMMAND} ${key} requires a value, not another option; refusing provider dispatch." >&2
+            return 1
+          fi
+        fi
+        if [ -z "${value}" ]; then
+          echo "ERROR: ${SUBCOMMAND} ${key} requires a value; refusing provider dispatch." >&2
+          return 1
+        fi
+        case "${key}" in
+          --model) record_codex_override model "${value}" || return 1; continue ;;
+          --effort) record_codex_override effort "${value}" || return 1; continue ;;
+          -c) normalize_codex_config "${value}" || return 1; continue ;;
+          --image|--add-dir) ;; # These options intentionally accept multiple entries.
+          *) record_codex_option_once "${key}" || return 1 ;;
+        esac
+        case "${key}" in
+          --cwd)
+            case "${value}" in
+              /*) CODEX_TARGET_CWD="${value}" ;;
+              *) CODEX_TARGET_CWD="${PWD}/${value}" ;;
+            esac
+            # Both providers must receive the same target used by the guard.
+            # Native companion only accepts separated --cwd/-C values safely.
+            option_args=(--cwd "${CODEX_TARGET_CWD}")
+            ;;
+          --sandbox)
+            case "${value}" in
+              read-only) ;;
+              workspace-write|danger-full-access) CODEX_TASK_WRITE_INTENT=1 ;;
+              *) echo "ERROR: invalid task sandbox '${value}'; refusing provider dispatch." >&2; return 1 ;;
+            esac
+            CODEX_TASK_EXPLICIT_SANDBOX=1
+            ;;
+          --prompt-file) CODEX_TASK_PROMPT_FILE="${value}"; continue ;;
+          --output-schema) CODEX_HAS_OUTPUT_SCHEMA=1 ;;
+          --add-dir) saw_add_dir=1 ;;
+          --base|--scope) option_args=("${key}" "${value}") ;;
+        esac
+        CODEX_NORMALIZED_ARGS+=("${option_args[@]}")
+        ;;
+    esac
+  done
+  # The primary-environment guard validates one cwd, not additional writable
+  # roots. Preserve --add-dir only when it cannot extend write permissions.
+  if [ "${saw_add_dir}" -eq 1 ] && [ "${CODEX_TASK_WRITE_INTENT}" -eq 1 ]; then
+    echo "ERROR: task --add-dir is supported only without write intent; refusing provider dispatch." >&2
+    return 1
+  fi
+  if [ -n "${CODEX_TASK_PROMPT_FILE}" ]; then
+    case "${CODEX_TASK_PROMPT_FILE}" in
+      /*) ;;
+      *) CODEX_TASK_PROMPT_FILE="${CODEX_TARGET_CWD}/${CODEX_TASK_PROMPT_FILE}" ;;
+    esac
+    CODEX_NORMALIZED_ARGS=("${CODEX_NORMALIZED_ARGS[0]}" --prompt-file "${CODEX_TASK_PROMPT_FILE}" "${CODEX_NORMALIZED_ARGS[@]:1}")
+  fi
+}
+
 resolve_codex_route_for_task() {
   if [ "${HARNESS_DISABLE_MODEL_ROUTING:-0}" = "1" ]; then
     return 0
   fi
   if [ ! -x "${MODEL_ROUTER}" ]; then
-    return 0
+    echo "ERROR: Codex model router is unavailable; refusing provider dispatch." >&2
+    return 1
   fi
   if [ "${CODEX_ROUTE_RESOLVED}" -eq 1 ]; then
     return 0
@@ -185,16 +445,6 @@ resolve_codex_route_for_task() {
   fi
   CODEX_ROUTED_EFFORT="${routed_output}"
   CODEX_ROUTE_RESOLVED=1
-}
-
-resolve_codex_model_for_task() {
-  resolve_codex_route_for_task || return 1
-  printf '%s\n' "${CODEX_ROUTED_MODEL}"
-}
-
-resolve_codex_effort_for_task() {
-  resolve_codex_route_for_task || return 1
-  printf '%s\n' "${CODEX_ROUTED_EFFORT}"
 }
 
 resolve_codex_route_for_review() {
@@ -223,58 +473,14 @@ resolve_codex_route_for_review() {
   return 0
 }
 
-args_have_codex_model() {
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --model|-m|--model=*|-m=*) return 0 ;;
-    esac
-    shift || true
-  done
-  return 1
-}
-
 extract_target_cwd() {
-  shift || true
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --cwd|--cd|-C)
-        printf '%s\n' "${2:-$PWD}"
-        return 0
-        ;;
-      --cwd=*|--cd=*|-C=*)
-        printf '%s\n' "${1#*=}"
-        return 0
-        ;;
-    esac
-    shift || true
-  done
-  printf '%s\n' "$PWD"
+  printf '%s\n' "${CODEX_TARGET_CWD}"
 }
 
 task_has_write_intent() {
-  [ "${1:-}" = "task" ] || return 1
-  shift || true
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --write|--full-auto|--dangerously-bypass-approvals-and-sandbox)
-        return 0
-        ;;
-      --sandbox|-s)
-        case "${2:-}" in
-          workspace-write|danger-full-access) return 0 ;;
-        esac
-        shift 2
-        continue
-        ;;
-      --sandbox=*|-s=*)
-        case "${1#*=}" in
-          workspace-write|danger-full-access) return 0 ;;
-        esac
-        ;;
-    esac
-    shift || true
-  done
-  return 1
+  # Normalization consumes option values and stops at -- exactly once. Do not
+  # reinterpret prompt text or choose a different duplicate-option winner.
+  [ "${1:-}" = task ] && [ "${CODEX_TASK_WRITE_INTENT}" -eq 1 ]
 }
 
 guard_primary_environment_if_needed() {
@@ -291,128 +497,74 @@ guard_primary_environment_if_needed() {
 
 should_use_structured_task_exec() {
   [ "${1:-}" = "task" ] || return 1
-  shift || true
-  for arg in "$@"; do
-    case "$arg" in
-      --output-schema|--output-schema=*) return 0 ;;
-      --background|--resume-last|--resume|--fresh) return 1 ;;
+  [ "${CODEX_HAS_OUTPUT_SCHEMA}" -eq 1 ] && return 0
+  [ "${CODEX_HAS_EXTRA_CONFIG}" -eq 1 ] && return 0
+  # Only the task options understood by official companion 1.0.6 may use its
+  # transport. Unknown CLI options there become prompt text; notably --write
+  # plus --sandbox read-only would otherwise execute with workspace-write.
+  # Pass runtime options to Codex itself regardless of reasoning effort.
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --) break ;;
+      --model|--effort|--cwd|-C|--prompt-file) shift 2 ;;
+      --model=*|--effort=*|--cwd=*|--prompt-file=*|--write|--json|--resume-last|--resume|--fresh|--background|--write=*|--json=*|--resume-last=*|--resume=*|--fresh=*|--background=*) shift ;;
+      -) shift ;;
+      -*) return 0 ;;
+      *) shift ;;
     esac
   done
-
-  # The official companion rejects the max effort value. Keep explicit
-  # non-max effort requests on that path, but normalize routed max through
-  # `codex exec -c model_reasoning_effort="max"` instead.
-  local explicit_effort=""
-  local expect_effort=0
-  for arg in "$@"; do
-    if [ "${expect_effort}" -eq 1 ]; then
-      explicit_effort="${arg}"
-      expect_effort=0
-      continue
-    fi
-    case "$arg" in
-      --effort) expect_effort=1 ;;
-      --effort=*) explicit_effort="${arg#*=}" ;;
-    esac
-  done
-  if [ -n "${explicit_effort}" ]; then
-    [ "${explicit_effort}" = "max" ]
-    return
-  fi
-  if [ "${CODEX_EFFORT:-}" = "max" ]; then
-    return 0
-  fi
-  [ "$(resolve_codex_effort_for_task)" = "max" ]
+  # Official companion 1.0.6 accepts <=xhigh. Only Codex runtime transports
+  # can preserve max/ultra; never substitute a lower effort for these values.
+  case "${CODEX_TASK_EFFORT}" in max|ultra) return 0 ;; esac
+  return 1
 }
 
-task_requested_effort() {
-  local explicit_effort=""
-  local expect_effort=0
-  local arg
-  for arg in "$@"; do
-    if [ "${expect_effort}" -eq 1 ]; then
-      explicit_effort="${arg}"
-      expect_effort=0
-      continue
-    fi
-    case "${arg}" in
-      --effort) expect_effort=1 ;;
-      --effort=*) explicit_effort="${arg#*=}" ;;
-    esac
-  done
-
-  if [ -n "${explicit_effort}" ]; then
-    printf '%s\n' "${explicit_effort}"
-  elif [ "${CODEX_EFFORT:-}" = "max" ]; then
-    printf 'max\n'
-  elif [ "${HARNESS_DISABLE_MODEL_ROUTING:-0}" != "1" ] && [ -x "${MODEL_ROUTER}" ]; then
-    resolve_codex_effort_for_task
-  fi
-}
-
-task_prompt_file_path() {
-  [ "${1:-}" = "task" ] || return 0
-  shift || true
-
-  local prompt_file=""
-  local expect_prompt_file=0
-  local arg
-  for arg in "$@"; do
-    if [ "${expect_prompt_file}" -eq 1 ]; then
-      prompt_file="${arg}"
-      expect_prompt_file=0
-      continue
-    fi
-    case "${arg}" in
-      --prompt-file) expect_prompt_file=1 ;;
-      --prompt-file=*) prompt_file="${arg#*=}" ;;
-    esac
-  done
-
-  if [ "${expect_prompt_file}" -eq 1 ]; then
-    echo "ERROR: task --prompt-file requires a readable file path; refusing provider dispatch." >&2
-    return 1
-  fi
-  printf '%s\n' "${prompt_file}"
-}
-
-validate_task_effort() {
-  [ "${1:-}" = "task" ] || return 0
-  shift || true
-
-  local expect_effort=0
-  local arg
-  for arg in "$@"; do
-    if [ "${expect_effort}" -eq 1 ]; then
-      if ! is_valid_codex_effort "${arg}"; then
-        echo "ERROR: invalid effort '${arg}'; refusing provider dispatch." >&2
-        return 1
-      fi
-      expect_effort=0
-      continue
-    fi
-    case "${arg}" in
-      --effort) expect_effort=1 ;;
-      --effort=*)
-        if ! is_valid_codex_effort "${arg#*=}"; then
-          echo "ERROR: invalid effort '${arg#*=}'; refusing provider dispatch." >&2
-          return 1
+resolve_task_effort() {
+  if [ -n "${CODEX_EXPLICIT_EFFORT}" ]; then
+    CODEX_TASK_EFFORT="${CODEX_EXPLICIT_EFFORT}"
+  elif [ -n "${CODEX_EFFORT:-}" ]; then
+    CODEX_TASK_EFFORT="${CODEX_EFFORT}"
+  elif [ "${HARNESS_DISABLE_MODEL_ROUTING:-0}" != 1 ]; then
+    CODEX_TASK_EFFORT="${CODEX_ROUTED_EFFORT}"
+  elif [ -z "${CODEX_STATE_MODE}" ]; then
+    # Legacy prompt inference is opt-in via disabled routing. It must never
+    # override a caller's explicit env/argv or a role's resolved effort.
+    local description="" current expect_value=0 after_separator=0
+    shift
+    for current in "$@"; do
+      if [ "${after_separator}" -eq 1 ]; then description="${current}"; continue; fi
+      if [ "${expect_value}" -eq 1 ]; then expect_value=0; continue; fi
+      case "${current}" in
+        --) after_separator=1 ;;
+        --write|--json|--full-auto|--ephemeral|--oss|--skip-git-repo-check|--dangerously-bypass-approvals-and-sandbox) ;;
+        -*=*) ;;
+        -*) expect_value=1 ;;
+        *) description="${current}" ;;
+      esac
+    done
+    CODEX_TASK_EFFORT=medium
+    if [ -f "${SCRIPT_DIR}/calculate-effort.sh" ]; then
+      if [ -n "${description}" ]; then
+        CODEX_TASK_EFFORT="$(bash "${SCRIPT_DIR}/calculate-effort.sh" "${description}" 2>/dev/null || true)"
+      elif [ ! -t 0 ]; then
+        TASK_STDIN_CONTENT="$(cat)"
+        TASK_STDIN_CAPTURED=1
+        if [ -n "${TASK_STDIN_CONTENT}" ]; then
+          CODEX_TASK_EFFORT="$(bash "${SCRIPT_DIR}/calculate-effort.sh" <<<"${TASK_STDIN_CONTENT}" 2>/dev/null || true)"
         fi
-        ;;
-    esac
-  done
-
-  if [ "${expect_effort}" -eq 1 ]; then
-    echo "ERROR: task --effort requires an effort value; refusing provider dispatch." >&2
+      fi
+    fi
+    if ! is_valid_codex_effort "${CODEX_TASK_EFFORT}"; then CODEX_TASK_EFFORT=medium; fi
+  fi
+  if [ -n "${CODEX_TASK_EFFORT}" ] && ! is_valid_codex_effort "${CODEX_TASK_EFFORT}"; then
+    echo "ERROR: invalid task effort '${CODEX_TASK_EFFORT}'; refusing provider dispatch." >&2
     return 1
   fi
 }
 
 validate_task_prompt_file() {
-  local prompt_file
-  if ! prompt_file="$(task_prompt_file_path "$@")"; then
-    return 1
-  fi
+  local prompt_file="${CODEX_TASK_PROMPT_FILE}"
   [ -n "${prompt_file}" ] || return 0
   if [ ! -f "${prompt_file}" ] || [ ! -r "${prompt_file}" ]; then
     echo "ERROR: task --prompt-file cannot read '${prompt_file}'; refusing provider dispatch." >&2
@@ -422,19 +574,15 @@ validate_task_prompt_file() {
 
 reject_unrepresentable_task_mode() {
   [ "${1:-}" = "task" ] || return 0
-
-  local state_mode=""
-  local arg
-  for arg in "$@"; do
-    case "${arg}" in
-      --background|--resume-last|--resume|--fresh)
-        state_mode="${arg#--}"
-        ;;
-    esac
-  done
-
-  if [ -n "${state_mode}" ] && [ "$(task_requested_effort "$@")" = "max" ]; then
-    echo "ERROR: task --${state_mode} cannot preserve max effort; refusing provider dispatch." >&2
+  [ -n "${CODEX_STATE_MODE}" ] || return 0
+  case "${CODEX_TASK_EFFORT}" in
+    max|ultra)
+      echo "ERROR: task --${CODEX_STATE_MODE} cannot preserve ${CODEX_TASK_EFFORT} effort; refusing provider dispatch." >&2
+      return 1
+      ;;
+  esac
+  if should_use_structured_task_exec "$@"; then
+    echo "ERROR: task --${CODEX_STATE_MODE} cannot preserve structured/config execution; refusing provider dispatch." >&2
     return 1
   fi
 }
@@ -443,10 +591,9 @@ run_structured_task_exec() {
   local passthrough=()
   local saw_write=0
   local saw_sandbox=0
-  local saw_model=0
   local prompt_file=""
   local current=""
-  local explicit_sandbox=0
+  local explicit_sandbox="${CODEX_TASK_EXPLICIT_SANDBOX}"
 
   # Codex 0.123.0+ inherits root-level shared flags for `codex exec`.
   # These exec-local sandbox defaults are kept only to encode Harness task intent:
@@ -455,18 +602,15 @@ run_structured_task_exec() {
   # `--full-auto` is deprecated in current Codex guidance, so Harness must not
   # add it by default here; explicit caller intent is passed through unchanged.
   shift || true # drop "task"
-  for current in "$@"; do
-    case "${current}" in
-      --sandbox|-s|--sandbox=*|-s=*|--full-auto|--dangerously-bypass-approvals-and-sandbox)
-        explicit_sandbox=1
-        ;;
-    esac
-  done
   while [ $# -gt 0 ]; do
     current="$1"
     case "$current" in
-      --background|--resume-last|--resume|--fresh)
-        echo "ERROR: structured task mode does not support ${current}" >&2
+      --)
+        passthrough+=("$@")
+        break
+        ;;
+      --background|--resume-last|--resume|--fresh|--background=*|--resume-last=*|--resume=*|--fresh=*)
+        echo "ERROR: structured task mode does not support ${current}; refusing provider dispatch." >&2
         exit 2
         ;;
       --prompt-file)
@@ -488,7 +632,7 @@ run_structured_task_exec() {
         fi
         shift
         ;;
-      --sandbox|-s|--sandbox=*|-s=*|--full-auto|--dangerously-bypass-approvals-and-sandbox)
+      --sandbox|-s|--sandbox=*|-s?*|--full-auto|--dangerously-bypass-approvals-and-sandbox)
         saw_sandbox=1
         passthrough+=("${current}")
         shift
@@ -523,9 +667,6 @@ run_structured_task_exec() {
         shift
         ;;
       *)
-        case "$current" in
-          --model|-m|--model=*|-m=*) saw_model=1 ;;
-        esac
         passthrough+=("${current}")
         shift
         if [ "${current}" = "--model" ] || [ "${current}" = "-m" ] || \
@@ -534,8 +675,7 @@ run_structured_task_exec() {
            [ "${current}" = "-c" ] || [ "${current}" = "--config" ] || \
            [ "${current}" = "-C" ] || [ "${current}" = "--cd" ] || \
            [ "${current}" = "--add-dir" ] || [ "${current}" = "-i" ] || \
-           [ "${current}" = "--image" ] || [ "${current}" = "--color" ] || \
-           [ "${current}" = "--local-provider" ]; then
+           [ "${current}" = "--image" ] || [ "${current}" = "--color" ]; then
           passthrough+=("${1:-}")
           shift || true
         fi
@@ -544,15 +684,7 @@ run_structured_task_exec() {
   done
 
   if [ "${saw_write}" -eq 0 ] && [ "${saw_sandbox}" -eq 0 ]; then
-    passthrough+=(--sandbox read-only)
-  fi
-
-  if [ "${saw_model}" -eq 0 ]; then
-    local routed_model
-    routed_model="$(resolve_codex_model_for_task)"
-    if [ -n "${routed_model}" ]; then
-      passthrough+=(--model "${routed_model}")
-    fi
+    passthrough=(--sandbox read-only "${passthrough[@]+"${passthrough[@]}"}")
   fi
 
   if [ -n "${prompt_file}" ]; then
@@ -600,6 +732,10 @@ normalize_review_args() {
     fi
 
     case "${current}" in
+      --)
+        REVIEW_COMPANION_ARGS+=(-- "$@")
+        break
+        ;;
       --effort)
         expect="effort"
         ;;
@@ -662,8 +798,8 @@ normalize_review_args() {
     return 1
   fi
 
-  if [ "${REVIEW_EXPLICIT_MODEL}" -eq 0 ]; then
-    REVIEW_COMPANION_ARGS+=(--model "${CODEX_REVIEW_ROUTED_MODEL}")
+  if [ "${REVIEW_EXPLICIT_MODEL}" -eq 0 ] && [ -n "${CODEX_REVIEW_ROUTED_MODEL}" ]; then
+    REVIEW_COMPANION_ARGS=("${REVIEW_COMPANION_ARGS[0]}" --model "${CODEX_REVIEW_ROUTED_MODEL}" "${REVIEW_COMPANION_ARGS[@]:1}")
   fi
 }
 
@@ -741,6 +877,7 @@ start_review_app_server() {
   local app_server_log
   local config_model config_review_model config_effort effective_model
   local proxy_script
+  local config_args=()
   local i
 
   codex_bin="$(command -v codex 2>/dev/null || true)"
@@ -773,28 +910,26 @@ start_review_app_server() {
   if [ "${REVIEW_EXPLICIT_MODEL}" -eq 1 ]; then
     effective_model="${REVIEW_EXPLICIT_MODEL_VALUE}"
   fi
-  config_model="model=\"${effective_model}\""
-  config_review_model="review_model=\"${effective_model}\""
+  if [ -n "${effective_model}" ]; then
+    config_model="model=\"${effective_model}\""
+    config_review_model="review_model=\"${effective_model}\""
+    config_args+=(--config "${config_model}" --config "${config_review_model}")
+  fi
 
+  config_effort=""
   if [ -n "${REVIEW_EXPLICIT_EFFORT}" ]; then
     config_effort="model_reasoning_effort=\"${REVIEW_EXPLICIT_EFFORT}\""
-  else
+  elif [ -n "${CODEX_REVIEW_ROUTED_EFFORT}" ]; then
     config_effort="model_reasoning_effort=\"${CODEX_REVIEW_ROUTED_EFFORT}\""
   fi
 
   if [ -n "${config_effort}" ]; then
-    node "${proxy_script}" --endpoint "${REVIEW_APP_SERVER_ENDPOINT}" \
-      --ready-file "${REVIEW_APP_SERVER_READY_FILE}" --codex "${codex_bin}" \
-      --status-file "${REVIEW_APP_SERVER_STATUS_FILE}" \
-      --config "${config_model}" --config "${config_review_model}" --config "${config_effort}" \
-      >"${app_server_log}" 2>&1 &
-  else
-    node "${proxy_script}" --endpoint "${REVIEW_APP_SERVER_ENDPOINT}" \
-      --ready-file "${REVIEW_APP_SERVER_READY_FILE}" --codex "${codex_bin}" \
-      --status-file "${REVIEW_APP_SERVER_STATUS_FILE}" \
-      --config "${config_model}" --config "${config_review_model}" \
-      >"${app_server_log}" 2>&1 &
+    config_args+=(--config "${config_effort}")
   fi
+  node "${proxy_script}" --endpoint "${REVIEW_APP_SERVER_ENDPOINT}" \
+    --ready-file "${REVIEW_APP_SERVER_READY_FILE}" --codex "${codex_bin}" \
+    --status-file "${REVIEW_APP_SERVER_STATUS_FILE}" \
+    "${config_args[@]+"${config_args[@]}"}" >"${app_server_log}" 2>&1 &
   REVIEW_APP_SERVER_PID=$!
 
   # Codex app-server startup is bounded but can exceed two seconds on a loaded
@@ -819,6 +954,12 @@ start_review_app_server() {
 }
 
 run_review_with_app_server() {
+  # The scoped endpoint is torn down when this invocation exits. A queued or
+  # resumed review cannot outlive it while retaining its model/effort config.
+  if [ -n "${CODEX_STATE_MODE}" ]; then
+    echo "ERROR: ${SUBCOMMAND} --${CODEX_STATE_MODE} cannot preserve the scoped reviewer transport; refusing provider dispatch." >&2
+    return 2
+  fi
   if ! normalize_review_args "$@"; then
     return 2
   fi
@@ -917,25 +1058,18 @@ review_app_server_exit_cleanup() {
   stop_review_app_server || true
 }
 
-build_codex_task_model_args() {
-  if args_have_codex_model "$@"; then
-    return 0
-  fi
-  local routed_model
-  routed_model="$(resolve_codex_model_for_task)"
-  if [ -n "${routed_model}" ]; then
-    printf '%s\n' "--model" "${routed_model}"
-  fi
-}
-
 SUBCOMMAND="${1:-}"
+if [ "${SUBCOMMAND}" = task ] || [ "${SUBCOMMAND}" = review ] || [ "${SUBCOMMAND}" = adversarial-review ]; then
+  if ! normalize_codex_overrides "$@"; then exit 2; fi
+  set -- "${CODEX_NORMALIZED_ARGS[@]}"
+fi
 if [ "${SUBCOMMAND}" = "task" ] && ! resolve_codex_route_for_task; then
   exit 2
 fi
-if [ "${SUBCOMMAND}" = "task" ] && ! validate_task_effort "$@"; then
+if [ "${SUBCOMMAND}" = "task" ] && ! validate_task_prompt_file "$@"; then
   exit 2
 fi
-if [ "${SUBCOMMAND}" = "task" ] && ! validate_task_prompt_file "$@"; then
+if [ "${SUBCOMMAND}" = task ] && ! resolve_task_effort "$@"; then
   exit 2
 fi
 if [ "${SUBCOMMAND}" = "task" ] && ! reject_unrepresentable_task_mode "$@"; then
@@ -945,6 +1079,15 @@ if should_use_structured_task_exec "$@"; then
   STRUCTURED_TASK_EXEC=1
 else
   STRUCTURED_TASK_EXEC=0
+fi
+if [ "${SUBCOMMAND}" = task ]; then
+  # Prepend defaults so they remain options even when the prompt follows --.
+  if [ -z "${CODEX_EXPLICIT_MODEL}" ] && [ -n "${CODEX_ROUTED_MODEL}" ]; then
+    set -- "$1" --model "${CODEX_ROUTED_MODEL}" "${@:2}"
+  fi
+  if [ -z "${CODEX_EXPLICIT_EFFORT}" ] && [ -n "${CODEX_TASK_EFFORT}" ]; then
+    set -- "$1" --effort "${CODEX_TASK_EFFORT}" "${@:2}"
+  fi
 fi
 
 # 公式プラグインの companion を検索
@@ -983,6 +1126,11 @@ if [ "$SUBCOMMAND" = "review" ] || [ "$SUBCOMMAND" = "adversarial-review" ]; the
       exit 2
     fi
   fi
+  # Explicit review overrides still need the scoped runtime transport when
+  # routing is disabled; the official reviewer has no effort/config option.
+  if [ -n "${CODEX_EXPLICIT_MODEL}" ] || [ -n "${CODEX_EXPLICIT_EFFORT}" ]; then
+    REVIEW_APP_SERVER_ENABLED=1
+  fi
 fi
 if [ "${REVIEW_APP_SERVER_ENABLED}" -eq 1 ]; then
   run_review_with_app_server "$@"
@@ -998,146 +1146,19 @@ guard_primary_environment_if_needed "$@"
 # ready, so rejected or failed transports do not inflate delegation counts.
 emit_codex_ledger_once "${SUBCOMMAND}" "$@"
 
-# ---- Effort 伝播（task サブコマンドのみ）----
-# task サブコマンドの場合、タスク説明から effort を計算して --effort フラグで渡す。
-# calculate-effort.sh が存在しない場合は CODEX_EFFORT 環境変数（デフォルト: medium）を使う。
-
-if [ "$SUBCOMMAND" = "task" ]; then
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  EFFORT_SCRIPT="${SCRIPT_DIR}/calculate-effort.sh"
-
-  # 既に --effort フラグが指定されている場合、または --resume-last の場合はスキップ
-  # --resume-last は継続プロンプト（「続きをやって」等）が入るため effort 計算が不正確になる
-  EFFORT_ALREADY_SET=0
-  STATE_MODE_PRESENT=0
-  EXPLICIT_EFFORT_SET=0
-  for arg in "$@"; do
-    if [ "$arg" = "--effort" ] || grep -qE '^--effort=' <<<"$arg"; then
-      EFFORT_ALREADY_SET=1
-      EXPLICIT_EFFORT_SET=1
-      continue
-    fi
-    if [ "$arg" = "--background" ] || [ "$arg" = "--fresh" ] || \
-       [ "$arg" = "--resume-last" ] || [ "$arg" = "--resume" ]; then
-      STATE_MODE_PRESENT=1
-      EFFORT_ALREADY_SET=1
-    fi
-  done
-
-  if [ "$EFFORT_ALREADY_SET" -eq 0 ]; then
-    # タスク説明を引数から抽出（最後の非フラグ引数）
-    # Boolean フラグ（値を取らない）: --write, --resume-last, --json, --full-auto, --ephemeral, --oss, --skip-git-repo-check
-    # 値付きフラグ（次の引数を消費）: --base, --effort, --model, -m, -i, --image, -c, --config, -C, --cwd, --cd, --add-dir, --output-schema, -o, --output-last-message, --color, --enable, --disable, --local-provider, --prompt-file
-    # 未知の --* フラグ → 安全側で値付き（次引数を消費）として扱う
-    TASK_DESC=""
-    EXPECT_VALUE=""
-	    for arg in "${@:2}"; do
-	      if [ -n "$EXPECT_VALUE" ]; then
-	        # 前のフラグの値なのでスキップ
-	        EXPECT_VALUE=""
-	        continue
-	      fi
-	      case "$arg" in
-	        --write|--resume-last|--json|--full-auto|--ephemeral|--oss|--skip-git-repo-check|--dangerously-bypass-approvals-and-sandbox|--background|--resume|--fresh)
-	          # 値を取らない boolean フラグ → スキップするだけ
-	          ;;
-        --base=*|--effort=*|--model=*|-m=*|-i=*|--image=*|-c=*|--config=*|-C=*|--cwd=*|--cd=*|--add-dir=*|--output-schema=*|-o=*|--output-last-message=*|--color=*|--enable=*|--disable=*|--local-provider=*|--prompt-file=*)
-	          # 値付きフラグの --flag=value 形式。次引数は消費しない。
-	          ;;
-        --base|--effort|--model|-m|-i|--image|-c|--config|-C|--cwd|--cd|--add-dir|--output-schema|-o|--output-last-message|--color|--enable|--disable|--local-provider|--prompt-file)
-	          # 明示的に値を取るフラグ
-	          EXPECT_VALUE="$arg"
-	          ;;
-        --*)
-          # 未知のフラグ → 安全側で値付きとして扱う（誤って次引数を TASK_DESC にしない）
-          EXPECT_VALUE="$arg"
-          ;;
-        *)
-          # 非フラグ引数 = タスク説明
-          TASK_DESC="$arg"
-          ;;
-      esac
-    done
-
-    # effort を計算
-    COMPUTED_EFFORT=""
-    if [ -f "$EFFORT_SCRIPT" ]; then
-      if [ -n "$TASK_DESC" ]; then
-        COMPUTED_EFFORT=$(bash "$EFFORT_SCRIPT" "$TASK_DESC" 2>/dev/null || true)
-      elif [ ! -t 0 ]; then
-        # stdin が利用可能（パイプ）: 内容を読み取って effort を計算
-        STDIN_CONTENT=$(cat)
-        if [ -n "$STDIN_CONTENT" ]; then
-          COMPUTED_EFFORT=$(echo "$STDIN_CONTENT" | bash "$EFFORT_SCRIPT" 2>/dev/null || true)
-          if ! is_valid_codex_effort "${COMPUTED_EFFORT:-}"; then
-            COMPUTED_EFFORT="medium"
-          fi
-          if [ "$(resolve_codex_effort_for_task)" = "max" ]; then
-            COMPUTED_EFFORT="max"
-          fi
-          MODEL_ARGS=()
-          while IFS= read -r arg; do
-            MODEL_ARGS+=("$arg")
-          done < <(build_codex_task_model_args "$@")
-          # stdin を再セットアップ（here-string 経由で companion に渡す）
-          if [ "${STRUCTURED_TASK_EXEC}" -eq 1 ]; then
-            run_structured_task_exec "$@" "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}" --effort "${COMPUTED_EFFORT}" <<< "$STDIN_CONTENT"
-          else
-            run_task_with_fingerprint node "$COMPANION" "$@" "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}" --effort "${COMPUTED_EFFORT}" <<< "$STDIN_CONTENT"
-          fi
-        fi
-        # stdin が空の場合（</dev/null 等）はフォールスルーして通常フローへ
-      fi
-    fi
-
-    # フォールバック: 環境変数 CODEX_EFFORT → medium
-    if [ -z "$COMPUTED_EFFORT" ]; then
-      COMPUTED_EFFORT="${CODEX_EFFORT:-medium}"
-    fi
-
-    # A routed max worker must not be sent to the official companion's
-    # --effort parser; run_structured_task_exec translates it to the Codex
-    # config override instead.
-    if [ "$(resolve_codex_effort_for_task)" = "max" ]; then
-      COMPUTED_EFFORT="max"
-    fi
-
-    if ! is_valid_codex_effort "$COMPUTED_EFFORT"; then
-      COMPUTED_EFFORT="medium"
-    fi
-
-    MODEL_ARGS=()
-    while IFS= read -r arg; do
-      MODEL_ARGS+=("$arg")
-    done < <(build_codex_task_model_args "$@")
-
-    if [ "${STRUCTURED_TASK_EXEC}" -eq 1 ]; then
-      run_structured_task_exec "$@" "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}" --effort "$COMPUTED_EFFORT"
+# Model and effort were resolved and validated before guards or ledger writes.
+if [ "${SUBCOMMAND}" = task ]; then
+  if [ "${STRUCTURED_TASK_EXEC}" -eq 1 ]; then
+    if [ "${TASK_STDIN_CAPTURED}" -eq 1 ]; then
+      run_structured_task_exec "$@" <<<"${TASK_STDIN_CONTENT}"
     else
-      run_task_with_fingerprint node "$COMPANION" "$@" "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}" --effort "$COMPUTED_EFFORT"
+      run_structured_task_exec "$@"
     fi
+  elif [ "${TASK_STDIN_CAPTURED}" -eq 1 ]; then
+    run_task_with_fingerprint node "$COMPANION" "$@" <<<"${TASK_STDIN_CONTENT}"
+  else
+    run_task_with_fingerprint node "$COMPANION" "$@"
   fi
-fi
-
-if [ "${STRUCTURED_TASK_EXEC}" -eq 1 ]; then
-  run_structured_task_exec "$@"
-fi
-
-if [ "$SUBCOMMAND" = "task" ]; then
-  if [ "${STATE_MODE_PRESENT:-0}" -eq 1 ] && [ "${EXPLICIT_EFFORT_SET:-0}" -eq 0 ] && \
-     [ "${HARNESS_DISABLE_MODEL_ROUTING:-0}" != "1" ] && [ -x "${MODEL_ROUTER}" ] && \
-     [ -n "${CODEX_ROUTED_EFFORT}" ]; then
-    MODEL_ARGS=()
-    while IFS= read -r arg; do
-      MODEL_ARGS+=("$arg")
-    done < <(build_codex_task_model_args "$@")
-    run_task_with_fingerprint node "$COMPANION" "$@" "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}" --effort "${CODEX_ROUTED_EFFORT}"
-  fi
-  MODEL_ARGS=()
-  while IFS= read -r arg; do
-    MODEL_ARGS+=("$arg")
-  done < <(build_codex_task_model_args "$@")
-  run_task_with_fingerprint node "$COMPANION" "$@" "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}"
 fi
 
 exec node "$COMPANION" "$@"

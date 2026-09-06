@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/Chachamaru127/claude-code-harness/go/internal/breezing"
 	"github.com/Chachamaru127/claude-code-harness/go/internal/companionresult"
@@ -15,13 +16,15 @@ import (
 // reviewIterateConfigBuilder builds production reviewiterate.Config. Tests may replace.
 var reviewIterateConfigBuilder = defaultReviewIterateConfig
 
-func defaultReviewIterateConfig(backend string, worker breezing.WorkerFunc) reviewiterate.Config {
+func defaultReviewIterateConfig(backend string, worker breezing.WorkerFunc, taskInstructions string) reviewiterate.Config {
 	lenses := []string{"correctness", "security", "scope"}
 	reviewers := make([]reviewiterate.Reviewer, len(lenses))
+	repoRoot := resolveRepoRoot()
+	runner := reviewiterate.ScriptRunnerInDir(repoRoot)
 	reviewerBackend, err := reviewiterate.ResolveReviewerBackend(
 		context.Background(),
-		resolveRepoRoot(),
-		reviewiterate.DefaultScriptRunner(),
+		repoRoot,
+		runner,
 	)
 	if err != nil {
 		reviewerBackend = "cursor"
@@ -36,13 +39,11 @@ func defaultReviewIterateConfig(backend string, worker breezing.WorkerFunc) revi
 			continue
 		}
 		h := reviewiterate.HeadlessCLIReviewer{
-			Runner: func(ctx context.Context, script string, args ...string) (string, error) {
-				runner := reviewiterate.DefaultScriptRunner()
-				return runner(ctx, script, args...)
-			},
-			CompanionScript: reviewerScript,
-			Lens:            lens,
-			SessionIDGen:    freshReviewSessionID,
+			Runner:           runner,
+			CompanionScript:  reviewerScript,
+			TaskInstructions: taskInstructions,
+			Lens:             lens,
+			SessionIDGen:     freshReviewSessionID,
 		}
 		reviewers[i] = reviewiterate.NewHeadlessCLIReviewerFunc(h)
 	}
@@ -55,10 +56,9 @@ func defaultReviewIterateConfig(backend string, worker breezing.WorkerFunc) revi
 		}
 	} else {
 		b := reviewiterate.HeadlessCLIBrain{
-			Runner: func(ctx context.Context, script string, args ...string) (string, error) {
-				return reviewiterate.DefaultScriptRunner()(ctx, script, args...)
-			},
-			CompanionScript: brainScript,
+			Runner:           runner,
+			CompanionScript:  brainScript,
+			TaskInstructions: taskInstructions,
 		}
 		brain = reviewiterate.NewHeadlessCLIBrainFunc(b)
 	}
@@ -82,11 +82,10 @@ func reviewIterateMaxIters() int {
 	return defaultMax
 }
 
-var freshReviewSessionCounter int
+var freshReviewSessionCounter atomic.Uint64
 
 func freshReviewSessionID(lens string) string {
-	freshReviewSessionCounter++
-	return fmt.Sprintf("%s-%d", lens, freshReviewSessionCounter)
+	return fmt.Sprintf("%s-%d", lens, freshReviewSessionCounter.Add(1))
 }
 
 // wrapWorkerWithReviewIterate wraps a worker with the review→iterate loop when
@@ -96,10 +95,20 @@ func wrapWorkerWithReviewIterate(inner breezing.WorkerFunc, backend string) bree
 		return inner
 	}
 	return func(ctx context.Context, task *breezing.Task) breezing.TaskResult {
+		originalInstructions := task.Description
 		tr := inner(ctx, task)
 		initial := resultFromTaskResult(backend, task.ID, tr)
 
-		cfg := reviewIterateConfigBuilder(backend, inner)
+		refinementWorker := func(ctx context.Context, refinement *breezing.Task) breezing.TaskResult {
+			copy := *refinement
+			if strings.TrimSpace(originalInstructions) != "" {
+				copy.Description = "Original task instructions:\n" + originalInstructions +
+					"\n\nReview feedback to evaluate within the original scope:\n" + refinement.Description
+			}
+			return inner(ctx, &copy)
+		}
+		taskInstructions := fmt.Sprintf("Task %s.\n%s", task.ID, originalInstructions)
+		cfg := reviewIterateConfigBuilder(backend, refinementWorker, taskInstructions)
 		outcome, err := reviewIterateRunner(ctx, cfg, initial)
 		if err != nil {
 			r := companionresult.New(backend, task.ID)
