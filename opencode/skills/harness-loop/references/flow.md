@@ -179,6 +179,8 @@ fresh context での wake-up 直後は前サイクルのメモリが失われて
 - `session-state` — 前回の作業状態
 - 直前サイクルの `checkpoint` — 何を完了したか
 
+再開情報には元の要求と承認範囲、利用者の制約、決定事項と理由、失敗した方法、現在の差分と検証結果、残る DoD、task/contract/worktree の識別子も含める。要約の「承認済み」だけで操作範囲を広げない。取得できない情報は現行 contract と読み取り可能な repo 状態から回収し、重要な不足が残る場合だけ依存作業を保留する。
+
 > **注意**: resume pack 再読込は Step 3（contract readiness チェック）の後に実行すること。
 > スキップすると前サイクルの成果物を重複実装するリスクがある。
 
@@ -222,10 +224,18 @@ worker_result = Agent(
     subagent_type="claude-code-harness:worker",  # ← worker エージェント（スキルではない）
     prompt="""
     タスク: ${task_id}
+    元の要求と目的/理由: <選択した依頼と plan から抽出>
+    対象 repo/worktree と担当範囲: <paths/ownership>
+    制約と承認済み操作/承認元: <元の指示と適用条件>
     DoD: <Plans.md から抽出>
+    必須検証と既存の証拠: <commands/artifact paths>
+    選択した plan/spec、直前の助言と未解消指摘: <paths/guidance/findings>
     contract_path: ${CONTRACT_PATH}
     mode: breezing
-    完了後: commit hash・branch・変更サマリを返却してください。
+    手順は担当範囲内で選び、軽微な仮定を明示して可逆作業を続けてください。
+    不足情報は contract と読み取り可能な資料から回収し、重要な仕様/承認の不足だけを保留してください。
+    DoD と必須検証を満たしたら止め、追加の確認は新しい変更や未解消の懸念に必要なものに限ってください。
+    完了後: commit hash、branch、変更サマリ、判断理由、実行した検証と証拠、未確認事項を返却してください。
     """,
     isolation="worktree",
     run_in_background=false  # フォアグラウンド実行（完了まで待機）
@@ -247,6 +257,8 @@ Worker は `mode: breezing` で動作するため:
 ### Step 5.5: Lead レビュー実行
 
 Worker が返却した commit に対して Lead がレビューを実行する:
+
+Reviewer には元の要求、DoD、担当範囲、承認元、contract、実際の差分と検証結果を渡す。独立した読み取り専用の文脈で判定し、Worker の完了報告だけを証拠にしない。実物を確認できない項目は未確認として返す。
 
 ```bash
 # diff 取得（worktree 内の commit を対象）
@@ -384,7 +396,7 @@ MAX_REVIEWS = read_contract(contract_path, ".review.max_iterations") or 3
 
 while verdict == "REQUEST_CHANGES" and review_count < MAX_REVIEWS:
     # Worker に修正を指示（SendMessage で再開）
-    SendMessage(to=worker_id, message=f"指摘内容: {issues}\n修正して amend してください")
+    SendMessage(to=worker_id, message=f"元の要求、DoD、担当範囲、承認元を維持してください。critical/major 指摘と根拠: {issues}\n範囲内で修正と必要な検証を完了し、変更時は amend してください。結果と未確認事項を返してください")
     updated_result = wait_for_response(worker_id)
     latest_commit = updated_result.commit
     diff_text = git("-C", worker_result.worktreePath, "show", latest_commit)
@@ -500,7 +512,7 @@ if cycles_completed >= max_cycles:
 {
   "session_id": "<現在のセッション ID>",
   "title": "harness-loop cycle {N}/{max}: {task_completed}",
-  "content": "cycle {N} 完了。commit: {commit}。変更: {files_changed}。次: {next_task}"
+  "content": "cycle {N} 完了。元の要求/制約/承認元: {request_constraints_approval}。判断と理由: {decisions_why}。失敗した方法: {failed_approaches}。commit/worktree/contract: {artifact_refs}。変更/検証結果: {files_changed_validation}。残る DoD と次: {remaining_dod_next_task}"
 }
 ```
 

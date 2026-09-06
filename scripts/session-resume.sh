@@ -561,7 +561,9 @@ HANDOFF_ARTIFACT_PATH="$(get_handoff_artifact_path)"
 if [ -n "$HANDOFF_ARTIFACT_PATH" ] && [ -f "$HANDOFF_ARTIFACT_PATH" ]; then
   # stale handoff を拒否: 24時間以上前の artifact は無視（session-init.sh と同じポリシー）
   HANDOFF_AGE_LIMIT=86400
-  HANDOFF_MTIME="$(stat -f %m "$HANDOFF_ARTIFACT_PATH" 2>/dev/null || stat -c %Y "$HANDOFF_ARTIFACT_PATH" 2>/dev/null || echo 0)"
+  HANDOFF_MTIME="$(stat -f %m "$HANDOFF_ARTIFACT_PATH" 2>/dev/null)" ||
+    HANDOFF_MTIME="$(stat -c %Y "$HANDOFF_ARTIFACT_PATH" 2>/dev/null)" ||
+    HANDOFF_MTIME=0
   NOW="$(date +%s)"
   HANDOFF_AGE=$(( NOW - HANDOFF_MTIME ))
   if [ "$HANDOFF_AGE" -lt "$HANDOFF_AGE_LIMIT" ]; then

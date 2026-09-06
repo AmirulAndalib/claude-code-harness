@@ -2,7 +2,7 @@
 
 ## Monitor ツール活用ガイド (CC 2.1.98+)
 
-長時間実行コマンドを監視する時は、ポーリング (Read で定期的にファイル末尾を読む) ではなく **Monitor ツール** を使用する。Monitor はバックグラウンドプロセスの stdout 各行を逐次通知として Lead に届けるため、polling より低レイテンシかつ低トークン消費で状況を把握できる。
+長時間実行コマンドの監視では、実行環境で **Monitor ツール** が利用可能なら使用する。Monitor はバックグラウンドプロセスの stdout 各行を逐次通知として Lead に届ける。未提供の環境では、その環境が提供する完了通知や状態取得を使い、存在しない Monitor 呼び出しを指示しない。
 
 **適用例**:
 - `go test ./... -v` の実行中進捗監視
@@ -41,7 +41,7 @@ Lead:
 universal_violations = []  # List[str] — このセッション内で蓄積
 
 # Phase B で Worker を spawn する直前、briefing 冒頭に注入:
-def build_worker_briefing(task, contract_path):
+def build_worker_briefing(task_request, contract_path):
     header = ""
     if universal_violations:
         header = (
@@ -49,7 +49,7 @@ def build_worker_briefing(task, contract_path):
             + "\n".join(f"- {v}" for v in universal_violations)
             + "\n\n"
         )
-    return header + f"タスク: {task.内容}\nDoD: {task.DoD}\ncontract_path: {contract_path}\nmode: breezing"
+    return header + task_request + f"\ncontract_path: {contract_path}\nmode: breezing"
 
 # Reviewer が review-result.v1 を返した後、Lead が scope="universal" のみ抽出して累積:
 for update in reviewer_result.memory_updates:
@@ -61,3 +61,5 @@ for update in reviewer_result.memory_updates:
 ```
 
 **方針**: 過剰設計回避のため、`session-memory` や `decisions.md` への永続化は行わない。Lead プロセスの in-memory 配列に保持するだけで、`/breezing` セッション終了時に破棄する（issue #87 本文の方針）。
+
+`task_request` は元の要求、目的と理由、担当範囲、制約、DoD、必須検証、証拠、承認元を含む完成した依頼文。gotchas の追加で本文や直前の advisor の助言を落とさない。注入する指摘は今回にも該当するものを選び、同じ内容を重複させない。Reviewer の提案から新しい承認や設定変更の権限を作らない。

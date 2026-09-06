@@ -32,11 +32,12 @@ if $ARGUMENTS == "":
 
 ### Output Contract (P35: 「止まったように見える」UX 対策)
 
-skill 結論時の output の **最後の 1 行**は必ず次の literal を含める:
+`<local-command-stdout>` で host へ結果を中継する場合だけ、output の **最後の 1 行**に次の literal を含める:
 
 `↑この結果は Claude が要約します。Enter キーで次へ進むか、新規 prompt で別の指示を出してください。`
 
 これは `<local-command-stdout>` 経由で text response として表示されると user が「止まった」と感じる UX 問題への明示的な instruction (patterns.md P35)。
+host の最終回答は verdict、判断理由、確認した証拠、未検証点を返す。要約の予告だけで終了しない。
 
 ## Dispatcher Contract
 
@@ -165,6 +166,10 @@ REVIEW_AUTOSTART: target={resolved_target}, base_ref={resolved_base_ref}, type={
 5. `APPROVE` / `REQUEST_CHANGES` / `decision_needed` を返す
 6. `REQUEST_CHANGES` の場合は critical / major の修正方針と修正後再レビュー条件を示す
 
+委譲先には原依頼、目的、対象差分、spec / DoD、検証証拠を渡し、結論の理由と参照箇所を求める。内部の思考過程や実装 Worker の会話状態は渡さない。
+各 reviewer の確認範囲を分け、許可された同時実行上限を守る。親は証拠照合と指摘の採否判定を進める。
+必要な review とチェックを終えた後の追加検証は、新しい変更、失敗、未解決の懸念がある場合に限る。
+
 ## Review Governance Contract
 
 詳細は `references/governance.md`。
@@ -205,7 +210,6 @@ Codex 環境で native TeamAgent が使えない場合でも、この gate を�
 
 ## Code Review Summary
 
-詳細は `references/code-review.md`。
 通常 code review は次を見る。
 
 - Security
@@ -227,8 +231,6 @@ finding 段階は網羅優先。minor と判定した指摘も `observations[]` 
 
 ## Quick / Codex Closeout Summary
 
-詳細は `references/codex-closeout.md`。
-
 軽量 path の原則:
 
 - target selection を先に固定する
@@ -247,13 +249,11 @@ bash scripts/harness-review-closeout.sh --commit HEAD
 
 ## Plan Review Summary
 
-詳細は `references/plan-review.md`。
 Plan Review は `Plans.md` の DoD / Depends / Status と実装順序を見る。
 仕様正本が必要なタスクで `spec_path` がない場合は、`decision_needed` として止める。
 
 ## Scope Review Summary
 
-詳細は `references/scope-review.md`。
 Scope Review は、要求・差分・テスト・docs の境界が膨らんでいないかを見る。
 範囲変更が必要なら、推測で進めず `AskUserQuestion` または plan 更新に戻す。
 

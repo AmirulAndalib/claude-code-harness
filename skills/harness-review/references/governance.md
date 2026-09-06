@@ -31,7 +31,7 @@ minor / recommendation だけなら、必ずしも止めない。
 
 ## AskUserQuestion / decision_needed
 
-推測で決めると壊れる判断は、`REQUEST_CHANGES` ではなく `decision_needed` とする。
+まず元の依頼、spec、選択した plan、既存の承認と読み取り可能な根拠から不足情報を回収する。それでも重要な仕様や権限の判断が残る場合は、`REQUEST_CHANGES` ではなく `decision_needed` とする。軽微な仮定は明示し、独立して確認できる範囲のレビューは続ける。
 
 `decision_needed` の例:
 
@@ -40,7 +40,7 @@ minor / recommendation だけなら、必ずしも止めない。
 - security と UX の優先順位をユーザーが選ぶ必要がある
 - backward compatibility を残すか削るかの事業判断が必要
 
-AskUserQuestion が使える場合は使う。
+必要な判断には対象の操作、具体的な推奨案、根拠、承認を要求する契約のパスと該当指示を添える。既に同じ範囲の承認がある場合は聞き直さない。AskUserQuestion が使える場合は使う。
 Codex 環境などで使えない場合は `decision_needed.v1` を stdout に出し、推測で進めない。
 
 ## Side effects

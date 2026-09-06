@@ -6,6 +6,9 @@ description: "Manage SSOT, memory, and cross-tool memory search. Guardian of dec
 # Memory Skills
 
 メモリとSSOT管理を担当するスキル群です。
+検索依頼は読み取りで完了する。記録、昇格、移行は、その操作を明示依頼された範囲だけ行う。
+既存記録は出典と判断理由を保ち、現在の状態に依存する事実は現物を再確認してから使う。
+記録候補を見つけただけで永続保存を始めない。
 
 ## 機能詳細
 

@@ -164,17 +164,19 @@ func TestRunGenWrite_WritesManagedAgentProfiles(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		rel  string
-		want string
+		want []string
 	}{
-		{rel: "codex/.codex/agents/worker.toml", want: `model = "gpt-5.6-luna"`},
-		{rel: "codex/.codex/agents/reviewer.toml", want: `model = "gpt-5.6-sol"`},
+		{rel: "codex/.codex/agents/worker.toml", want: []string{`model = "gpt-5.6-luna"`, `model_reasoning_effort = "max"`}},
+		{rel: "codex/.codex/agents/reviewer.toml", want: []string{`model = "gpt-6-astra"`, `model_reasoning_effort = "xhigh"`, `sandbox_mode = "read-only"`}},
 	} {
 		profile, err := os.ReadFile(filepath.Join(root, tc.rel))
 		if err != nil {
 			t.Fatalf("read generated profile %s: %v", tc.rel, err)
 		}
-		if !bytes.Contains(profile, []byte(tc.want)) {
-			t.Errorf("generated profile %s missing managed model %s:\n%s", tc.rel, tc.want, profile)
+		for _, want := range tc.want {
+			if !bytes.Contains(profile, []byte(want)) {
+				t.Errorf("generated profile %s missing managed setting %s:\n%s", tc.rel, want, profile)
+			}
 		}
 	}
 }

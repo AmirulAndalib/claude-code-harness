@@ -59,6 +59,7 @@ description = "Codex implementation worker for harness task execution"
 
 [agents.reviewer]
 description = "Codex reviewer worker for harness review and retake loops"
+config_file = "agents/reviewer.toml"
 sandbox = "workspace-read-only"
 
 [agents.task_worker]

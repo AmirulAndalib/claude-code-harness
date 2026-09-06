@@ -157,12 +157,12 @@ default_output="${TMP_DIR}/default-output.txt"
 run_review "${default_args}" "${default_env}" "${default_app_args}" "${default_socket_file}" "${default_output}" \
   review --base main --json
 
-expect_pair "${default_app_args}" -c 'model="gpt-5.6-sol"'
-expect_pair "${default_app_args}" -c 'review_model="gpt-5.6-sol"'
+expect_pair "${default_app_args}" -c 'model="gpt-6-astra"'
+expect_pair "${default_app_args}" -c 'review_model="gpt-6-astra"'
 expect_pair "${default_app_args}" -c 'model_reasoning_effort="xhigh"'
 expect_arg "${default_app_args}" app-server
 expect_arg "${default_app_args}" --stdio
-expect_pair "${default_args}" --model gpt-5.6-sol
+expect_pair "${default_args}" --model gpt-6-astra
 expect_arg "${default_args}" --base
 expect_arg "${default_args}" main
 grep -Eq '^unix:.+/review\.sock$' "${default_env}" || {
@@ -193,7 +193,7 @@ run_review "${adversarial_args}" "${adversarial_env}" "${adversarial_app_args}" 
   adversarial-review --uncommitted --json 'focus on boundary checks'
 expect_pair "${adversarial_args}" --scope working-tree
 expect_arg "${adversarial_args}" 'focus on boundary checks'
-expect_pair "${adversarial_args}" --model gpt-5.6-sol
+expect_pair "${adversarial_args}" --model gpt-6-astra
 
 commit_args="${TMP_DIR}/commit-companion-args.txt"
 commit_env="${TMP_DIR}/commit-companion-env.txt"
@@ -231,7 +231,7 @@ expect_pair "${explicit_model_args}" --model custom-review-model
 expect_pair "${explicit_model_app_args}" -c 'model="custom-review-model"'
 expect_pair "${explicit_model_app_args}" -c 'review_model="custom-review-model"'
 expect_pair "${explicit_model_app_args}" -c 'model_reasoning_effort="xhigh"'
-if grep -qx -- 'gpt-5.6-sol' "${explicit_model_args}"; then
+if grep -qx -- 'gpt-6-astra' "${explicit_model_args}"; then
   echo "explicit review model must not be overridden in companion argv"
   exit 1
 fi
@@ -436,7 +436,7 @@ FAKE_APP_SERVER_MODE=clean \
   node "${ROOT_DIR}/scripts/codex-review-app-server-proxy.mjs" \
     --endpoint "unix:${direct_socket}" --ready-file "${direct_ready}" \
     --codex "${TMP_DIR}/bin/codex" --status-file "${direct_status}" \
-    --config 'model="gpt-5.6-sol"' &
+    --config 'model="gpt-6-astra"' &
 direct_proxy_pid=$!
 for _ in $(seq 1 200); do
   [ -e "${direct_ready}" ] && break

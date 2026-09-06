@@ -96,13 +96,13 @@ namespace as the user-facing mental model.
 The concrete model for any host+role is resolved by
 `scripts/model-routing.sh --host <backend> --role <role>`. This contract does
 not reimplement model selection. The claude-host brain tiers (`deep`,
-`advisor`) default to `claude-opus-5` (Opus 4.8 was retired from the catalog
-on 2026-07-25; the claude lineup is brain = Opus 5, review = Fable 5,
-worker = Sonnet 5). Unset, empty, `opus`, or `opus5` keeps the default;
-setting `HARNESS_BRAIN_MODEL=fable` opts those two tiers into
-`claude-fable-5`; any other value fails with exit 2 instead of falling back
-silently. The opt-in never changes the worker or review tiers and never
-touches the codex/cursor catalogs.
+`advisor`) default to `claude-fable-5-1` at `high`. Unset, empty, or `fable`
+selects that route; explicit `HARNESS_BRAIN_MODEL=opus` or `opus5` selects
+`claude-opus-5` at `xhigh`. Unknown values fail with exit 2. This choice never
+changes worker or review tiers and never touches the Codex/Cursor catalogs.
+The Claude router review tier uses Fable 5.1/high; the isolated native
+`agents/reviewer.md` keeps its Sonnet 5 security-review contract. Native
+`agents/advisor.md` uses Fable 5.1/high. These are separate execution surfaces.
 
 ### D70 Codex role and review contract
 
@@ -112,8 +112,8 @@ review:
 | Harness role | Effective Codex route | Reasoning | Boundary |
 |---|---|---|---|
 | `worker` | `gpt-5.6-luna` | `max` | Breezing implementation and retries; native Codex uses managed `worker.toml` |
-| `standard` (generic) | `gpt-5.6-sol` | `xhigh` | Compatibility implementation/setup route; it does not inherit the worker tier |
-| `review` / `reviewer` | `gpt-5.6-sol` (`review_model` included) | `xhigh` | Independent review and adversarial checks |
+| `standard` (generic) | `gpt-6-astra` | `xhigh` | General implementation/setup route; it does not inherit the worker tier |
+| `review` / `reviewer` | `gpt-6-astra` (`review_model` included) | `xhigh` | Independent review and adversarial checks |
 | `lite` | `gpt-5.6-luna` | `low` | Cheap read-heavy exploration; not a replacement for the worker tier |
 
 Native Codex Breezing selects `agent_type: worker`; the managed custom-agent
@@ -121,6 +121,19 @@ profile owns the native worker model and effort. The `breezing --codex`
 companion call sites pin `CODEX_MODEL_TIER=worker`, so they cannot silently
 inherit a generic session route. Reviewer, advisor, and deep routes remain
 separate from worker routing.
+
+The September 2026 refresh changes frontier model IDs while retaining D70's
+role separation and existing Codex role effort. Explicit model and effort
+arguments, including supported `-c model=...` and
+`-c model_reasoning_effort=...` forms, take precedence over routed defaults.
+An explicit task `CODEX_EFFORT` also overrides the role default. Free-text
+complexity calculation must not overwrite a resolved role effort.
+Codex `ultra` is passed through the Codex runtime, not the public model API.
+An unsupported transport or stateful combination fails before dispatch.
+The local codex-loop driver continues to inherit the caller's Codex settings;
+the companion driver uses its explicit role route. Existing project advisor
+model choices remain explicit overrides; refreshing the catalog does not
+rewrite protected project configuration.
 
 Routed Codex review is a per-run local transport. The wrapper starts
 `scripts/codex-review-app-server-proxy.mjs`, which launches `codex app-server
@@ -240,6 +253,15 @@ be translated into Harness lanes, Plans.md tasks, TDD/review gates, and support
 tier evidence.
 
 ## Host Distribution Contract
+
+Prompt delivery follows [the root Prompt Delivery Contract](../../spec.md#prompt-delivery-contract).
+Audit both reusable instructions and the runtime payload. Task descriptions,
+completion criteria, refinement findings, selected plan paths, and available
+resume evidence must reach their intended role without inventing authorization.
+See [prompt-calibration.md](../prompt-calibration.md) for the source and delivery
+map. Standalone native profiles must be self-contained; embedded verb prompts
+require a binary rebuild. Updating a plugin package alone does not update a
+previously copied user agent profile or an already running conversation.
 
 Distribution is a single `harness` CLI binary plus the manifests and mirrors that
 hosts read directly. Per-host shims — the hooks.json configs, the skill/agent

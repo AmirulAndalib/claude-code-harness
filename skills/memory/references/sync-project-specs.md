@@ -12,6 +12,11 @@
 
 > Tip: Usually `/sync-status` is sufficient. Use this for "just in case" or "format migration".
 
+A status question stays read-only. Inspect existing files and report drift;
+apply changes only when synchronization or migration was requested. Recover
+missing context from the user's request and project contracts before asking.
+Existing protected-path and human-only rules still apply to every target.
+
 ---
 
 ## Purpose
@@ -85,7 +90,9 @@ Tell user:
 ### Step 4: Finish (Required)
 
 - Run `/sync-status` to verify markers
-- Use `/remember` to lock "project-specific operations" if needed
+- Propose reusable project-specific operations with their reasons. Use `/remember`
+  only when persistent recording was explicitly requested; synchronization alone
+  does not authorize memory writes.
 
 ---
 

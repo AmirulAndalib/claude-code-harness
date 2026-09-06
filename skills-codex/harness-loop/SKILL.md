@@ -81,6 +81,11 @@ harness codex-loop start all --executor task --max-cycles 5
 複数 Plans.md がある repo では、長時間 run の起動時に `--plan NAME` を明示する。
 runner は開始時に解決した Plans file を cycle 間で保持するため、途中で active plan を切り替えない。
 
+起動前に、選択済み plan の目的、担当範囲、DoD、spec、検証証拠、原依頼と承認の参照を確認する。状態確認だけの依頼で `start` を呼ばない。
+再開時は最新の run state と選択済み plan を読み、決定と理由、失敗履歴、残る判断、直前の advisor response を回収する。助言で元の契約や承認境界を置き換えない。
+不足は読み取りで補い、軽微な仮定を明示する。承認済み可逆作業は再確認せず進め、保護操作や `STOP` は既定の停止条件を守る。
+起動成功は作業完了の証拠ではない。`status`、job の実結果、DoD と review の証拠を照合して報告する。必須チェック後の追加検証は新しい変更、失敗、未解決の懸念がある場合に限る。
+
 ### 状態確認
 
 ```bash

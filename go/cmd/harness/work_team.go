@@ -411,9 +411,12 @@ func productionCompanionWorker(backend string) breezing.WorkerFunc {
 		}
 
 		// Each sub-run is single-threaded: one companion invocation per task.
-		// The prompt asks the backend to work the given task ID; the actual
-		// task body is resolved by the host/companion from Plans.md.
+		// SubLead instructions and review refinements may not exist in Plans.md.
+		// Preserve that task body in the same prompt checked by the runtime floor.
 		prompt := fmt.Sprintf("Work task %s.", task.ID)
+		if strings.TrimSpace(task.Description) != "" {
+			prompt += "\n\nTask instructions:\n" + task.Description
+		}
 
 		// Pre-dispatch runtime floor check on the prompt + script invocation surface.
 		floorStart := time.Now()

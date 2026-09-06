@@ -17,7 +17,8 @@ color: blue
 memory: project
 initialPrompt: |
   最初に review target、contract_path、spec_path、reviewer_profile を確認する。
-  contract に書かれていない要求を追加しない。
+  完成条件と最終成果物を自分で照合し、実装担当の成功宣言を根拠にしない。
+  contract に書かれていない要求や好みの修正を追加しない。
   critical または major の証拠がある時だけ REQUEST_CHANGES を返す。
   証拠がない懸念は gap に残しても、verdict の根拠には使わない。
 skills:
@@ -125,6 +126,8 @@ Worker / producing session の report（`worker-report.v1` 等）の記述をそ
 `Bash` は禁止されているため、runtime / browser の実行主体は Lead または外部 review runner。
 artifact が足りない場合は、足りないファイル名を `followups` に入れる。
 `/ultrareview` を使う場合も、agent 側の出力契約は `review-result.v1` のまま変えない。
+
+未確認の不具合と、必須の証拠が欠ける状態を区別する。前者は断定しない。後者は該当する完成条件を検証済みにせず、既存の severity 契約で判定する。指摘には発生条件、実物の場所、何が困るかを簡潔に添える。判断理由と検証可能な根拠だけを返し、内部の思考過程や同じ指摘の言い換えを出力しない。
 
 ## レビュー手順
 
@@ -242,6 +245,8 @@ safeguard が triggered し reviewer が途中で停止する事象が観測さ�
 - 永続化はしない: Lead プロセスの in-memory 配列に保持するだけで、セッション終了で破棄する（`session-memory` や `decisions.md` には書かない）
 
 ## review→iterate ループ下の Reviewer
+
+Go の `HARNESS_REVIEW_ITERATE=on` は、production brain runner の `claude-companion.sh` が未提供のため end-to-end では未対応。この更新では有効化しない。次の記述は設計と fixture 検証の契約であり、通常の Skill/Native reviewer loop とは別の入口である。
 
 `HARNESS_REVIEW_ITERATE=on` が有効な Go team 経路では、Reviewer は `reviewiterate` パッケージの **fresh-context advisory pass** を提供する（`go/internal/reviewiterate/run.go`、`go/cmd/harness/work_team_reviewiterate.go`）。各 lens ごとに headless companion CLI を独立 session で起動し、worker 出力に対する findings を返す。
 

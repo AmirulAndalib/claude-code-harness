@@ -21,6 +21,13 @@ bash "${HARNESS_PLUGIN_ROOT}/scripts/review-ai-residuals.sh" --base-ref "${BASE_
 Give the reviewer only this threshold; it must judge verdict from it alone.
 Below-threshold suggestions become `recommendations` and never flip the verdict.
 
+Provide the original request, outcome and DoD, selected plan/spec/contract,
+owned scope and authorization source, actual target diff, and existing
+validation evidence to the reviewer. Use fresh read-only context; the author's
+report is a claim to check. Recover missing evidence through allowed reads
+before requesting material input. Findings need a location, failure condition,
+and checkable reason, not private reasoning transcripts.
+
 | Severity | Definition | Verdict effect |
 |---|---|---|
 | `critical` | Security vulnerability, data loss risk, possible production outage | Any finding means `REQUEST_CHANGES` |
@@ -57,7 +64,7 @@ When Codex exec is unavailable:
 
 ```
 Agent tool: subagent_type="reviewer"
-prompt: "Review this diff. Verdict rule: critical/major -> REQUEST_CHANGES, minor/recommendation only -> APPROVE. diff: {git diff ${BASE_REF}}"
+prompt: "Review the original request and DoD against the actual diff in fresh read-only context. Request/why/owned scope/authorization source: {task_request}. Plan/spec/contract: {paths}. Validation evidence: {evidence}. Verdict rule: critical/major -> REQUEST_CHANGES, minor/recommendation only -> APPROVE. Report locations, failure conditions, evidence, and unverified items. diff: {git diff ${BASE_REF}}"
 ```
 
 The `reviewer` agent is read-only (no Write/Edit/Bash) so it can review safely.
@@ -108,6 +115,10 @@ if `check` exited 2 or 4:
 Breezing repair instructions go back to the same Worker. In Codex, resume the
 Worker and use `send_input`; in Claude Code, send the equivalent teammate
 message (`SendMessage`).
+Keep the original scope, DoD, and approval source in repair instructions; attach
+the critical/major findings and relevant evidence. Re-review the changed output
+in fresh context within the same iteration limit. Once DoD and required checks
+pass, stop; optional improvements do not start another repair or test cycle.
 
 ## Breezing-Specific Application
 

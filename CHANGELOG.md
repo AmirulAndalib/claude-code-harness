@@ -6,6 +6,57 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [5.15.0] - 2026-09-06
+
+### Added
+
+- Add a self-contained Japanese product guide showing what to request and
+  what results to expect. Keep model settings in expandable details and make
+  the task flow readable on mobile screens.
+
+### Changed
+
+- Describe current task execution, role defaults, manual model choices,
+  progress reporting, and restart behavior in the English, Japanese, and Codex
+  READMEs. Distinguish task-count progress from acceptance results.
+- Route Claude deep-planning and advisor defaults to Fable 5.1/high and Codex frontier
+  roles to GPT-6 astra. Keep lightweight workers and existing Codex role effort
+  separate, and retain the isolated Sonnet security reviewer.
+- Calibrate active workflow, agent, embedded CLI, and setup prompts around
+  scoped outcomes, recoverable inputs, independent delegation, and observed
+  completion evidence. Preserve required checks, review limits, and permissions.
+
+### Fixed
+
+- Keep handoff timestamps numeric during session initialization and resume
+  on both GNU and BSD systems, so Linux can restore structured handoffs.
+- Isolate advisor configuration regression tests from the operator's active
+  settings while continuing to verify explicit project model choices.
+- Normalize supported working-directory aliases before native companion
+  dispatch so reviews inspect the requested project.
+- Deliver large plan context and worker status through input streams, avoiding
+  operating-system argument limits while retaining full evidence and bounded summaries.
+- Bind the managed Codex reviewer profile during setup so an existing default inline
+  role cannot silently shadow its model and instructions. Preserve custom
+  role bindings and distinguish native permission inheritance from companion
+  read-only review execution.
+- Preserve explicit Codex model and effort through companion dispatch, including
+  Codex `ultra`, without prompt-based effort calculation replacing role settings.
+- Resolve advisor defaults for the target project and preserve its explicit
+  model choice instead of reading configuration from the installed plugin.
+- Keep task execution and the primary-environment guard on the same working
+  directory and write intent; reject unsupported config overrides and extra
+  writable roots before dispatch.
+- Include the runtime helpers required by advisor and loop execution in the
+  Claude and Codex plugin packages.
+- Carry the selected plan, completion criteria, concrete failure evidence, and
+  prior advice through loop worker and advisor dispatch, including restart.
+- Preserve Go worker task descriptions and review refinements, and make the
+  opt-in review verdict contract explicit instead of accepting an `APPROVE`
+  substring in contradictory text.
+- Include task completion criteria, inferred scope, exclusions, and reviewer
+  notes in browser review instructions without changing its schema or routes.
+
 ## [5.14.1] - 2026-08-31
 
 ### Fixed
@@ -6213,7 +6264,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.14.1...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.15.0...HEAD
+[5.15.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.14.1...v5.15.0
 [5.14.1]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.14.0...v5.14.1
 [5.14.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.13.2...v5.14.0
 [5.13.2]: https://github.com/Chachamaru127/claude-code-harness/compare/v5.13.1...v5.13.2

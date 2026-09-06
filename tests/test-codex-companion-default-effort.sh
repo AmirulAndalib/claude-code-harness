@@ -27,8 +27,8 @@ function fail(message) {
 if (args[0] !== "task") fail("missing task subcommand");
 if (!args.includes("--effort")) fail("wrapper did not add --effort");
 const effortIndex = args.indexOf("--effort");
-if (!["none", "minimal", "low", "medium", "high", "xhigh"].includes(args[effortIndex + 1])) {
-  fail("default effort did not resolve to a valid effort value");
+if (args[effortIndex + 1] !== "medium") {
+  fail("explicit CODEX_EFFORT=medium must take precedence over prompt inference");
 }
 if (!args.includes("default effort smoke")) fail("task prompt was not preserved");
 NODE

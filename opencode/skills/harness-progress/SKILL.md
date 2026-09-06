@@ -27,6 +27,9 @@ Plan Brief / Acceptance Demo に続く 3 つ目の HTML surface で、**進行�
 - 経過分数 / 推定総分数 / コスト so-far / コスト estimate を表示
 - drift alert を表示 (Phase 65.4.3 以降で populate)
 
+完了率は Plans.md のマーカーから算出した値であり、受け入れ検証の合格率ではない。説明では計測値と推定値を分ける。
+state 欠損時の表示用既定値を実測の 0 と主張せず、元の計測が未取得ならその限界を報告する。ボード生成だけでタスクを完了にしない。
+
 **やらない** (本 cycle):
 - WebSocket / SSE による live update (静的 HTML、再生成で更新)
 - 過去 session の history 比較 (Phase 65.4.4 で別軸)

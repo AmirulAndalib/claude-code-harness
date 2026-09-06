@@ -32,15 +32,17 @@ settings.json の `deny` ルールで旧 MCP ツールをブロック（既設�
 
 ### タスク委託（実装・デバッグ・調査）
 
+依頼には目的と理由、対象 repo/worktree、担当範囲、制約、DoD、必須検証、根拠資料、承認済み操作と元の指示を含める。調査だけの依頼は読み取り専用で渡す。継続時も元の制約と未完了条件を保持し、完了済みの確認を理由なく繰り返さない。
+
 ```bash
 # 書き込み可能なタスク委託
-bash scripts/codex-companion.sh task --write "バグを修正して"
+bash scripts/codex-companion.sh task --write "指定した不具合を再現し、承認済みの担当範囲で修正と必須検証を完了してください。要求と根拠: <task context>。原因、差分、実行結果、未確認事項を返してください。"
 
 # stdin 経由（大きなプロンプト向け）
 cat "$PROMPT_FILE" | bash scripts/codex-companion.sh task --write
 
 # 前回のスレッドを再開
-bash scripts/codex-companion.sh task --resume-last --write "続きをやって"
+bash scripts/codex-companion.sh task --resume-last --write "元の目的、担当範囲、制約、承認元を維持し、未完了の DoD を満たしてください。追加の指摘と根拠: <findings/evidence>。"
 ```
 
 ### レビュー

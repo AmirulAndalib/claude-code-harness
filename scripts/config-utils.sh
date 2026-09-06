@@ -404,11 +404,27 @@ get_advisor_consult_before_user_escalation() {
 }
 
 get_advisor_claude_model() {
-  advisor_config_value "claude_model" "opus"
+  local model
+  model="$(advisor_config_value "claude_model" "")"
+  if [ -n "${model}" ]; then
+    printf '%s\n' "${model}"
+    return 0
+  fi
+  bash "$(dirname "${BASH_SOURCE[0]}")/model-routing.sh" --host claude --tier advisor --field model
 }
 
 get_advisor_codex_model() {
-  advisor_config_value "codex_model" "gpt-5.6-sol"
+  if [ -n "${CODEX_ADVISOR_MODEL:-}" ]; then
+    printf '%s\n' "${CODEX_ADVISOR_MODEL}"
+    return 0
+  fi
+  local model
+  model="$(advisor_config_value "codex_model" "")"
+  if [ -n "${model}" ]; then
+    printf '%s\n' "${model}"
+    return 0
+  fi
+  bash "$(dirname "${BASH_SOURCE[0]}")/model-routing.sh" --host codex --tier advisor --field model
 }
 
 get_advisor_state_dir() {

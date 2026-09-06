@@ -12,7 +12,7 @@
    - untracked を含める
 2. PR branch / feature branch に commits がある
    - 推奨: `upstream..HEAD` または `origin/main..HEAD`
-   - working tree も dirty なら AskUserQuestion で「未コミット変更のみ / 全部 / commit のみ」を選ぶ
+   - working tree も dirty なら、元の依頼、選択した task、記録済み base から対象を回収する。同じ task の commit と未コミット変更は合わせて確認し、対象を明示する。無関係な変更との境界を特定できない場合だけ、その範囲を確認する
 3. clean tree で branch 差分がない
    - 推奨: 直近 1 commit
    - 必要なら直近 5 commits

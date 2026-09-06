@@ -53,7 +53,8 @@ banner 1 行 (`🚀 cursor / composer-2.5-fast / <branch> / <task>`) + 計画 2-
 
 ## Step 1 — banner + plan を出し切る (1 秒以内)
 
-引数 `$ARGUMENTS` をタスク説明として受ける。引数が空なら以下のマーカーを出力してユーザーに 1 行タスクを要求し、入力後に Step 2 へ進む:
+引数 `$ARGUMENTS` をタスク説明として受ける。空なら直前の明示依頼と選択済み Plans.md を読み、対象を回収する。
+それでも対象を特定できない場合だけ、以下のマーカーを出力してユーザーに 1 行タスクを要求し、入力後に Step 2 へ進む:
 
 ```
 CURSOR_DO_AWAITING_TASK: provide a one-line task description as $ARGUMENTS
@@ -213,13 +214,21 @@ bash -c '
   fi
   HARNESS_PLUGIN_ROOT="$ROOT"
   PROMPT="<task-description>
+Purpose and why: <expected outcome and user need>
+Owned paths and non-goals: <assigned files/modules and excluded work>
+Definition of done: <observable conditions and required checks>
+Contract and authorization references: <selected plan/spec paths and original user instruction or applicable approval record>
+Available evidence: <observed state, prior attempts, findings and artifact paths>
 
 Constraints:
-- Modify only files relevant to the task.
-- Keep existing tests green. Add tests when the task is verifiable.
+- Choose the implementation method within the assigned scope. Other workers may be active; preserve their edits.
+- Recover missing context from the supplied contracts and read-only inspection first. State minor assumptions; stop only the action that needs a material decision or missing authorization.
+- Complete authorized reversible work without asking again. Inferred scope is not authorization for protected operations.
+- Preserve required TDD and validation. After required checks pass, add checks only for new changes, failures, or unresolved concerns.
 - Match existing code style and naming.
 - Create exactly one git commit if your environment supports it; otherwise leave one dirty changeset for Lead auto-commit.
-- Do not touch .claude-plugin/settings*, .claude/settings*, .eslintrc*, biome.json, tsconfig*.json."
+- Do not touch .claude-plugin/settings*, .claude/settings*, .eslintrc*, biome.json, tsconfig*.json.
+- Return the result, decision reasons, changed paths, check commands/results and remaining limitations. A success claim alone is not evidence."
   bash "${HARNESS_PLUGIN_ROOT}/scripts/cursor-companion.sh" task \
     --write \
     --workspace "${WT_DIR}" \
@@ -365,6 +374,8 @@ cursor:do completed
    base: <BASE_REF> → cherry-picked into <BASE_BRANCH>
    plans: <updated|skipped (no match)>
    files: <changed-file-count> changed, +<inserts> -<deletes>
+   checks: <commands, results and evidence paths>
+   unverified: <remaining limitations or none observed within the checked scope>
 ```
 
 ## Full Containment (write mode 必須)

@@ -72,11 +72,12 @@ if $ARGUMENTS == "":
 
 ### Output Contract (P35: 「止まったように見える」UX 対策)
 
-skill 結論時の output の **最後の 1 行**は必ず次の literal を含める:
+`<local-command-stdout>` で host へ結果を中継する場合だけ、output の **最後の 1 行**に次の literal を含める:
 
 `↑この結果は Claude が要約します。Enter キーで次へ進むか、新規 prompt で別の指示を出してください。`
 
 これは `<local-command-stdout>` 経由で text response として表示されると user が「止まった」と感じる UX 問題への明示的な instruction (patterns.md P35)。
+host の最終回答は実行済み操作、公開の検証結果、残る gate を返す。要約や検証の予告だけで終了しない。
 
 `harness-release` / `/release` だけが入力された場合、これは
 **「今までの作業をコミットし、PR/main 反映まで完了してリリースしたい」** という意味として扱う。
@@ -138,7 +139,7 @@ git commit -m "<type>: <summary>"
 ```
 
 commit message は review summary / Plans.md task / branch name から短く生成する。
-判断できない場合は `AskUserQuestion` で 2〜3 個の commit message 候補を出す。
+表現だけが未決なら既存の commit 規約に沿って生成する。review 済みの対象そのものが曖昧な場合だけ、その対象を確認する。
 work commit 作成後に `.claude/state/review-result.json` の `commit_hash` を確認または更新し、
 release preflight へ進む。
 
@@ -378,7 +379,7 @@ SemVer 判定基準・バッチリリース方針・Release Train Proposal の�
 
 - **PR ready / release ready 分離**: PR ready は review + evidence pack。release ready は version/tag/GitHub Release/CI まで。lane:fast / lane:gate は PR ready で止めてよい
 - **単一ゲート**: ユーザーの判断タイミングは 1 回だけ。mini-confirmation を挟むとラバースタンプ化して意味を失う
-- **事前に全て描く**: Post-Gate に入ってからの「考え直し」を禁ずる。Gate 前に全 draft を揃える
+- **事前に全て描く**: Gate 前に全 draft を揃える。Post-Gate は承認済み計画を実行し、新しい証拠で前提が崩れた場合は影響する操作を止めて報告する
 - **main 反映が完了条件**: release tag / GitHub Release は default branch 反映後にだけ作る。branch-only release は未完了として扱う
 - **失敗は transparent**: 途中で失敗したら自動ロールバックは試みず、ユーザーに現状を提示して判断させる
 - **プロジェクト非依存**: VERSION file 形式、mirror、residue check など特定環境の前提を持たない。本体 harness 固有の処理は `harness-release-internal` に分離

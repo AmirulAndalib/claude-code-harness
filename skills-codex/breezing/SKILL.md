@@ -81,14 +81,20 @@ breezing --no-discuss all       # 計画議論スキップで全タスク完走
 
 1. **引数を `harness-work --breezing` に渡す**（`--max-workers N` は breezing 固有オプションとして解釈し、`harness-work` の `--parallel` とは別概念）
 2. **チーム実行モードを強制** — Lead → Worker spawn → 必要時 Advisor → companion review Reviewer の四者分離
-3. **Lead は delegate 専念** — コードを直接書かない
+3. **Lead は delegate 専念** — コードを直接書かず、Worker 実行中は仕様照合、独立した調査、証拠確認、統合準備を進める
+
+委譲本文には目的と理由、担当範囲、DoD、選択した plan / spec、観測済み証拠、原依頼と承認の参照を含める。以降の `{task prompt}` もこの情報を持つ。
+独立して検証できる成果に ownership を割り当て、ready task と利用可能な同時実行上限を守る。他担当の変更を戻さず、関連 follow-up は同じ担当へ返す。Reviewer は fresh-context のまま分離する。
+担当は境界内で方法を選び、承認済み可逆作業を完了する。不足は読み取りで補い、軽微な仮定と重大な仕様判断・不足する権限を区別する。推定スコープを承認として扱わない。
+必須チェックと既定レビューが通ったら、新しい変更や未解決の懸念がない限り追加テストや機能を増やさず、実結果と証拠を返す。
 
 ### Execution Backend (persistent)
 
 バックエンド選択（worker を `claude` / `codex` / `cursor` のどれで実装するか）の正本は
 `harness-work` の「Execution Backend Selection（実装バックエンド選択）」を参照する。
-そこに precedence、role-scope（review / advisor は Opus 固定）、self_review スキップ、cursor banner が定義されている。
+そこに precedence、role-scope（review / advisor は実装役から分離した担当別 route）、self_review スキップ、cursor banner が定義されている。
 backend 判定は **必ず** resolver 経由にし、`HARNESS_IMPL_BACKEND` env だけを直読みしない。
+CCH のモデルと effort は未指定時の role 既定。利用者の明示指定と手動変更を尊重し、native profile / 明示 override に従う。AI が文言から再調整したり、親の変更を全 Worker に配ったりしない。独立 Reviewer の隔離と read-only は維持する。
 
 Codex Breezing も配布 plugin では call-site default を変えない:
 
@@ -115,6 +121,8 @@ user `~/.config/claude-harness/impl-backend.env` > call-site default `claude`。
 
 Worker の実装は並列化できるが、レビューと main への cherry-pick は直列で行う。
 これは同じ main worktree への書き込み競合を避けるため。
+Go の `HARNESS_TEAM_HIERARCHY=sublead` は CLI mini-plan 入口未実装、`HARNESS_REVIEW_ITERATE=on` は production brain runner 未提供（`claude-companion.sh` 欠損）のため end-to-end 未対応。この更新では有効化せず、既定の flat / OFF を維持する。
+この制約は Go opt-in 入口に限る。手動 Producer 分解と通常の Skill / Native reviewer loop は別経路として維持する。
 
 ### `harness-work` との違い
 
@@ -203,17 +211,17 @@ Advisor / Reviewer drift との関係:
 
 ### Phase 0: Planning Discussion（構造化 3 問チェック）
 
-全タスク実行前に、以下の 3 問で計画の健全性を確認する。
+全タスク実行前に、以下の 3 観点を原依頼と Plans.md から確認する。回答済み事項は聞き直さず、読み取り調査でも解けない判断分岐だけ質問する。
 `--no-discuss` 指定時は全スキップ。
 
 **Q1. スコープ確認**:
-> 「{{N}} 件のタスクを実行します。スコープは適切ですか？」
+> 原依頼で指定された {{N}} 件と担当範囲を照合する。対象が複数候補のままなら範囲を確認する。
 
 **Q2. 依存関係確認**（Plans.md に Depends カラムがある場合のみ）:
-> 「タスク {{X}} は {{Y}} に依存しています。実行順序は合っていますか？」
+> {{X}} の Depends={{Y}} と完了証拠を照合し、ready task だけ委譲する。仕様上の依存が矛盾する場合だけ確認する。
 
 **Q3. リスクフラグ**（`[needs-spike]` タスクがある場合のみ）:
-> 「タスク {{Z}} は [needs-spike] です。先に spike しますか？」
+> {{Z}} の [needs-spike] に対し、既存の調査結果と Advisor 条件を確認する。追加の仕様判断や保護操作が必要な場合だけ確認する。
 
 ### Phase A: Pre-delegate
 
@@ -278,7 +286,7 @@ for task in execution_order:
         print("🚀 claude / native-subagent / {branch_name} / {task.ID}")
         worker_id = spawn_agent({
             agent_type: "worker",
-            message: "作業ディレクトリ: {worktree_path} で作業してください。\n\nタスク: {task.内容}\nDoD: {task.DoD}\ncontract_path: {contract_path}\n\n実装してください。完了後 git commit してください。\n\n完了時、以下の JSON を返してください:\n{\"commit\": \"<hash>\", \"files_changed\": [...], \"summary\": \"...\"}",
+            message: "作業ディレクトリ: {worktree_path} で作業してください。\n\nタスク: {task.内容}\n目的と理由: {purpose_and_why}\n担当範囲: {owned_paths_and_non_goals}\nDoD: {task.DoD}\nplan/spec: {selected_plan_and_spec_paths}\ncontract_path: {contract_path}\n証拠と前回結果: {evidence_and_prior_advice}\n原依頼と承認の参照: {authorization_references}\n\n担当範囲で方法を選び、他担当の変更を戻さず、承認済み作業を完了してください。完了後 git commit してください。\n\n完了時、以下の JSON を返してください。summary に判断理由、チェックの実結果と証拠の参照、未確認点を含めてください:\n{\"commit\": \"<hash>\", \"files_changed\": [...], \"summary\": \"...\"}",
             fork_turns: "3"
         })
         worker_result = wait_agent({ targets: [worker_id] })
@@ -329,12 +337,12 @@ for task in execution_order:
         if backend == "claude":
             send_input({
                 target: worker_id,
-                message: "指摘内容: {issues}\n修正して git commit --amend してください。修正後 JSON を再出力してください。"
+                message: "指摘内容: {issues}\n元の目的、DoD、担当範囲、承認を維持し、対応と検証証拠を返してください。修正して git commit --amend してください。修正後 JSON を再出力してください。"
             })
             wait_agent({ targets: [worker_id] })
         elif backend == "cursor":
             previous_commit = git("-C", worktree_path, "rev-parse", "HEAD")
-            bash("bash \"${HARNESS_PLUGIN_ROOT}/scripts/cursor-companion.sh\" task --write --workspace {worktree_path} \"Review findings:\n{issues}\n\nFix the findings and create one new git commit before returning.\"")
+            bash("bash \"${HARNESS_PLUGIN_ROOT}/scripts/cursor-companion.sh\" task --write --workspace {worktree_path} \"{task prompt}\n\nReview findings:\n{issues}\n\nPreserve the original DoD, owned scope and authorization references. Fix the findings and create one new git commit before returning.\"")
             latest_commit = git("-C", worktree_path, "rev-parse", "HEAD")
             if git("-C", worktree_path, "status", "--porcelain") != "":
                 git("-C", worktree_path, "add", "-A")
@@ -345,7 +353,7 @@ for task in execution_order:
         else:
             previous_commit = git("-C", worktree_path, "rev-parse", "HEAD")
             companion_state_file = "{worktree_path}/.claude/state/codex-primary-environment.json"
-            bash("CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worktree_path} \"Review findings:\n{issues}\n\nFix the findings and create one new git commit before returning.\"")
+            bash("CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worktree_path} \"{task prompt}\n\nReview findings:\n{issues}\n\nPreserve the original DoD, owned scope and authorization references. Fix the findings and create one new git commit before returning.\"")
             latest_commit = git("-C", worktree_path, "rev-parse", "HEAD")
             if latest_commit == previous_commit:
                 raise EscalationError("codex companion retry produced no new commit")
@@ -416,6 +424,7 @@ Worker プロンプトには、完了時に以下の JSON を返すことを明�
 ```
 
 Lead はこの JSON を解析して commit hash とファイル一覧を取得する。
+JSON の成功申告だけで完了にせず、差分、DoD、必須チェック、review の証拠を照合する。内部の思考過程は求めない。
 
 ### Progress Feed（Phase B 中の進捗通知）
 

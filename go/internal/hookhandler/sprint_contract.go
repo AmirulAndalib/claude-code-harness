@@ -163,8 +163,8 @@ var defaultSprintAdvisor = sprintContractAdvisor{
 	RetryThreshold:       2,
 	PreEscalationConsult: true,
 	ModelPolicy: sprintAdvisorModelPolicy{
-		ClaudeDefault: "opus",
-		CodexDefault:  "gpt-5.6-sol",
+		ClaudeDefault: "claude-fable-5-1",
+		CodexDefault:  "gpt-6-astra",
 	},
 }
 

@@ -1107,12 +1107,13 @@ current_job_live_status() {
   status_json="$(companion_status_json "${job_id}" 2>> "${RUNNER_LOG}" || true)"
   status_payload="${status_json}"
   [ -n "${status_payload}" ] || status_payload='{}'
-  status="$(python_json "${status_payload}" <<'PY'
+  status="$(python_json 3<<<"${status_payload}" <<'PY'
 import json
 import sys
 
 try:
-    payload = json.loads(sys.argv[1]) if sys.argv[1] else {}
+    with open(3, encoding="utf-8") as fh:
+        payload = json.load(fh)
 except json.JSONDecodeError:
     payload = {}
 job = payload.get("job", {}) or {}
@@ -1536,6 +1537,8 @@ PY
   }
 
   trap 'terminate_child' TERM INT
+  # Local mode inherits the invoking Codex profile's model and reasoning effort.
+  # Role defaults are selected by the companion driver, not by this local path.
   codex exec - --dangerously-bypass-approvals-and-sandbox < "${prompt_file}" > "${output_file}" 2>> "${log_file}" &
   child_pid=$!
   python_json "${job_file}" "${child_pid}" <<'PY'
@@ -1605,16 +1608,156 @@ PY
 }
 
 resume_pack_best_effort() {
+  RESUME_EVIDENCE_JSON='[]'
   if [ ! -x "${MEM_CLIENT}" ]; then
     log_line "resume-pack skipped: harness-mem client not executable"
     return 0
   fi
-  local output
-  if output="$("${MEM_CLIENT}" resume-pack --project claude-code-harness --limit 5 2>&1)"; then
-    log_line "resume-pack ok"
+  local output project_key request_json
+  project_key="$(basename "$(cd "${PROJECT_ROOT}" && pwd)")"
+  request_json="$(python_json "${project_key}" <<'PY'
+import json, sys
+print(json.dumps({"project": sys.argv[1], "limit": 5, "include_private": False,
+                  "detail_level": "L0", "resume_pack_max_tokens": 1200}))
+PY
+)"
+  if output="$(printf '%s' "${request_json}" | "${MEM_CLIENT}" resume-pack 2>> "${RUNNER_LOG}")"; then
+    RESUME_EVIDENCE_JSON="$(python_json "${output}" "${project_key}" <<'PY'
+import json, sys
+try:
+    payload = json.loads(sys.argv[1])
+except json.JSONDecodeError:
+    payload = {}
+# Aggregate summaries do not identify the project of every source item.
+items = payload.get("items", []) if isinstance(payload, dict) and payload.get("ok") is True else []
+if not isinstance(items, list):
+    items = []
+print(json.dumps([item for item in items if isinstance(item, dict)
+                  and item.get("project") == sys.argv[2]][:5], ensure_ascii=False))
+PY
+)"
+    log_line "resume-pack refreshed for project=${project_key}"
   else
-    log_line "resume-pack warning: ${output}"
+    log_line "resume-pack unavailable for project=${project_key}"
   fi
+}
+
+execution_context_json() {
+  local task_ids="$1"
+  local contract_path="${2:-}"
+  python_json "${PROJECT_ROOT}" "$(plans_file_path)" "${task_ids}" "${contract_path}" "${RESUME_EVIDENCE_JSON:-[]}" <<'PY'
+import json
+import pathlib
+import re
+import sys
+
+project = pathlib.Path(sys.argv[1]).resolve()
+plans = pathlib.Path(sys.argv[2])
+task_ids = [item.strip() for item in sys.argv[3].split(",") if item.strip()]
+explicit_contract = sys.argv[4]
+rows, background = [], []
+sections = [(0, [])]
+table_header = ""
+if plans.is_file():
+    for number, line in enumerate(plans.read_text(encoding="utf-8").splitlines(), 1):
+        heading = re.match(r"^(#{1,6})\s+", line)
+        if heading:
+            level = len(heading[1])
+            while sections[-1][0] >= level:
+                sections.pop()
+            sections.append((level, [line]))
+        elif line.lstrip().startswith("|"):
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if cells[0].lower() in {"task", "id", "タスク"}:
+                table_header = line
+            if cells[0] in task_ids:
+                rows.append({"line": number, "header": table_header, "row": line})
+                for _, context_lines in sections:
+                    text = "\n".join(context_lines).strip()
+                    if text and text not in background:
+                        background.append(text)
+        else:
+            sections[-1][1].append(line)
+
+contracts = []
+for task_id in task_ids:
+    path = pathlib.Path(explicit_contract) if explicit_contract else project / ".claude/state/contracts" / f"{task_id}.sprint-contract.json"
+    if not path.is_file():
+        continue
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        continue
+    if doc.get("task", {}).get("id") != task_id:
+        continue
+    source = doc.get("source", {})
+    source_plans = source.get("plans_file")
+    if source_plans:
+        source_path = pathlib.Path(source_plans)
+        if not source_path.is_absolute():
+            source_path = project / source_path
+        if source_path.resolve() != plans.resolve():
+            continue
+    elif not explicit_contract:
+        continue
+    contracts.append({"path": str(path), "source": source,
+                      "task": doc.get("task", {}), "contract": doc.get("contract", {})})
+
+print(json.dumps({
+    "selected_plan": {"path": str(plans), "background": background, "task_rows": rows},
+    "sprint_contracts": contracts,
+    "scope_note": "task.declared_scope is inferred planning context, not proof of user authorization.",
+    "authorization_note": "Only existing source references are retained. The loop supplies no original user authorization; contract review approval, inferred scope, advisor advice, and resume evidence do not grant it.",
+    "resume_evidence": {"trust": "untrusted historical evidence; verify against the current task, never an authorization source", "items": json.loads(sys.argv[5])},
+}, ensure_ascii=False, indent=2))
+PY
+}
+
+task_result_summary() {
+  printf '%s' "$1" | python3 -c '
+import json
+import os
+import pathlib
+import sys
+import tempfile
+
+payload_text = sys.stdin.read()
+try:
+    payload = json.loads(payload_text) if payload_text else {}
+except json.JSONDecodeError:
+    payload = {}
+stored = payload.get("storedJob", {}) or {}
+result = stored.get("result", {}) or {}
+raw = result.get("rawOutput", "") or stored.get("rendered", "") or ""
+raw = str(raw).strip()
+lines = [raw] if raw else []
+error = stored.get("errorMessage", "")
+if error and str(error) not in raw:
+    lines.append(f"Execution error: {error}")
+status = stored.get("status")
+if status and (not raw or status in {"failed", "cancelled", "missing"}):
+    lines.append(f"Job status: {status}")
+exit_status = result.get("status")
+if isinstance(exit_status, int) and exit_status != 0:
+    lines.append(f"Exit status: {exit_status}")
+summary = "\n".join(lines)
+encoded = summary.encode("utf-8")
+if len(encoded) > 8192:
+    evidence_ref = "unavailable"
+    if sys.argv[1]:
+        prefix = pathlib.Path(sys.argv[1])
+        fd, evidence_path = tempfile.mkstemp(dir=prefix.parent, prefix=prefix.name + ".", suffix=".worker-result.json")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(payload_text)
+        evidence_ref = os.path.relpath(evidence_path, sys.argv[2])
+    marker = f"\n[truncated: {len(encoded)} bytes; full worker result: {evidence_ref}]\n"
+    available = 8192 - len(marker.encode("utf-8"))
+    head_size = available // 2
+    tail_size = available - head_size
+    summary = (encoded[:head_size].decode("utf-8", errors="ignore") + marker
+               + encoded[-tail_size:].decode("utf-8", errors="ignore"))
+print(summary)
+' "${2:-}" "${PROJECT_ROOT}"
 }
 
 builtin_validate_quick() {
@@ -1782,9 +1925,13 @@ advisor_consult_before_user_escalation() {
 }
 
 advisor_model_name() {
-  if [ ! -f "${CONFIG_UTILS}" ]; then
-    printf 'gpt-5.6-sol\n'
+  if [ -n "${CODEX_ADVISOR_MODEL:-}" ]; then
+    printf '%s\n' "${CODEX_ADVISOR_MODEL}"
     return 0
+  fi
+  if [ ! -f "${CONFIG_UTILS}" ]; then
+    bash "${HARNESS_INSTALL_ROOT}/scripts/model-routing.sh" --host codex --tier advisor --field model
+    return $?
   fi
   # shellcheck disable=SC1090
   PROJECT_ROOT="${PROJECT_ROOT}" CONFIG_FILE="${PROJECT_ROOT}/.claude-code-harness.config.yaml" source "${CONFIG_UTILS}"
@@ -1927,6 +2074,45 @@ print("\n".join(lines))
 PY
 }
 
+restore_advisor_response() {
+  python_json "${RUN_JSON}" "${RESULTS_DIR}" "$1" "$(plans_file_path)" "${PROJECT_ROOT}" <<'PY'
+import json
+import pathlib
+import sys
+
+run_path, results_dir, task_id, plans_file, project_root = sys.argv[1:]
+if not pathlib.Path(run_path).is_file():
+    raise SystemExit(0)
+run = json.loads(pathlib.Path(run_path).read_text(encoding="utf-8"))
+for key, expected in [("project_root", project_root), ("plans_file", plans_file)]:
+    if run.get(key) and pathlib.Path(run[key]).resolve() != pathlib.Path(expected).resolve():
+        raise SystemExit(0)
+hashes = run.get("consulted_trigger_hashes", []) or []
+responses = {}
+for request_path in pathlib.Path(results_dir).glob("*.advisor-request.json"):
+    response_path = request_path.with_name(request_path.name.replace(".advisor-request.json", ".advisor-response.json"))
+    try:
+        request = json.loads(request_path.read_text(encoding="utf-8"))
+        response = json.loads(response_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        continue
+    if request.get("task_id") != task_id or request.get("trigger_hash") not in hashes:
+        continue
+    if request.get("run_id") != run.get("run_id"):
+        continue
+    prior_plan = request.get("execution_context", {}).get("selected_plan", {}).get("path")
+    if prior_plan and pathlib.Path(prior_plan).resolve() != pathlib.Path(plans_file).resolve():
+        continue
+    if response.get("schema_version") != "advisor-response.v1" or response.get("decision") not in {"PLAN", "CORRECTION", "STOP"}:
+        continue
+    responses[request["trigger_hash"]] = response_path
+for trigger_hash in reversed(hashes):
+    if trigger_hash in responses:
+        print(responses[trigger_hash])
+        break
+PY
+}
+
 consult_advisor() {
   local task_id="$1"
   local reason_code="$2"
@@ -1935,13 +2121,25 @@ consult_advisor() {
   local attempt="$5"
   local last_error="$6"
   local context_summary="$7"
+  local contract_path="${8:-}"
 
   local request_file response_file model
   model="$(advisor_model_name)"
-  request_file="${RESULTS_DIR}/${task_id}.${reason_code}.advisor-request.json"
-  response_file="${RESULTS_DIR}/${task_id}.${reason_code}.advisor-response.json"
+  # Only completed pairs match restore_advisor_response's request-file glob.
+  request_file="$(python_json "${RESULTS_DIR}" "${task_id}.${reason_code}." <<'PY'
+import os, sys, tempfile
+fd, path = tempfile.mkstemp(dir=sys.argv[1], prefix=sys.argv[2], suffix=".advisor-request.pending.json")
+os.close(fd)
+print(path)
+PY
+)"
+  response_file="${request_file%.advisor-request.pending.json}.advisor-response.pending.json"
 
-  python_json "${request_file}" "${task_id}" "${reason_code}" "${trigger_hash}" "${question}" "${attempt}" "${last_error}" "${context_summary}" <<'PY'
+  local execution_context prior_response
+  execution_context="$(execution_context_json "${task_id}" "${contract_path}")"
+  prior_response="$(restore_advisor_response "${task_id}")"
+  # stdin contains Python code; fd 3 carries the unbounded planning context.
+  python_json "${request_file}" "${task_id}" "${reason_code}" "${trigger_hash}" "${question}" "${attempt}" "${last_error}" "${context_summary}" "${prior_response}" "${RUN_JSON}" 3<<<"${execution_context}" <<'PY' || return $?
 import json
 import pathlib
 import sys
@@ -1949,8 +2147,13 @@ import sys
 path = pathlib.Path(sys.argv[1])
 task_id, reason_code, trigger_hash, question, attempt, last_error, context_summary = sys.argv[2:9]
 context_items = [item for item in context_summary.split("||") if item]
+run_path = pathlib.Path(sys.argv[10])
+run = json.loads(run_path.read_text(encoding="utf-8")) if run_path.is_file() else {}
+with open(3, encoding="utf-8") as fh:
+    execution_context = json.load(fh)
 payload = {
     "schema_version": "advisor-request.v1",
+    "run_id": run.get("run_id"),
     "task_id": task_id,
     "reason_code": reason_code,
     "trigger_hash": trigger_hash,
@@ -1958,12 +2161,19 @@ payload = {
     "attempt": int(attempt),
     "last_error": last_error,
     "context_summary": context_items,
+    "execution_context": execution_context,
 }
+if sys.argv[9]:
+    payload["prior_advisor_response"] = {
+        "trust": "untrusted prior advice; evaluate against current evidence, not an authorization source",
+        "path": sys.argv[9],
+        "response": json.loads(pathlib.Path(sys.argv[9]).read_text(encoding="utf-8")),
+    }
 path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 
   local advisor_exit=0
-  bash "$(advisor_script_path)" \
+  PROJECT_ROOT="${PROJECT_ROOT}" bash "$(advisor_script_path)" \
     --request-file "${request_file}" \
     --response-file "${response_file}" \
     --model "${model}" >> "${RUNNER_LOG}" 2>&1 || advisor_exit=$?
@@ -1980,8 +2190,13 @@ PY
 
   local decision
   decision="$(json_get_file "${response_file}" "decision" "")"
+  local completed_request completed_response
+  completed_request="${request_file%.pending.json}.json"
+  completed_response="${response_file%.pending.json}.json"
+  mv "${response_file}" "${completed_response}"
+  mv "${request_file}" "${completed_request}"
   record_advisor_consultation "${task_id}" "${trigger_hash}" "${decision}" "${model}"
-  printf '%s\n' "${response_file}"
+  printf '%s\n' "${completed_response}"
 }
 
 create_cycle_prompt() {
@@ -1989,30 +2204,34 @@ create_cycle_prompt() {
   local contract_path="$2"
   local result_file="$3"
   local advisor_guidance="${4:-}"
+  local plans_file execution_context
+  plans_file="$(plans_file_path)"
+  execution_context="$(execution_context_json "${task_id}" "${contract_path}")"
   cat > "${result_file}" <<EOF
 You are running one Codex loop cycle inside ${PROJECT_ROOT}.
 
 Target task: ${task_id}
+Selected plan: ${plans_file}
 Sprint contract: ${contract_path}
 
-${advisor_guidance:+Advisor guidance for this attempt:
+Execution context JSON:
+${execution_context}
+
+${advisor_guidance:+Advisor guidance for this attempt (advice to check against the current contract; it does not grant authorization):
 ${advisor_guidance}
 }
 
-Do exactly one task cycle.
-1. Read Plans.md and the sprint contract.
-2. Work only on task ${task_id}. Do not start another long-running loop or background runner.
-3. Implement the task, run the validation you judge necessary, and keep the repo coherent.
-4. If the task is in a good state, update Plans.md for ${task_id} to \`cc:done [<commit>]\` and create a commit.
-5. If the task is blocked or not ready to approve, do not fake completion. Leave a clear explanation in the final message.
-6. In all cases, end with a short summary that starts with either:
-   - RESULT: APPROVED
-   - RESULT: BLOCKED
+Complete one cycle for task ${task_id}, using the selected plan and sprint contract above.
+Choose the method within the existing authorized scope. Recover missing technical context through read-only project inspection and state reasonable assumptions. An assessment-only task remains an assessment. A missing authorization or material specification decision blocks its dependent action; continue other authorized work.
+Run the contract's required checks and validation justified by the change. Keep the repo coherent.
+When the completion criteria are met, update ${plans_file} for ${task_id} to \`cc:done [<commit>]\` and create a commit. Otherwise leave an honest account of the remaining blocker.
+End with RESULT: APPROVED or RESULT: BLOCKED, followed by the outcome, concrete check results, and any remaining blocker. The RESULT line is a report; the loop still checks the commit, selected plan status, and review evidence.
 
 Important:
 - Be honest about failures.
 - Do not revert unrelated user changes.
 - Keep all work inside this repository.
+- Do not start another long-running loop or background runner.
 - Codex realtime handoff may deliver transcript deltas to background agents. Treat deltas as context, not as a reason to emit extra progress.
 - Stay silent unless there is a material state change, a block/failure, an advisor/reviewer drift risk, an explicit status request, or the final RESULT line.
 EOF
@@ -2022,22 +2241,25 @@ create_breezing_cycle_prompt() {
   local task_ids="$1"
   local max_workers="$2"
   local result_file="$3"
+  local plans_file execution_context
+  plans_file="$(plans_file_path)"
+  execution_context="$(execution_context_json "${task_ids}")"
   cat > "${result_file}" <<EOF
 You are running one Codex loop breezing cycle inside ${PROJECT_ROOT}.
 
 Target tasks: ${task_ids}
+Selected plan: ${plans_file}
 Executor: harness-work --breezing
 Max workers: ${max_workers}
 
-Do exactly one ready-task batch.
-1. Read Plans.md and work only on the target tasks listed above.
-2. Run the equivalent of \`harness-work --breezing --max-workers ${max_workers} ${task_ids}\` inside this repository.
-3. Use parallel workers only for independent tasks. Keep review and cherry-pick/integration serial.
-4. If every target task reaches a good state, update Plans.md for each target task to \`cc:done [<commit>]\` and create a commit.
-5. If any target task is blocked or not ready to approve, do not fake completion. Leave a clear explanation in the final message.
-6. In all cases, end with a short summary that starts with either:
-   - RESULT: APPROVED
-   - RESULT: BLOCKED
+Execution context JSON:
+${execution_context}
+
+Complete one ready-task batch for the target tasks, using the selected plan and available contracts above.
+Run the equivalent of \`harness-work --breezing --max-workers ${max_workers} ${task_ids}\` inside this repository. Choose the method within the existing authorized scope; preserve assessment-only requests and recover missing technical context through read-only inspection.
+Use parallel workers only for independent tasks with explicit ownership and completion criteria. Keep review and cherry-pick/integration serial.
+When every target task meets its completion criteria, update ${plans_file} for each target task to \`cc:done [<commit>]\` and create a commit. If a task is blocked, preserve the specific blocker and continue independent authorized work.
+End with RESULT: APPROVED or RESULT: BLOCKED, followed by completed work, check results, and remaining blockers. The RESULT line is a report; the loop still checks the commit and selected plan statuses.
 
 Important:
 - Be honest about failures.
@@ -2164,16 +2386,27 @@ perform_cycle() {
   advisor_guidance=""
   high_risk_summary="$(contract_high_risk_summary "${contract_path}")"
 
+  if [ "${advisor_active}" = "true" ]; then
+    local prior_response
+    prior_response="$(restore_advisor_response "${task_id}")"
+    if [ -n "${prior_response}" ]; then
+      if [ "$(json_get_file "${prior_response}" "decision" "")" = "STOP" ]; then
+        log_line "restored advisor stop before execution for ${task_id}"
+        return 21
+      fi
+      advisor_guidance="$(render_advisor_guidance "${prior_response}")"
+    fi
+  fi
+
   if [ "${advisor_active}" = "true" ] && [ -n "${high_risk_summary}" ]; then
     local preflight_hash preflight_response preflight_decision preflight_count preflight_exit
     preflight_hash="${task_id}:high-risk-preflight:$(normalize_error_signature "${high_risk_summary}")"
     preflight_count="$(advisor_task_consult_count "${task_id}")"
     if ! advisor_trigger_seen "${preflight_hash}" && [ "${preflight_count}" -lt "$(advisor_max_consults_per_task)" ]; then
       preflight_exit=0
-      preflight_response="$(consult_advisor "${task_id}" "high-risk-preflight" "${preflight_hash}" "高リスク task の初回実行前。どの観点を先に固めるべきか。" 1 "${high_risk_summary}" "task=${task_id}||risk_triggers=${high_risk_summary}||cycle=${cycle_number}")" || preflight_exit=$?
+      preflight_response="$(consult_advisor "${task_id}" "high-risk-preflight" "${preflight_hash}" "高リスク task の初回実行前。どの観点を先に固めるべきか。" 1 "${high_risk_summary}" "task=${task_id}||risk_triggers=${high_risk_summary}||cycle=${cycle_number}" "${contract_path}")" || preflight_exit=$?
       if [ "${preflight_exit}" -ne 0 ]; then
-        log_line "advisor preflight failed for ${task_id} (exit=${preflight_exit}); continuing without guidance"
-        advisor_guidance=""
+        log_line "advisor preflight failed for ${task_id} (exit=${preflight_exit}); retaining any prior guidance"
       else
         preflight_decision="$(json_get_file "${preflight_response}" "decision" "")"
         advisor_guidance="$(render_advisor_guidance "${preflight_response}")"
@@ -2254,20 +2487,22 @@ EOF
       status_json="$(companion_status_json "${job_id}" 2>/dev/null || true)"
       local status_payload="${status_json}"
       [ -n "${status_payload}" ] || status_payload='{}'
-      job_status="$(python_json "${status_payload}" <<'PY'
+      job_status="$(python_json 3<<<"${status_payload}" <<'PY'
 import json, sys
 try:
-    payload = json.loads(sys.argv[1]) if sys.argv[1] else {}
+    with open(3, encoding="utf-8") as fh:
+        payload = json.load(fh)
 except json.JSONDecodeError:
     payload = {}
 job = payload.get("job", {})
 print(job.get("status", "unknown"))
 PY
 )"
-      job_phase="$(python_json "${status_payload}" <<'PY'
+      job_phase="$(python_json 3<<<"${status_payload}" <<'PY'
 import json, sys
 try:
-    payload = json.loads(sys.argv[1]) if sys.argv[1] else {}
+    with open(3, encoding="utf-8") as fh:
+        payload = json.load(fh)
 except json.JSONDecodeError:
     payload = {}
 job = payload.get("job", {})
@@ -2300,23 +2535,7 @@ EOF
     result_json="$(companion_result_json "${job_id}" 2>/dev/null || true)"
     result_payload="${result_json}"
     [ -n "${result_payload}" ] || result_payload='{}'
-    summary="$(python_json "${result_payload}" <<'PY'
-import json, sys
-try:
-    payload = json.loads(sys.argv[1]) if sys.argv[1] else {}
-except json.JSONDecodeError:
-    payload = {}
-stored = payload.get("storedJob", {}) or {}
-result = stored.get("result", {}) or {}
-raw = result.get("rawOutput", "") or stored.get("rendered", "") or ""
-for line in str(raw).splitlines():
-    if line.strip():
-        print(line.strip())
-        break
-else:
-    print("")
-PY
-)"
+    summary="$(task_result_summary "${result_payload}" "${RESULTS_DIR}/${run_id}-cycle-${cycle_number}-attempt-${task_attempt}")"
 
     post_head="$(cd "${PROJECT_ROOT}" && git rev-parse --short HEAD 2>/dev/null || true)"
     local task_status
@@ -2357,7 +2576,6 @@ PY
 
     if [ "${task_attempt}" -lt "${retry_threshold}" ]; then
       task_attempt=$((task_attempt + 1))
-      advisor_guidance=""
       continue
     fi
 
@@ -2367,10 +2585,9 @@ PY
       retry_count="$(advisor_task_consult_count "${task_id}")"
       if ! advisor_trigger_seen "${retry_hash}" && [ "${retry_count}" -lt "${max_consults}" ]; then
         retry_exit=0
-        retry_response="$(consult_advisor "${task_id}" "retry-threshold" "${retry_hash}" "同じ原因の失敗が繰り返された。次は何を変えるべきか。" "${task_attempt}" "${summary}" "task=${task_id}||attempt=${task_attempt}||signature=${failure_signature}")" || retry_exit=$?
+        retry_response="$(consult_advisor "${task_id}" "retry-threshold" "${retry_hash}" "同じ原因の失敗が繰り返された。次は何を変えるべきか。" "${task_attempt}" "${summary}" "task=${task_id}||attempt=${task_attempt}||signature=${failure_signature}" "${contract_path}")" || retry_exit=$?
         if [ "${retry_exit}" -ne 0 ]; then
-          log_line "advisor retry-threshold failed for ${task_id} (exit=${retry_exit}); proceeding without guidance"
-          advisor_guidance=""
+          log_line "advisor retry-threshold failed for ${task_id} (exit=${retry_exit}); retaining any prior guidance"
           if [ "${task_attempt}" -lt "${attempt_limit}" ]; then
             task_attempt=$((task_attempt + 1))
             continue
@@ -2410,7 +2627,7 @@ PY
     plateau_hash="${task_id}:plateau-pre-escalation:$(normalize_error_signature "${summary}")"
     plateau_count="$(advisor_task_consult_count "${task_id}")"
     if ! advisor_trigger_seen "${plateau_hash}" && [ "${plateau_count}" -lt "${max_consults}" ]; then
-      plateau_response="$(consult_advisor "${task_id}" "plateau-pre-escalation" "${plateau_hash}" "plateau により停止候補。もう一度進めるべきか止めるべきか。" "${task_attempt}" "${summary}" "task=${task_id}||phase=plateau||verdict=${final_verdict}")" || return 22
+      plateau_response="$(consult_advisor "${task_id}" "plateau-pre-escalation" "${plateau_hash}" "plateau により停止候補。もう一度進めるべきか止めるべきか。" "${task_attempt}" "${summary}" "task=${task_id}||phase=plateau||verdict=${final_verdict}" "${contract_path}")" || return 22
       plateau_decision="$(json_get_file "${plateau_response}" "decision" "")"
       if [ "${plateau_decision}" != "STOP" ]; then
         plateau_exit=0
@@ -2525,20 +2742,22 @@ EOF
     status_json="$(companion_status_json "${job_id}" 2>/dev/null || true)"
     local status_payload="${status_json}"
     [ -n "${status_payload}" ] || status_payload='{}'
-    job_status="$(python_json "${status_payload}" <<'PY'
+    job_status="$(python_json 3<<<"${status_payload}" <<'PY'
 import json, sys
 try:
-    payload = json.loads(sys.argv[1]) if sys.argv[1] else {}
+    with open(3, encoding="utf-8") as fh:
+        payload = json.load(fh)
 except json.JSONDecodeError:
     payload = {}
 job = payload.get("job", {})
 print(job.get("status", "unknown"))
 PY
 )"
-    job_phase="$(python_json "${status_payload}" <<'PY'
+    job_phase="$(python_json 3<<<"${status_payload}" <<'PY'
 import json, sys
 try:
-    payload = json.loads(sys.argv[1]) if sys.argv[1] else {}
+    with open(3, encoding="utf-8") as fh:
+        payload = json.load(fh)
 except json.JSONDecodeError:
     payload = {}
 job = payload.get("job", {})
@@ -2571,23 +2790,7 @@ EOF
   result_json="$(companion_result_json "${job_id}" 2>/dev/null || true)"
   result_payload="${result_json}"
   [ -n "${result_payload}" ] || result_payload='{}'
-  summary="$(python_json "${result_payload}" <<'PY'
-import json, sys
-try:
-    payload = json.loads(sys.argv[1]) if sys.argv[1] else {}
-except json.JSONDecodeError:
-    payload = {}
-stored = payload.get("storedJob", {}) or {}
-result = stored.get("result", {}) or {}
-raw = result.get("rawOutput", "") or stored.get("rendered", "") or ""
-for line in str(raw).splitlines():
-    if line.strip():
-        print(line.strip())
-        break
-else:
-    print("")
-PY
-)"
+  summary="$(task_result_summary "${result_payload}" "${RESULTS_DIR}/${run_id}-cycle-${cycle_number}.breezing")"
 
   post_head="$(cd "${PROJECT_ROOT}" && git rev-parse --short HEAD 2>/dev/null || true)"
   local final_verdict="REQUEST_CHANGES"

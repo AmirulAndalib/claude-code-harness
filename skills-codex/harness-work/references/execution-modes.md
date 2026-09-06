@@ -18,6 +18,12 @@ Agent/Task tool wording.
 6. Resolve helper scripts from the Harness plugin root.
 7. Keep implementation and review separate.
 
+Recover missing inputs from the selected user request, contracts, and read-only
+repo context before asking. State minor assumptions and continue authorized
+reversible work. A missing authorization, material specification decision, or
+protected operation holds only dependent work. Assessment-only requests stay
+read-only.
+
 ## Solo
 
 Use the current Codex session for one task. Validate locally and run the normal
@@ -34,11 +40,25 @@ Use Codex native subagents:
 
 Default Breezing worker count is `max`, meaning the number of ready tasks whose
 dependencies are already satisfied. It is not unlimited spawning.
+Respect the configured concurrency cap and assign an independently verifiable
+outcome with explicit file or responsibility ownership to each Worker. The Lead
+continues useful work while they run. Reuse the Worker for related follow-up;
+keep independent reviewers fresh and read-only.
 
 ## Companion Delegation
 
 Use the companion script only through the resolved plugin root:
 
 ```bash
-bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" task --write "task"
+# TASK_PROMPT_FILE contains the complete request described below.
+bash "${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh" task --write < "$TASK_PROMPT_FILE"
 ```
+
+For both native and companion dispatch, pass the outcome and why, project and
+worktree, owned scope, constraints, selected plan/spec/contract paths, DoD,
+required checks, available evidence, and authorized operations with their
+source instruction. Preserve reviewer refinements and prior advisor guidance.
+The executor chooses the method within those bounds. Stop after DoD and
+required checks; extra tests require new changes, evidence, or unresolved
+concerns. Return concise reasons with actual results and unverified items;
+self-report alone is not proof and private reasoning transcripts are not needed.

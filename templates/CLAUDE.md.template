@@ -20,6 +20,7 @@ Read `AGENTS.md` before starting work.
 - Prohibited actions
 
 This file contains only Claude Code-specific instructions.
+Apply the Task Contract in `AGENTS.md` throughout execution and handoff.
 
 ---
 
@@ -95,14 +96,18 @@ Example: `feat: add user authentication`
 
 ```markdown
 ## Work Request
-- **Task summary**: Specific work to complete
-- **Scope**: Files and areas to change
+- **Outcome**: What the user needs to be true
+- **Task summary**: Specific work to complete, or assessment to deliver
+- **Scope**: Owned files and areas; excluded work
 - **Definition of done**: Clear acceptance criteria
+- **Constraints and evidence**: Relevant decisions, authorization boundaries, and input or verification paths
 ```
 
 ### Claude Code -> Cursor
 
 Use `/handoff-to-cursor`, or report in this shape:
+Use "Work Complete" only when completion criteria are verified. Otherwise use
+"Work Status" and state the remaining work or blocker.
 
 ```markdown
 ## Work Complete
@@ -123,7 +128,12 @@ Use `/handoff-to-cursor`, or report in this shape:
 | `path/to/file1` | [Summary] |
 
 ### CI Status
-- CI: PASS / FAIL
+- CI: PASS / FAIL / NOT RUN (with reason)
+
+### Completion Evidence
+- Required checks: [Command, observed result, and evidence path]
+- Unverified criteria or blockers: [State what remains and why]
+- Decisions: [Reason and supporting evidence for material choices]
 
 ### Next Actions For Cursor
 1. [ ] Review the change
@@ -146,8 +156,11 @@ You can also type "session start" to trigger the session skill.
 
 ### At Completion
 
+For an authorized commit/push workflow, stage only owned changes after the
+required checks. Keep unrelated edits out of the commit.
+
 ```bash
-git add -A
+git add -- path/to/owned-file
 git commit -m "feat: [change summary]"
 git push
 ```
@@ -170,9 +183,9 @@ Then send the completion report with `/handoff-to-cursor`.
 
 | Symptom | Action |
 |---------|--------|
-| Task not found | Check `Plans.md`, then ask Cursor / PM |
+| Task not found | Check `Plans.md` and the supplied request; ask Cursor / PM only for a required decision that cannot be recovered |
 | CI keeps failing | Try 3 fixes, then escalate |
-| Scope is unclear | Ask Cursor / PM for clarification |
+| Scope is unclear | Read the task contract and project context; continue authorized work and ask only for missing authorization or a material specification decision |
 
 ---
 

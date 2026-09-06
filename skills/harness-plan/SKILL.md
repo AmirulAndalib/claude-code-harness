@@ -47,6 +47,9 @@ Harness の統合プランニングスキル。
 - 件数が多い場合も絞り込みではなく、全量を Required / Recommended / Optional / Reject に分類して提示する。除外は Reject として理由を明示する（黙って落とさない）
 - 「一部だけ先に」が妥当と判断する場合は、絞った計画ではなく、全量計画の中の実行順序（Phase 分割 / Depends）として表現する
 
+この既定は計画候補の洗い出し範囲であり、実装や保護操作の承認ではない。評価・比較だけの依頼は評価を返し、採用済みの変更と提案を区別する。
+task には目的と理由、担当範囲、検証可能な DoD、利用する証拠、原依頼や適用される承認の参照を残す。実装手順は契約上必要な制約以外を固定しない。
+
 ## Literal companion commands（CC 2.1.108+）
 
 - `/recap`: 久しぶりに戻った時に要約を取り直してから `sync` へ入る
@@ -74,6 +77,7 @@ Plans.md は task ledger、root `spec.md` は product contract であり、上�
 ここでの non-trivial は、複数 task / 複数 file / 複数 session / product behavior / API / data model / 権限 / 課金 / 外部連携 / 配布面 / セキュリティに影響する依頼を指す。
 Task tool が使える場合は Product / Architecture / Security / QA / Skeptic の独立視点を走らせる。
 使えない場合は `サブエージェント未使用` と明示し、同じ観点を単独で分けて評価する。
+各担当には独立して答えられる問い、読む範囲、必要な根拠を渡す。利用可能な同時実行上限を守り、親も仕様照合や統合を進める。関連する追加調査は同じ担当に返す。
 
 non-trivial planning の出力には、次の検証を必ず含める。
 
@@ -133,7 +137,7 @@ See [references/create.md](${CLAUDE_SKILL_DIR}/references/create.md)
 
 **フロー**:
 1. 会話コンテキスト確認（直前の議論から抽出 or 新規ヒアリング）
-2. 何を作るか聞く（max 3問）
+2. 既存の依頼・仕様・読み取り調査で不足を補い、結論を変える未決事項だけ聞く（max 3問）。軽微な仮定は明示して計画を進める
 3. **計画品質チェック**（最新情報、既存仕様、記憶、TeamAgent / サブエージェント複数視点レビュー、採点）
 4. 技術調査（WebSearch）
 5. 機能リスト抽出
@@ -281,6 +285,7 @@ product-impacting な追加では、上の「spec.md / Plans.md 二正本チェ�
 ### update — マーカー更新
 
 タスクのステータスマーカーを変更する。
+`完了` は DoD、必須チェック、必要な review の証拠を確認してから付ける。コミットや自己申告だけでは判定しない。
 
 ```
 /harness-plan update [タスク名|タスク番号] [WIP|完了|blocked]
@@ -299,6 +304,7 @@ product-impacting な追加では、上の「spec.md / Plans.md 二正本チェ�
 
 実装状況と Plans.md を照合し、差分を検出・更新する（Plans.md 現状取得 → フォーマット検出 → git 状況取得 → agent trace 分析 → 差分検出 → マーカー修正提案 → 次アクション提示）。
 `cc:完了` タスクが 1 件以上あれば、見積もり精度・ブロック原因・スコープ変動を分析するレトロスペクティブをデフォルト ON で実行する（`sync --no-retro` でスキップ）。
+状況確認だけなら読み取りと報告で終える。同期更新を明示依頼された場合は証拠に一致する更新を進め、永続 memory 記録はその記録を明示依頼された場合だけ行う。
 Step 0-6 の完全版・harness-mem への記録手順は [references/sync.md](${CLAUDE_SKILL_DIR}/references/sync.md) を参照。
 
 ### team mode / issue bridge

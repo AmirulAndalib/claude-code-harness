@@ -112,6 +112,56 @@ developer_instructions = "Review evidence-first. Report prioritized findings wit
 	}
 }
 
+func TestRepositoryFrontierAgentProfiles(t *testing.T) {
+	hosts, err := Load(filepath.Join("..", "..", "..", "hosts.toml"))
+	if err != nil {
+		t.Fatalf("Load repository hosts.toml: %v", err)
+	}
+	for host, want := range map[string]string{
+		"claude": "claude-fable-5-1",
+		"codex":  "gpt-6-astra",
+	} {
+		if got := hosts[host].Model; got != want {
+			t.Errorf("%s host model = %q, want %q", host, got, want)
+		}
+	}
+	for _, tc := range []struct {
+		role    string
+		model   string
+		effort  string
+		sandbox string
+	}{
+		{role: "worker", model: "gpt-5.6-luna", effort: "max"},
+		{role: "reviewer", model: "gpt-6-astra", effort: "xhigh", sandbox: "read-only"},
+	} {
+		t.Run(tc.role, func(t *testing.T) {
+			profile, ok := hosts["codex"].AgentProfiles[tc.role]
+			if !ok {
+				t.Fatalf("missing codex %s profile", tc.role)
+			}
+			if profile.Model != tc.model || profile.ModelReasoningEffort != tc.effort || profile.SandboxMode != tc.sandbox {
+				t.Errorf("%s profile = model %q, effort %q, sandbox %q; want %q, %q, %q",
+					tc.role, profile.Model, profile.ModelReasoningEffort, profile.SandboxMode, tc.model, tc.effort, tc.sandbox)
+			}
+			generated, err := GenerateAgentProfile(profile)
+			if err != nil {
+				t.Fatalf("GenerateAgentProfile: %v", err)
+			}
+			for _, want := range []string{
+				`model = "` + tc.model + `"`,
+				`model_reasoning_effort = "` + tc.effort + `"`,
+			} {
+				if !strings.Contains(string(generated), want+"\n") {
+					t.Errorf("generated %s profile missing %s:\n%s", tc.role, want, generated)
+				}
+			}
+			if tc.sandbox != "" && !strings.Contains(string(generated), `sandbox_mode = "`+tc.sandbox+"\"\n") {
+				t.Errorf("generated %s profile must retain %s sandbox:\n%s", tc.role, tc.sandbox, generated)
+			}
+		})
+	}
+}
+
 func TestLoadRejectsAgentProfileParentPath(t *testing.T) {
 	for _, invalidPath := range []string{"../worker.toml", "/tmp/worker.toml", `C:\\worker.toml`} {
 		t.Run(invalidPath, func(t *testing.T) {

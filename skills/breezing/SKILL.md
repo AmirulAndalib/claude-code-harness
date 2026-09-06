@@ -102,6 +102,7 @@ Lead は run 単位で、作業内容・量からフラットに backend を選�
 | UI 大量生成、lean な高速委譲 | `cursor` | lean path（worktree 隔離 + Lead diff review） |
 
 モデル ID は skill に書かない。`bash "${HARNESS_PLUGIN_ROOT}/scripts/model-routing.sh" --host <backend> --role worker` が正本。
+CCH の role 値は未指定時の既定。利用者の明示指定と手動変更を尊重し、AI の推定で再調整せず、親の変更を全 Worker に配らない。native profile と Reviewer の隔離契約を維持する。
 `breezing --codex` の companion 経路だけが `bash "${HARNESS_PLUGIN_ROOT}/scripts/model-routing.sh" --host codex --role worker` で
 専用の `worker` route を解決する。`max` が返る場合は
 `codex-companion.sh` が公式 companion 1.0.6 の `--effort max` 非対応を吸収し、
@@ -130,13 +131,6 @@ plugin manifest は native agent role を登録できず、plugin の install / 
 - **中身のない前置き**: 「使い方を確認します」だけの行など、tool call で自明な宣言
 - **3 行以上の経緯振り返り**: 結論を引き伸ばす長い前置き。経緯が必要なら 1 行に圧縮
 - **起動シーケンス中の ★ Insight ブロック**: Insight は最終 report で 1 回のみ
-
-例 (違反 → 正常):
-```
-× 「composer 2.5 使うモード」= cursor backend で Composer に委託、ですね（解釈の言い換え、中身のない前置き）
-○ 🚀 cursor / composer-2.5-fast / feat/hah-11-golden-rule-lint / Reviewer
-  これから: backend resolve → composer に advisory findings 委譲 (read-only) → brain 一次レビューで verdict 確定
-```
 
 ## Quick Reference
 
@@ -224,9 +218,14 @@ Mode 1 の Producer → Sub-Lead → Composer も 3 段以内。
 
 1. **引数をそのまま `harness-work` に渡す**
 2. **チーム実行モードを強制** — Lead → Worker spawn → Reviewer spawn の三者分離
-3. **Lead は delegate 専念** — コードを直接書かない
+3. **Lead は delegate 専念** — コードを直接書かず、Worker 実行中は仕様照合、独立した調査、証拠確認、統合準備を進める
 4. **Auto Mode は opt-in 扱い** — `--auto-mode` は互換な親セッションでの rollout 用フラグとして受け付ける
 5. **Advisor は必要時のみ** — Worker が `advisor-request.v1` を返した時だけ Lead が advisor を呼ぶ
+
+委譲本文には原依頼の目的と理由、担当ファイルと除外範囲、DoD、選択した plan / spec、実測や失敗履歴、承認の参照を含める。companion の `<task>` も省略しない。
+担当はその境界内で方法を選び、承認済み可逆作業を完了する。軽微な不足は読み取り調査と明示した仮定で補い、仕様や権限の未決事項だけ依存する操作を止める。
+独立して検証できる成果ごとに ownership を分け、ready task と利用可能な同時実行上限の範囲で委譲する。関連 follow-up は同じ担当へ返し、他担当の編集を戻さない。
+実装担当の再利用と、fresh-context の独立 Reviewer を混同しない。必要なレビューとチェックが通ったら、追加の機能や根拠のない再検証を増やさず結果を返す。
 
 ### Plan-time 事前確認の扱い
 
@@ -262,9 +261,11 @@ Breezing run 開始時は、Lead が `harness-work` と同じ preapproval prefli
 
 ### Mode 1 — Sub-Lead 階層と review→iterate（opt-in）
 
-Go orchestrator 経路（`harness work --team`）では、Breezing の Lead/Worker/Reviewer 三者分離に加えて **Producer → Sub-Lead → Composer** の Mode 1 階層を opt-in で重ねられる。Lead（Producer = Claude Code 固定）が lane を Sub-Lead に委譲し、Sub-Lead は orchestrator-spawned headless CLI（Lead と同一 backend）で mini-plan を組み、実装は Composer 2.5（cursor backend）が `companion-result.v1` で lane 単位に集約する。`HARNESS_TEAM_HIERARCHY=sublead` で有効化（default OFF）。
+Go orchestrator 経路（`harness work --team`）の **Producer → Sub-Lead → Composer** は、`HARNESS_TEAM_HIERARCHY=sublead` の CLI mini-plan 入口が未実装のため未対応。この更新では有効化せず、通常は既定の flat で実行する。
+これは Go の opt-in 入口の制約であり、Lead が手動で担当を分解する Producer トポロジーを無効にするものではない。
 
-品質面では `HARNESS_REVIEW_ITERATE=on` で worker 出力を review→iterate ループで wrap できる。fresh-context 並列 advisory + cross-CLI review のあと **brain-only verdict** を経て、DoD 未達なら同 worktree へ精緻化タスクを再投入し、**OK まで反復**する（`HARNESS_REVIEW_ITERATE_MAX` で上限、未収束は human escalation）。配線・契約の詳細は `harness-work` の「Mode 1 — Producer → Sub-Lead → Composer 階層」「review→iterate ループ」節を正本とする。
+Go の `HARNESS_REVIEW_ITERATE=on` も、production brain runner が要求する `claude-companion.sh` が未提供のため end-to-end 未対応。この更新で有効化せず既定 OFF を維持する。
+通常の Skill / Native reviewer loop は別経路であり、既定の review gate と反復上限を維持する。Go opt-in の設計境界は `harness-work` の `references/backend-selection.md` を参照する。
 
 - If you grep the same symbol twice in the same session, switch to harness_ast_search.
 - For a bugfix where homologous implementations appear across multiple modules, run harness_ast_search to find all implementations before editing.
@@ -448,6 +449,7 @@ Breezing モードでもレビューは **Codex exec 優先 → 内部 Reviewer 
 
 - Worker が worktree 内で実装・commit → `worker-report.v1` (self_review 5 件) を Lead に返却
 - **self_review ゲート (Reviewer spawn 前)**: Lead が `self_review[].verified` と `evidence` を機械検証。1 件でも `verified:false` or `evidence:""` なら Reviewer を spawn せず Worker に自動差し戻し（同一セッション内 最大 2 回、3 回目で escalate）
+- `verified:true` や非空の文章だけを実証と扱わず、参照先の差分、失敗出力、必須チェック結果を照合する。判断理由と証拠を求め、内部の思考過程は求めない
 - Lead が Codex exec でレビュー（120s タイムアウト、フォールバック: Reviewer agent）
 - REQUEST_CHANGES → Lead が SendMessage で Worker に修正指示、Worker が amend（最大 `MAX_REVIEWS` 回。`MAX_REVIEWS = read_contract(contract_path, ".review.max_iterations") or 3`）
 - APPROVE → **Lead** が main に cherry-pick → Plans.md を `cc:完了 [{hash}]` に更新
@@ -465,7 +467,7 @@ Breezing モードでもレビューは **Codex exec 優先 → 内部 Reviewer 
 
 ### Phase 0: Planning Discussion（構造化 3 問チェック）
 
-全タスク実行前に、スコープ（Q1）・依存関係（Q2、Depends カラムがある時のみ）・リスクフラグ（Q3、`[needs-spike]` がある時のみ）の 3 問で計画の健全性を確認する（合計 30 秒設計）。
+全タスク実行前に、スコープ（Q1）・依存関係（Q2、Depends カラムがある時のみ）・リスクフラグ（Q3、`[needs-spike]` がある時のみ）の 3 観点を、原依頼と Plans.md から確認する（合計 30 秒設計）。回答済み事項は聞き直さず、読み取り調査でも解けない判断分岐だけ質問する。時間経過を承認として扱わない。
 `--no-discuss` 指定時は全スキップ。3 問の具体文言と判定ロジックは [references/lean-path-detail.md](${CLAUDE_SKILL_DIR}/references/lean-path-detail.md) を参照。
 
 ### Universal Violations Injection（セッション内 Worker 間の学習伝播）

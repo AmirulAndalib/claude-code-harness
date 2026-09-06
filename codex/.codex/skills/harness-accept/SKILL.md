@@ -34,7 +34,7 @@ Phase 65.1.x (`harness-plan-brief`) の対構造として動作し、Plan Brief 
 ## 入力
 
 引数 `[task-description]` にユーザーの request を渡す (Plan Brief 時と同じ文を使う)。
-引数なしの場合は対話形式で受け取る。
+引数なしの場合は会話と Plan Brief の原依頼を読み取りで回収する。hash の照合に使うため原文を言い換えない。対象が確定しない時だけ確認する。
 
 ## 出力
 
@@ -211,6 +211,8 @@ EVIDENCE_JSON="$(bash scripts/accept-collect-evidence.sh "$TASK_ID")"
 **原則: artifact から引用する。新規主張を作らない。** Plan Brief 時の acceptance_criteria 各項目について、
 `EVIDENCE_JSON` の 4 artifact の中から該当する記述を探し、その内容を `evidence` にそのまま転記する。
 Claude が artifact に無い「動作確認した」を独自に主張することは禁止。
+Worker の「完了した」という自己申告だけでは criterion を合格にしない。対象 task と現在の成果物に対応するコマンド結果、実測、参照箇所があるか確認する。
+この評価のために勝手に実装や公開へ進まず、不足する証拠は未検証として残す。
 
 各 criterion の判定:
 

@@ -25,14 +25,14 @@ codex_lite_model="$(bash "${ROUTER}" --host codex --role explorer --field model)
 }
 
 claude_advisor_effort="$(bash "${ROUTER}" --host claude --role advisor --field effort)"
-[ "${claude_advisor_effort}" = "xhigh" ] || {
-  echo "claude advisor must route to xhigh"
+[ "${claude_advisor_effort}" = "high" ] || {
+  echo "claude advisor must route to high"
   exit 1
 }
 
 claude_advisor_model="$(bash "${ROUTER}" --host claude --role advisor --field model)"
-[ "${claude_advisor_model}" = "claude-opus-5" ] || {
-  echo "claude advisor must route to claude-opus-5"
+[ "${claude_advisor_model}" = "claude-fable-5-1" ] || {
+  echo "claude advisor must route to claude-fable-5-1"
   exit 1
 }
 
@@ -134,7 +134,7 @@ for tier in lite standard deep advisor review release long-context; do
 done
 
 codex_args="$(bash "${ROUTER}" --host codex --tier review --format args | tr '\n' ' ')"
-grep -q -- '--model gpt-5.6-sol' <<<"${codex_args}" || {
+grep -q -- '--model gpt-6-astra' <<<"${codex_args}" || {
   echo "codex args must include review model"
   exit 1
 }
@@ -164,8 +164,8 @@ grep -q '"tier":"worker"' <<<"${codex_worker_tier_json}" || {
 }
 
 codex_setup_model="$(bash "${ROUTER}" --host codex --role setup --field model)"
-[ "${codex_setup_model}" = "gpt-5.6-sol" ] || {
-  echo "codex setup role must preserve the standard Sol compatibility model"
+[ "${codex_setup_model}" = "gpt-6-astra" ] || {
+  echo "codex setup role must preserve the standard Astra model"
   exit 1
 }
 codex_setup_effort="$(bash "${ROUTER}" --host codex --role setup --field effort)"
@@ -180,8 +180,8 @@ grep -q '"tier":"standard"' <<<"${codex_setup_tier_json}" || {
 }
 
 codex_standard_model="$(bash "${ROUTER}" --host codex --tier standard --field model)"
-[ "${codex_standard_model}" = "gpt-5.6-sol" ] || {
-  echo "codex standard tier must preserve the Sol compatibility model"
+[ "${codex_standard_model}" = "gpt-6-astra" ] || {
+  echo "codex standard tier must preserve the Astra model"
   exit 1
 }
 codex_standard_effort="$(bash "${ROUTER}" --host codex --tier standard --field effort)"
@@ -191,8 +191,8 @@ codex_standard_effort="$(bash "${ROUTER}" --host codex --tier standard --field e
 }
 
 codex_reviewer_model="$(bash "${ROUTER}" --host codex --role reviewer --field model)"
-[ "${codex_reviewer_model}" = "gpt-5.6-sol" ] || {
-  echo "codex reviewer route must remain on sol"
+[ "${codex_reviewer_model}" = "gpt-6-astra" ] || {
+  echo "codex reviewer route must use astra"
   exit 1
 }
 
@@ -203,8 +203,8 @@ codex_reviewer_effort="$(bash "${ROUTER}" --host codex --role reviewer --field e
 }
 
 codex_operator_model="$(bash "${ROUTER}" --host codex --role operator --field model)"
-[ "${codex_operator_model}" = "gpt-5.6-sol" ] || {
-  echo "codex operator route must preserve the pre-worker Sol model"
+[ "${codex_operator_model}" = "gpt-6-astra" ] || {
+  echo "codex operator route must preserve the standard Astra model"
   exit 1
 }
 
@@ -259,35 +259,35 @@ if bash "${ROUTER}" --host codex --tier unknown >/tmp/model-routing-unknown.out 
   exit 1
 fi
 
-# --- Fable brain opt-in (HARNESS_BRAIN_MODEL) ---
+# --- Fable brain default and explicit Opus selection (HARNESS_BRAIN_MODEL) ---
 
 unset_default_model="$(env -u HARNESS_BRAIN_MODEL bash "${ROUTER}" --host claude --role advisor --field model)"
-[ "${unset_default_model}" = "claude-opus-5" ] || {
-  echo "unset HARNESS_BRAIN_MODEL must keep claude-opus-5"
+[ "${unset_default_model}" = "claude-fable-5-1" ] || {
+  echo "unset HARNESS_BRAIN_MODEL must use claude-fable-5-1"
   exit 1
 }
 
-empty_default_model="$(HARNESS_BRAIN_MODEL= bash "${ROUTER}" --host claude --role advisor --field model)"
-[ "${empty_default_model}" = "claude-opus-5" ] || {
-  echo "empty HARNESS_BRAIN_MODEL must keep claude-opus-5"
+empty_default_model="$(HARNESS_BRAIN_MODEL='' bash "${ROUTER}" --host claude --role advisor --field model)"
+[ "${empty_default_model}" = "claude-fable-5-1" ] || {
+  echo "empty HARNESS_BRAIN_MODEL must use claude-fable-5-1"
   exit 1
 }
 
 fable_advisor_model="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host claude --role advisor --field model)"
-[ "${fable_advisor_model}" = "claude-fable-5" ] || {
-  echo "HARNESS_BRAIN_MODEL=fable must route claude advisor to claude-fable-5"
+[ "${fable_advisor_model}" = "claude-fable-5-1" ] || {
+  echo "HARNESS_BRAIN_MODEL=fable must route claude advisor to claude-fable-5-1"
   exit 1
 }
 
 fable_deep_model="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host claude --tier deep --field model)"
-[ "${fable_deep_model}" = "claude-fable-5" ] || {
-  echo "HARNESS_BRAIN_MODEL=fable must route claude deep tier to claude-fable-5"
+[ "${fable_deep_model}" = "claude-fable-5-1" ] || {
+  echo "HARNESS_BRAIN_MODEL=fable must route claude deep tier to claude-fable-5-1"
   exit 1
 }
 
 fable_advisor_effort="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host claude --role advisor --field effort)"
-[ "${fable_advisor_effort}" = "xhigh" ] || {
-  echo "fable brain opt-in must keep xhigh effort"
+[ "${fable_advisor_effort}" = "high" ] || {
+  echo "fable brain selection must use high effort"
   exit 1
 }
 
@@ -304,8 +304,8 @@ fable_worker_model="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host claude -
 }
 
 fable_reviewer_model="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host claude --role reviewer --field model)"
-[ "${fable_reviewer_model}" = "claude-fable-5" ] || {
-  echo "fable brain opt-in must not change the primary review tier (fixed at claude-fable-5)"
+[ "${fable_reviewer_model}" = "claude-fable-5-1" ] || {
+  echo "fable brain opt-in must not change the primary review tier (fixed at claude-fable-5-1)"
   exit 1
 }
 
@@ -316,7 +316,7 @@ fable_cursor_advisor="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host cursor
 }
 
 fable_codex_advisor="$(HARNESS_BRAIN_MODEL=fable bash "${ROUTER}" --host codex --role advisor --field model)"
-[ "${fable_codex_advisor}" = "gpt-5.6-sol" ] || {
+[ "${fable_codex_advisor}" = "gpt-6-astra" ] || {
   echo "fable brain opt-in must not touch the codex model catalog"
   exit 1
 }
@@ -415,8 +415,12 @@ grep -qx -- 'exec' "${TMP_DIR}/args-worker-max.txt" || {
   echo "max worker route must use codex exec"
   exit 1
 }
-grep -qx -- '-C' "${TMP_DIR}/args-worker-max.txt" || {
-  echo "raw max worker route must preserve -C"
+awk -v expected="${TMP_DIR}" '
+  previous == "--cd" && $0 == expected { found = 1 }
+  { previous = $0 }
+  END { exit !found }
+' "${TMP_DIR}/args-worker-max.txt" || {
+  echo "raw max worker route must pair --cd with the target cwd"
   exit 1
 }
 grep -qx -- "${TMP_DIR}" "${TMP_DIR}/args-worker-max.txt" || {
@@ -551,8 +555,9 @@ PATH="${TMP_DIR}/bin:${PATH}" \
 CODEX_MODEL_TIER="worker" \
 HARNESS_CODEX_ALLOW_NON_PRIMARY_WRITE=1 \
   bash "${COMPANION}" task --write -m=custom-worker-model "worker short model equals"
-grep -qx -- '-m=custom-worker-model' "${TMP_DIR}/args-worker-short-model-equals.txt" || {
-  echo "raw worker route must preserve -m= explicit model"
+awk 'previous == "--model" && $0 == "custom-worker-model" { found = 1 }
+     { previous = $0 } END { exit(found ? 0 : 1) }' "${TMP_DIR}/args-worker-short-model-equals.txt" || {
+  echo "raw worker route must normalize -m= without changing the explicit model"
   exit 1
 }
 if grep -qx -- 'gpt-5.6-luna' "${TMP_DIR}/args-worker-short-model-equals.txt"; then
@@ -665,7 +670,7 @@ grep -qx -- 'task' "${disabled_companion_args}" || {
   exit 1
 }
 
-# Generic Codex standard remains the historical Sol/xhigh companion route for
+# Generic Codex standard remains the Astra/xhigh companion route for
 # background/resume/fresh state modes.
 for mode in --background --resume-last --resume --fresh; do
   mode_name="${mode#--}"
@@ -1026,8 +1031,12 @@ done
 # Active advisor surfaces must not retain retired model literals. The source
 # agents and generated Cursor fallback are runtime inputs in their respective
 # hosts, so routing-table tests also pin these direct adapter files.
-grep -Fqx 'model: claude-opus-5' "${ROOT_FOR_DOCS}/agents/advisor.md" || {
-  echo "Claude advisor agent must use current claude-opus-5"
+grep -Fqx 'model: claude-fable-5-1' "${ROOT_FOR_DOCS}/agents/advisor.md" || {
+  echo "Claude advisor agent must use current claude-fable-5-1"
+  exit 1
+}
+grep -Fqx 'effort: high' "${ROOT_FOR_DOCS}/agents/advisor.md" || {
+  echo "Claude Fable advisor agent must use high effort"
   exit 1
 }
 if grep -Fq 'claude-opus-4-8' "${ROOT_FOR_DOCS}/agents/advisor.md"; then

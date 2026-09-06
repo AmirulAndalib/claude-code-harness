@@ -102,7 +102,7 @@ Lead は `composer` を Codex native Worker 内の追加 agent と解釈せず�
 ### role-scoped 制約
 
 バックエンドは **role-scoped**。解決済みバックエンドを使うのは実装（worker）ロールだけ。
-Reviewer と Advisor の両ロールは常に brain（`--host claude`、Opus）に固定する。
+Reviewer と Advisor は実装役から分離し、担当ごとのモデルを解決する。Claude の計画と相談は Fable 5.1/high を既定にする。
 Reviewer を cursor / codex バックエンドに routing しない（実装したバックエンドが自分の出力をレビューしてはならない）。
 
 ### 非 `claude` バックエンドの self_review ゲート
@@ -143,6 +143,14 @@ cursor の write 委託は専用 `.git` を持つ worktree 内で実行し、Lea
 
 ## Progressive Disclosure
 
+実行依頼は、目的と理由、担当範囲、検証可能な DoD、選択した plan / spec、観測済み証拠、原依頼と適用される承認の参照を渡す。
+以降の `{task prompt}` と companion のタスク本文にはこれらを含める。再試行でも元の範囲と条件を残し、追加の finding や advisor response だけで置き換えない。
+方法は担当が選ぶ。承認済みの可逆作業を再確認で止めず、不足情報は契約と読み取り調査で回収する。軽微な仮定は明示し、重大な仕様判断や不足する権限に依存する操作だけ止める。
+評価・相談だけの依頼から実装を開始しない。推定した変更範囲は保護操作の承認ではない。
+独立して検証できる作業を、担当ファイルと同時実行上限を明記して委譲する。他担当の編集を戻さず、関連する follow-up は同じ担当へ返す。Lead も仕様調査や証拠照合を進める。
+必須チェックと既定レビューを完了した後は、新しい変更、失敗、未解決の懸念がない限り追加テストや機能を増やさない。
+完了報告は実際の差分と検証結果で支え、自己申告だけで完了を判定しない。理由と参照可能な証拠を返し、内部の思考過程は求めない。
+
 まずこの本文で入口、自動選択、停止条件だけを確認する。
 詳細は必要になった時だけ読む。
 
@@ -170,6 +178,8 @@ cursor の write 委託は専用 `.git` を持つ worktree 内で実行し、Lea
 
 ## スコープダイアログ（引数なし時）
 
+直前の明示依頼や選択済み plan で対象が確定していれば、その範囲を使う。以下の確認は対象範囲が未決の場合だけ行う。
+
 ```
 harness-work
 どこまでやりますか?
@@ -189,10 +199,11 @@ effort はモデルの推論強度を選ぶ正式なノブ。generic な standar
 managed `worker` route の設定をそのまま使い、skill から effort を上書きしない。
 `/effort auto` は generic route の既定へ戻す操作であり、worker route の `max` 契約を
 `xhigh` へ静かに置換してはならない。
+CCH のモデルと effort は未指定時の既定値であり、利用者の明示指定と手動変更を尊重する。native profile / 明示 override を正とし、AI が文言から再調整したり、親の変更を全 Worker へ配ったりしない。独立 Reviewer の隔離と read-only は維持する。
 
 「浅い推論」を観測したら prompt で回避せず、対象 role の中央 routing 設定を確認する。
 そのため複雑タスクの強化は **free-text marker（旧 `ultrathink`）を spawn prompt に注入する方式を廃止**し、
-複雑度スコアから **Worker spawn の effort tier を選ぶ**方式に統一する。
+複雑度スコアは担当設定を見直す判断材料に限る。skill は利用者の明示 effort を変更せず、未指定の managed worker には配布既定の `max` を使う。
 
 ### 多要素スコアリング
 
@@ -209,14 +220,14 @@ managed `worker` route の設定をそのまま使い、skill から effort を�
 ### effort tier の決め方（注入しない）
 
 スコアから effort tier を **escalation signal** として決める（`ultrathink` 等の marker 文字列を spawn prompt に **書かない**）。
-適用 lever は次の 2 つだけ:
+設定を確認する面は次の 2 つ。スコアは設定変更の承認にはならない:
 
-- **session `/effort`**: 複雑タスクのバッチに入る前に host が `/effort high` / `/effort xhigh` を設定する（session 単位で効く確実な lever）。
-- **worker frontmatter**: `agents/worker.md` の `effort`（既定 `medium`）が floor。CC の Agent / Task spawn API は per-spawn の effort 指定を公開しないため、worker 1 体ごとに effort を上げる機構はない。スコアは `worker-report.v1` の `task_complexity_note` に記録し、Lead が session effort 引き上げの判断材料にする。
+- **session `/effort`**: 利用者が明示した推論量を保持する。複雑度の推定だけで host が `/effort high` / `/effort xhigh` を設定しない。
+- **managed worker**: Codex native は `.codex/agents/worker.toml`、companion は専用 `worker` route を使う。利用者が明示・手動変更した設定を尊重する。以下のスコア表は見直し候補であり、配布既定 `max` や明示設定を自動変更しない。
 
-| スコア | code-risk（core/guardrails/security/architecture/migration を含む） | effort tier |
+| スコア | code-risk（core/guardrails/security/architecture/migration を含む） | 見直し候補 |
 |--------|-----------------------------------|-------------|
-| 0-2 | 不問 | `medium`（Worker frontmatter 既定のまま） |
+| 0-2 | 不問 | `medium` 候補（managed worker route は保持） |
 | ≥ 3 | なし | `high` |
 | ≥ 3 | あり | `xhigh` |
 
@@ -292,12 +303,12 @@ backend=`cursor` / `codex` の場合は native Worker spawn を使わず、task 
    - **会話に未記載タスクがある場合**: 直前の会話コンテキストから要件を抽出し、Plans.md に `cc:TODO` で自動追記
      - 抽出ロジック: ユーザー発言からアクション動詞（「〜を追加」「〜を修正」「〜を実装」）を検出
      - 追記時は v2 フォーマット（Task / 内容 / DoD / Depends / Status）に準拠
-     - 追記後、ユーザーに「Plans.md に以下を追記しました」と表示（5 秒タイムアウト付きプロンプト、デフォルト: 続行）
+     - 明示された実行依頼の範囲だけ追記し、追加内容を報告して続行する。評価中の案は実行タスクへ昇格しない。時間経過を承認として扱わない
 1.5. **タスク背景確認**（30 秒）:
    - タスクの「内容」と「DoD」から **目的**（このタスクが解く課題）を 1 行で推論表示
    - `git grep` / `Glob` で **影響範囲**（変更が及ぶファイル/モジュール）を推論表示
-   - 推論に自信がある場合: そのまま実装に進む（フロー遅延なし）
-   - 推論に自信がない場合: ユーザーに 1 問だけ確認（「この理解で合っていますか？」）
+   - 不足は spec / Plans.md / 既存コードの読み取りで回収する。軽微な仮定なら明示して進む
+   - 仕様や権限の判断が結果を変える場合だけ、その判断を確認する。独立した承認済み作業は続ける
 1.6. **仕様正本 preflight**:
    - 既存の project spec SSOT を探す（例: `docs/spec/00-project-spec.md`, `docs/ARCHITECTURE.md`, `docs/HANDOFF.md`, `docs/oem/PROJECT_COMPASS.md`, `docs/specs/`）
    - task が product behavior / API / data model / permission / billing / integration / tenant boundary を変える場合、spec がなければ `docs/spec/00-project-spec.md` を作る
@@ -386,6 +397,7 @@ Codex host の Breezing は resolver result に従う。配布 plugin のフラ�
 `--backend cursor` / `--cursor`、または user/project config の `HARNESS_IMPL_BACKEND=cursor` がある時だけ
 `cursor-companion.sh` で Cursor worker に委託する。
 古い TeamCreate / TaskCreate ベースの説明は採らない。
+Go opt-in の `HARNESS_TEAM_HIERARCHY=sublead` は CLI mini-plan 入口未実装、`HARNESS_REVIEW_ITERATE=on` は production brain runner 未提供のため未対応。この更新では有効化せず既定 flat / OFF を維持する。通常の Skill / Native loop と手動 Producer 分解は別経路である。
 
 **権限ポリシー**:
 - 現行の shipped default は `bypassPermissions`
@@ -406,7 +418,7 @@ Lead (this agent)
 1. Plans.md を読み込み、対象タスクを特定
 2. 依存グラフを解析し、実行順序を決定（Depends カラム）
 3. 各タスクの仕様正本 preflight を行い、必要なら `docs/spec/00-project-spec.md` または既存 spec を実装前に更新
-4. 各タスクの effort スコアリング（effort tier 判定 — high/xhigh）
+4. 各タスクの effort スコアリング（設定見直しの判断材料。managed route と明示 effort は保持）
 5. `node "${HARNESS_PLUGIN_ROOT}/scripts/generate-sprint-contract.js"` で `sprint-contract.json` を生成
 6. `bash "${HARNESS_PLUGIN_ROOT}/scripts/enrich-sprint-contract.sh"` で Reviewer 観点を加え、`bash "${HARNESS_PLUGIN_ROOT}/scripts/ensure-sprint-contract-ready.sh"` で未承認なら停止
 
@@ -475,7 +487,7 @@ for task in execution_order:
         print("🚀 claude / native-subagent / {branch} / {task.number}")
         worker_id = spawn_agent({
             agent_type: "worker",
-            message: "タスク: {task.内容}\nDoD: {task.DoD}\ncontract_path: {contract_path}\nspec_path: {spec_path}\nspec_skip_reason: {spec_skip_reason}\nmode: breezing\n\n作業は分離 worktree で行い、完了後に git commit してください。\n完了時は {commit, worktreePath, branch, files_changed, summary} を返してください。",
+            message: "タスク: {task.内容}\n目的と理由: {purpose_and_why}\n担当範囲: {owned_paths_and_non_goals}\nDoD: {task.DoD}\nplan_path: {selected_plan_path}\ncontract_path: {contract_path}\nspec_path: {spec_path}\nspec_skip_reason: {spec_skip_reason}\n証拠と前回結果: {evidence_and_prior_advice}\n原依頼と承認の参照: {authorization_references}\nmode: breezing\n\n担当範囲で方法を選び、他担当の変更を戻さず、承認済み作業を完了してください。作業は分離 worktree で行い、完了後に git commit してください。\n完了時は {commit, worktreePath, branch, files_changed, summary} を返し、summary に判断理由、チェックの実結果と証拠の参照、未確認点を含めてください。",
             fork_turns: "3"
         })
         worker_result = wait_agent({ targets: [worker_id] })
@@ -536,14 +548,14 @@ for task in execution_order:
         if backend == "claude":
             send_input({
                 target: worker_id,
-                message: "指摘内容: {issues}\n修正して amend してください"
+                message: "指摘内容: {issues}\n元の目的、DoD、担当範囲、承認を維持し、対応と検証証拠を返してください。修正して amend してください"
             })
             # Worker が修正 → amend → 更新された commit hash を返す
             updated_result = wait_agent({ targets: [worker_id] })
             latest_commit = updated_result.commit
         elif backend == "cursor":
             previous_commit = latest_commit
-            companion_output = bash("bash \"${HARNESS_PLUGIN_ROOT}/scripts/cursor-companion.sh\" task --write --workspace {worker_result.worktreePath} \"Review findings:\n{issues}\n\nFix the findings and commit the result.\"")
+            companion_output = bash("bash \"${HARNESS_PLUGIN_ROOT}/scripts/cursor-companion.sh\" task --write --workspace {worker_result.worktreePath} \"{task prompt}\n\nReview findings:\n{issues}\n\nPreserve the original DoD, owned scope and authorization references. Fix the findings and commit the result.\"")
             latest_commit = git("-C", worker_result.worktreePath, "rev-parse", "HEAD")
             if git("-C", worker_result.worktreePath, "status", "--porcelain") != "":
                 git("-C", worker_result.worktreePath, "add", "-A")
@@ -556,7 +568,7 @@ for task in execution_order:
         else:
             previous_commit = latest_commit
             companion_state_file = "{worker_result.worktreePath}/.claude/state/codex-primary-environment.json"
-            companion_output = bash("CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worker_result.worktreePath} \"Review findings:\n{issues}\n\nFix the findings and commit the result.\"")
+            companion_output = bash("CODEX_MODEL_TIER=worker HARNESS_CODEX_PRIMARY_ENV_STATE_FILE={companion_state_file} bash \"${HARNESS_PLUGIN_ROOT}/scripts/codex-companion.sh\" task --write -C {worker_result.worktreePath} \"{task prompt}\n\nReview findings:\n{issues}\n\nPreserve the original DoD, owned scope and authorization references. Fix the findings and commit the result.\"")
             latest_commit = git("-C", worker_result.worktreePath, "rev-parse", "HEAD")
             if latest_commit == previous_commit:
                 raise EscalationError("codex companion retry produced no new commit")
@@ -769,7 +781,7 @@ Codex exec が使えない場合（`command -v codex` が失敗、または exit
 
 ```
 Agent tool: subagent_type="reviewer"
-prompt: "以下の変更をレビューしてください。判定基準: critical/major → REQUEST_CHANGES、minor/recommendation のみ → APPROVE。diff: {git diff ${BASE_REF}}"
+prompt: "対象変更を read-only でレビューしてください。原依頼と目的: {request_and_purpose}。担当範囲: {review_scope}。仕様とDoD: {spec_path_and_contract_path}。検証証拠: {evidence_paths}。判定基準: critical/major → REQUEST_CHANGES、minor/recommendation のみ → APPROVE。diff: {git diff ${BASE_REF}}。自己申告ではなく現物に照らし、指摘の場所、発生条件、影響、根拠を返してください。"
 ```
 
 Reviewer agent は Read-only（Write/Edit/Bash 無効）で安全にレビューを実行する。

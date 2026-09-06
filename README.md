@@ -13,8 +13,8 @@
   <a href="https://github.com/Chachamaru127/claude-code-harness/releases/latest"><img src="https://img.shields.io/github/v/release/Chachamaru127/claude-code-harness?display_name=tag&sort=semver" alt="Latest Release"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License"></a>
   <a href="docs/CLAUDE_CODE_COMPATIBILITY.md"><img src="https://img.shields.io/badge/Claude_Code-v2.1+-purple.svg" alt="Claude Code"></a>
-  <img src="https://img.shields.io/badge/Skills-5_core_%2F_21_total-orange.svg" alt="Skills: 5 core verbs / 21 total">
-  <img src="https://img.shields.io/badge/Guardrails-R01%E2%80%93R15_%2B_5_floors-B5462F.svg" alt="Guardrails: R01-R16 plus 5 runtime floor categories">
+  <img src="https://img.shields.io/badge/Skills-5_core_%2F_23_total-orange.svg" alt="Skills: 5 core verbs / 23 total">
+  <img src="https://img.shields.io/badge/Guardrails-R01%E2%80%93R16_%2B_5_floors-B5462F.svg" alt="Guardrails: R01-R16 plus 5 runtime floor categories">
   <img src="https://img.shields.io/badge/Core-Go_Native-00ADD8.svg" alt="Go Core">
 </p>
 
@@ -28,22 +28,15 @@
 
 ## The problem
 
-Agent coding drifts. Plans live in chat and disappear. Tests become optional
-under deadline. Review happens after the code is already merged. Release
-evidence gets reconstructed from memory.
+Claude Code Harness (CCH) is a development plugin for delegating planning,
+implementation, validation, and review to Claude Code or Codex. Provide the
+intended outcome and completion criteria; the assigned agents inspect the
+existing code and organize the work.
 
-Harness replaces "ask the agent to code" with one repeatable path:
-
-**write the spec → implement only the approved slice → verify → review
-independently → package evidence.**
-
-It does not make the model smarter. It fixes the procedure and the boundary
-around the model — so it keeps working when the model changes.
-
-> **Claims in this README are machine-checked.** CI gates verify that described
-> components are actually wired, that the task ledger stays consistent, and that
-> shipped binaries rebuild from source. A feature appears here only after a gate
-> proves it is reachable. *Written* is not *working*.
+**You decide what to build, what counts as complete, and which actions are
+authorized.** Agents choose the method within that scope and continue the
+necessary fixes and checks. They return changes, verification results, and
+unknowns so you can judge the result against the criteria.
 
 ## Install in 30 seconds
 
@@ -74,66 +67,109 @@ material the next stage needs, and each has its own gate.
 | Command | What happens | Gate |
 |---|---|---|
 | `/harness-plan` | Turns intent into `spec.md` + `Plans.md`: scope, acceptance criteria, dependencies, unknowns, stop conditions. | You approve or correct the generated contract. |
-| `/harness-work` | Implements one approved task. Adds tests when the task requires them. | TDD required when the task says so. |
+| `/harness-work` | Executes the selected scope, choosing solo or team execution by task count. | Clarifies scope only when it is unresolved; runs required checks and review. |
+| `/harness-work 3` | Implements task 3 only. | TDD required when the task says so. |
 | `/harness-work all` | Runs the whole approved plan. Use once the plan is clear and the repo baseline is known. | Same TDD gate, applied task by task. |
 | `/harness-review` | Reviews the result **separately from implementation**. | Major findings block completion. PR-ready is not release-ready. |
-| `/harness-sync` | Compares the plan against what is actually implemented and reports drift. | — |
+| `/harness-sync` | Compares the plan against what is actually implemented and reports drift. | Reconciles status using observed evidence. |
 | `/harness-release` | Packages only verified evidence into CHANGELOG, tag, and release. | Release preflight must pass. |
 
 Data the agent has not seen stays `unknown` instead of being quietly invented.
 
+## What happens after a request
+
+For example, an order duplication bug can start with:
+
+```text
+/harness-plan Fix duplicate orders. The completion criterion is that the same order is stored once.
+```
+
+Review and approve the scope and completion criteria, then run
+`/harness-work all`. In Codex, invoke the skills as `$harness-plan` and
+`$harness-work all`.
+
+1. **Plan.** Inspect the existing specification and code, then capture reproduction steps, scope, and completion criteria in `spec.md` and `Plans.md`.
+2. **Implement.** Pass the original request, criteria, and observed evidence to the assigned worker. Independent work can run concurrently with separate file ownership.
+3. **Verify and fix.** Run required tests and reproduction steps. Send review findings back to the worker for correction within the configured iteration limit.
+4. **Report.** Return criterion-level results, changed files, checks actually performed, and remaining issues.
+
+Agents first recover missing inputs from the specification and relevant code.
+Reversible work inside the authorized scope continues with stated assumptions.
+A new authorization or material specification decision blocks the dependent
+action; independent authorized work can continue. Major findings or an
+exhausted correction limit produce an incomplete result with evidence for
+the next decision.
+
+## Model roles and your choices
+
+CCH assigns models by role. Reasoning effort controls how much processing a
+model allocates to thinking. These are role defaults; the main conversation
+also uses its session selection and the active skill's settings.
+
+| Role | Model | Effort |
+|---|---|---|
+| Claude difficult decisions and advice (`deep` / `advisor`) | Fable 5.1 (`claude-fable-5-1`) | `high` |
+| Ordinary Claude implementation | Sonnet 5 (`claude-sonnet-5`) | `medium` |
+| Dedicated independent Claude Reviewer | Sonnet 5 (`claude-sonnet-5`) | `xhigh` |
+| Codex standard work, difficult decisions, review, and advice | GPT-6 astra (`gpt-6-astra`) | `xhigh` |
+| Codex Breezing implementation Worker | GPT-5.6 luna (`gpt-5.6-luna`) | `max` |
+
+The general Claude review route uses Fable 5.1 / `high`; the dedicated
+Reviewer above uses a separate Sonnet 5 definition. Lightweight research has
+its own routes. See the [full role table](docs/model-routing-policy.md).
+
+**Manual model and effort choices remain authoritative.** Per-call selections
+and role settings apply to their respective execution paths. Changing the
+parent conversation does not retune every child role. Explicit Codex `ultra`
+is preserved; stronger wording in a request does not authorize effort changes.
+
 ## The safety layer
 
-This is what separates Harness from a prompt template. Every tool call is
-adjudicated by a Go engine **before it runs** — not reviewed after the fact,
-because a file diff cannot see a network send or a deletion.
+Operations connected to CCH's checks are inspected by a Go engine before
+execution. Network sends and deletions also need command-level checks because
+a file diff cannot establish those effects. Coverage depends on the host;
+see [safety differences between hosts](docs/hardening-parity.md).
 
 **Two layers, deliberately different in strength.**
 
-| Layer | Decides | Overridable |
+| Layer | Decides | Configuration |
 |---|---|---|
-| **Runtime floor** — 5 categories | Denies outright | **No.** Not by any config, env var, or permission mode |
-| **Guardrails** — R01–R15 | Deny / confirm / warn | Partly, by project config |
+| **Runtime floor** — 5 categories | Allows or denies under category-specific rules | No global disable switch; limited allowlists exist for destinations, read targets, and other defined operations |
+| **Guardrails** — R01–R16 | Deny / confirm / warn | Partly, by project config |
 
 The floor covers billing, network egress, secret reads, production deploys, and
-destruction outside the task worktree. It sits on an isolated code path with no
-disable switch, so an autonomous run cannot talk itself past it.
+destruction outside the task worktree. Allowed targets and release-operation
+settings are protected, operator-managed configuration. Agents must not rewrite
+them to make their own work pass.
 
 Guardrails are the layer you tune. Direct pushes to `main`, writes to protected
 paths, forced pushes, history rewrites — each has a defined verdict, and some
 are configurable per project.
 
-**Confirmations move to plan time.** Instead of interrupting a run, Harness
-collects the risky operations a plan will need and asks once, up front.
-Approvals carry an expiry, a task scope, and a use limit — so one approval never
-becomes a permanent hole.
+**Known approvals can be collected at plan time.** Operations that support
+preapproval can be scoped and approved with the plan. A newly discovered
+approval requirement is checked before that operation runs. Approvals carry
+an expiry, a task scope, and a use limit.
 
-**Every stop is recorded.** Rule id, category, and verdict land in a JSONL log.
-Command text is never written; only a hash and a length, and for secret-read and
-billing not even that. You can count what actually blocked you instead of
-guessing.
+**Stop reasons are recorded.** Rule identifiers, categories, and verdicts in
+the decision log let you inspect what blocked an operation.
 
 ## Sessions that can see each other
 
-Open three agents on one repo and they normally work blind to each other. That
-is not a small inefficiency: on CooperBench, two agents editing the same file
-succeed about half as often as one agent working alone, and 63% of the failures
-trace to a false belief about what the other one changed.
-
-Harness keeps a roster and a message path between local sessions.
+When several conversations work on the same repository, CCH's roster shows
+the active agents. A local message path can carry information to agents
+working in other worktrees.
 
 | Piece | What it does |
 |---|---|
-| Roster | `bin/harness session list` shows every live session on this machine — including sessions in other worktrees, because the store resolves from `git --git-common-dir`. Each row carries the `team` and `agent` a sender needs. |
+| Roster | `bin/harness session list` shows live sessions registered across worktrees of the same repository. The store resolves from `git --git-common-dir`. Each row carries the `team` and `agent` a sender needs. |
 | Send | `bin/harness inbox send --team <t> --from <a> --to <b> --subject <s> "<body>"`, or the `session-send` skill, which also documents what is worth sending. |
 | Receive | Messages arrive at the receiving session's turn boundary, wrapped as data with an explicit non-instruction envelope. A peer's message is a report to verify, never an order to follow. |
 
-The pipeline is the product; what you route through it is your call. Sending
-is unfiltered by default. Setting `[livemsg] verification = "on"` adds a gate
-that checks a message's factual claims — mentioned files exist, mentioned
-commits resolve, a "clean worktree" claim matches `git status` — and returns
-the reason to the sender instead of delivering a false one. While it is `off`,
-the send path does not call the gate at all.
+Message content checks are off by default. Setting
+`[livemsg] verification = "on"` checks whether mentioned files and commits
+exist and whether a "clean worktree" claim matches the current state.
+Messages that fail the check are withheld, with the reason returned to the sender.
 
 This is local-only and does not depend on harness-mem. If harness-mem is
 installed alongside, its roster entries are preserved untouched.
@@ -146,8 +182,15 @@ code.
 | Surface | When | Shows |
 |---|---|---|
 | **Plan Brief** | Plan finalized | Understanding, options, risks, acceptance criteria |
-| **Progress** | During work | WIP/TODO/done counts and drift alerts, auto-regenerated |
+| **Progress** | During work | WIP/TODO/done counts recorded in `Plans.md` and pending decisions |
 | **Acceptance** | Before release | Per-criterion pass/fail with ship / wait / reject |
+
+Use `/harness-progress` to inspect the current state. A status request alone
+does not mark work complete or save a memory. Work handoffs carry completed
+work, unresolved issues, verification results, and the next action to try.
+Claude Code regenerates the page after editing or command execution, at most
+once every 60 seconds. The completion percentage is a task-count ratio, not
+an acceptance pass rate or an automatically detected implementation state.
 
 ## Install by tool
 
@@ -216,18 +259,29 @@ Reach for these after the basic path is working.
 | Capability | What it adds | Boundary |
 |---|---|---|
 | **Breezing** | Planner / Critic / Worker team execution for larger task lists | Still gated by plan quality and review |
+| **harness-loop** | Repeats execution within a chosen limit, consulting an advisor when needed and retaining stop reasons and restart information | Reaching the limit or finding no runnable work is distinct from completing every task |
 | **Codex companion review** | Schema-backed second opinion via `scripts/codex-companion.sh` | Raw `codex exec` is not the companion path |
 | **harness-mem** | Project-scoped memory and recall across sessions | Optional; purge stays explicit |
 | **OpenCode bootstrap** | Mirrors guidance into OpenCode-compatible surfaces | Runtime parity not claimed |
 | auto-approve *(experimental)* | `HARNESS_AUTO_APPROVE=on` records the gate result in the orchestration ledger | Default OFF. Approval prompts are **not** skipped yet |
 
+`/harness-loop` defaults to a limit of eight cycles. Claude Code normally
+handles one task per wake-up; Codex runs a batch whose dependencies are met.
+Use `/harness-loop status` to inspect the loop and `/harness-loop stop` to stop further execution.
+Resume work with `/harness-work --resume latest`, recovering the plan, diff,
+verification results, and remaining completion criteria.
+
 **Codex Breezing role routing.** After setup is rerun and Codex is restarted,
 Codex-native `$breezing` selects the managed Worker profile. `$breezing --codex`
 uses the companion Worker route. Both implementation Workers use
-`gpt-5.6-luna` / `max`; the routed Codex review route uses `gpt-5.6-sol` /
+`gpt-5.6-luna` / `max`; the routed Codex review route uses `gpt-6-astra` /
 `xhigh`. The main Codex session model stays unpinned, and explicit backends such
 as Cursor keep their own routing. See [activation and
 boundaries](codex/README.md#codex-breezing-role-routing).
+
+Native Codex children can inherit the parent's execution permissions. The
+Reviewer profile alone is not filesystem isolation. CCH's read-only review
+uses the companion path, which explicitly selects read-only execution.
 
 </details>
 
@@ -251,6 +305,8 @@ boundaries](codex/README.md#codex-breezing-role-routing).
 | [Distribution scope](docs/distribution-scope.md) | Included vs compatibility vs dev-only |
 | [Hardening parity](docs/hardening-parity.md) | Safety differences between hosts |
 | [Work All evidence pack](docs/evidence/work-all.md) | Verification contract for full-plan runs |
+| [Model roles](docs/model-routing-policy.md) | Role models, reasoning effort, and override priority |
+| [Task requests and handoffs](docs/prompt-calibration.md) | Completion criteria, evidence, correction instructions, and restart context |
 | [Language / i18n](docs/i18n.md) | Switching output language |
 | [Changelog](CHANGELOG.md) | User-facing version history |
 

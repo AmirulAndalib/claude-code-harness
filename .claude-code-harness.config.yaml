@@ -46,8 +46,8 @@ advisor:
   # Ask advisor once before escalating plateau/user-stop decisions
   consult_before_user_escalation: true
   # Default model mapping by runtime
-  claude_model: opus
-  codex_model: gpt-5.6-sol
+  claude_model: claude-fable-5-1
+  codex_model: gpt-6-astra
 
 # Cleanup thresholds
 cleanup:

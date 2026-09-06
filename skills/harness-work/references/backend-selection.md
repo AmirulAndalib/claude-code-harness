@@ -74,6 +74,8 @@ Lead は `composer` を Claude Worker 内の追加 agent と解釈せず、非 `
 
 ## Mode 1 — Producer → Sub-Lead → Composer 階層
 
+Go の `HARNESS_TEAM_HIERARCHY=sublead` は CLI の mini-plan 入口が未実装のため、現在は未対応。この更新で有効化せず、通常の flat companion 経路を使う。手動の Producer による独立タスク分解は別の経路として扱う。
+
 `harness work --team`（Breezing の Go orchestrator 経路）で **Mode 1 producer hierarchy** を有効にする opt-in 配線。正本は `spec.md`「Mode 1 — orchestrated Producer hierarchy」節。実装: `go/internal/sublead/sublead.go`、`go/cmd/harness/work_team.go`。
 
 | 層 | 役割 | 備考 |
@@ -84,13 +86,15 @@ Lead は `composer` を Claude Worker 内の追加 agent と解釈せず、非 `
 
 **hub-spoke のみ**: subWorker 同士は peer results や channel を受け取らない。Sub-Lead が inner `breezing.Orchestrator` で fan-out し、lane 結果を 1 つの `companion-result.v1` に畳む。
 
-**有効化**: `HARNESS_TEAM_HIERARCHY=sublead`（**default OFF**）。未設定時は flat companion worker（Lead が task ごとに companion を直接呼ぶ従来経路）。
+**設定名**: `HARNESS_TEAM_HIERARCHY=sublead`（**default OFF**）。CLI 入口の実装と検証が完了するまで設定しない。未設定時は flat companion worker（Lead が task ごとに companion を直接呼ぶ従来経路）。
 
 ## review→iterate ループ
 
+Go の `HARNESS_REVIEW_ITERATE=on` は production brain runner が未提供の `claude-companion.sh` を参照するため、end-to-end では未対応。この更新では有効化せず、既定 OFF を維持する。通常の Skill/Native reviewer loop は別の経路として利用できる。
+
 cross-CLI の品質ゲートを worker 出力に wrap する opt-in 配線。実装: `go/internal/reviewiterate/run.go`、`go/cmd/harness/work_team_reviewiterate.go`。
 
-**有効化**: `HARNESS_REVIEW_ITERATE=on`（**default OFF**）。`teamWorkerFactory` が inner worker（flat companion または Sub-Lead 配下 subWorker）を `wrapWorkerWithReviewIterate` で包む。
+**設定名**: `HARNESS_REVIEW_ITERATE=on`（**default OFF**）。brain runner の実装と検証が完了するまで設定しない。`teamWorkerFactory` が inner worker（flat companion または Sub-Lead 配下 subWorker）を `wrapWorkerWithReviewIterate` で包む設計。
 
 | 段階 | 動作 |
 |------|------|

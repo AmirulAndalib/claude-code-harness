@@ -81,6 +81,11 @@ helper script だけを `${HARNESS_PLUGIN_ROOT}/scripts/...` から呼ぶ。
 複数 Plans.md がある repo では、長時間 run の起動時に `--plan NAME` を明示する。
 runner は開始時に解決した Plans file を cycle 間で保持するため、途中で active plan を切り替えない。
 
+各サイクルは選択済み plan と最新の実行状態を読み、原依頼の目的、担当範囲、DoD、spec、証拠、承認の参照を Worker / Advisor に渡す。
+再開時は既に決まった方針と理由、失敗した方法、未解決事項、直前の advisor response も回収する。前回の助言で元の契約を置き換えない。
+承認済み可逆作業は再確認せず進める。不足は読み取りで補い、軽微な仮定と仕様・権限の判断を区別する。未承認の保護操作や `STOP` は既定の停止条件を守る。
+必要なチェックとレビューを満たした task に追加機能や無条件の再テストを足さない。起動、実行中、検証済み完了を分けて報告する。
+
 ```
 wake-up
   │
@@ -125,7 +130,7 @@ wake-up
 [Step 5] 1 タスクサイクル実行
   worker_result = Agent(
       subagent_type="claude-code-harness:worker",  # worker エージェント（harness-work ではない）
-      prompt="タスク: ${task_id}\nDoD: <Plans.md から抽出>\ncontract_path: ${CONTRACT_PATH}\nmode: breezing",
+      prompt="タスク: ${task_id}\n内容と目的: <選択済み Plans.md の内容・理由>\n担当範囲: <owned paths と除外範囲>\nDoD: <Plans.md から抽出>\nplan/spec: <選択済みパス>\ncontract_path: ${CONTRACT_PATH}\n証拠と前回結果: <実行結果・失敗履歴・advisor response>\n原依頼と承認の参照: <適用範囲と参照先>\nmode: breezing\n担当範囲で方法を選び、他担当の変更を戻さず完了してください。判断理由、検証コマンドの実結果と証拠、未確認点を返してください。",
       isolation="worktree",
       run_in_background=false
   )

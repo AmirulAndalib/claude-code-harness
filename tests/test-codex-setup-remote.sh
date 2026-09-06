@@ -125,8 +125,16 @@ grep -Fq 'model = "gpt-5.6-luna"' "${CODEX_HOME_DIR}/agents/worker.toml" || {
   echo "remote setup installed the wrong worker model" >&2
   exit 1
 }
-grep -Fq 'model = "gpt-5.6-sol"' "${CODEX_HOME_DIR}/agents/reviewer.toml" || {
+grep -Fqx 'model = "gpt-6-astra"' "${CODEX_HOME_DIR}/agents/reviewer.toml" || {
   echo "remote setup installed the wrong reviewer model" >&2
+  exit 1
+}
+grep -Fqx 'model_reasoning_effort = "xhigh"' "${CODEX_HOME_DIR}/agents/reviewer.toml" || {
+  echo "remote setup changed the reviewer reasoning effort" >&2
+  exit 1
+}
+grep -Fqx 'sandbox_mode = "read-only"' "${CODEX_HOME_DIR}/agents/reviewer.toml" || {
+  echo "remote setup changed the reviewer read-only boundary" >&2
   exit 1
 }
 grep -Fq 'personal-model' "${CODEX_HOME_DIR}/agents/personal.toml" || {

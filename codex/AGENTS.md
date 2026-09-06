@@ -26,6 +26,14 @@ language is configured, use English. Use Japanese only when `i18n.language: ja`,
 `CLAUDE_CODE_HARNESS_LANG=ja`, or an explicit session instruction requests
 Japanese output.
 
+## Task Execution Contract
+
+- Carry the requested outcome, constraints, owned files or areas, completion criteria, and available evidence into each task. Recover missing details from supplied contracts and read-only project context; inferred scope is not authorization.
+- Assessment-only requests produce findings. For execution requests, choose the method and continue authorized reversible work using reasonable, stated assumptions. Missing authorization, a material specification decision, or a protected operation blocks the dependent action; continue independent authorized work.
+- Delegate independently verifiable outcomes with explicit ownership and the configured concurrency limit. The coordinator continues useful work and reuses workers for related follow-up. Independent review uses fresh context and retains its bounded verdict contract.
+- Run required tests and collect completion evidence. After those checks pass, add or repeat tests only for new changes or unresolved concerns. Distinguish intended, performed, and verified actions, including unrun checks and remaining blockers.
+- Give decision reasons with checkable evidence, not private reasoning transcripts. Existing permissions, model and effort choices, schemas, TDD requirements, and safety gates remain authoritative.
+
 ## 開発ルール
 
 ### コミットメッセージ
@@ -281,8 +289,8 @@ Coding Agent がテスト失敗時に「楽をする」傾向（テスト改ざ�
 ```
 1. 正直に報告（「この方法では実装が困難です」）
 2. 理由を説明（技術的制約、前提条件の不備）
-3. 選択肢を提示（代替案、段階的実装）
-4. ユーザーの判断を仰ぐ
+3. 提供済みの情報を調べ、承認範囲内の代替手段で進められる作業は続ける
+4. 権限や重要な仕様判断が不足する場合だけ、その判断に依存する操作を止め、根拠と具体的な選択肢を報告する
 ```
 
 > ⚠️ **絶対にしてはいけないこと**: テストを改ざんして「成功」を偽装すること

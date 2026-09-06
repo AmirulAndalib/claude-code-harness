@@ -65,9 +65,13 @@ grep -q "各 task の実装 executor は Backend-resolved executor path に従�
 grep -q "cursor-companion.sh" "$WORK_SKILL" \
   || fail "harness-work: missing cursor-companion.sh delegation"
 
-# 3. role-scoped: reviewer/advisor stay on the brain (claude/Opus).
-grep -Eq "Reviewer.*(claude|Opus|brain)" "$WORK_SKILL" \
-  || fail "harness-work: missing role-scoped reviewer-stays-on-claude line"
+# 3. Role-scoped: resolve the reviewer/advisor separately from implementation.
+# The model catalog now uses Claude Fable; the independent-review boundary
+# must remain explicit instead of relying on a retired model name in prose.
+grep -Fq "Reviewer と Advisor は実装役から分離し、担当ごとのモデルを解決する。" "$WORK_SKILL" \
+  || fail "harness-work: reviewer/advisor must resolve their own role models"
+grep -Fq "Reviewer を cursor / codex バックエンドに routing しない" "$WORK_SKILL" \
+  || fail "harness-work: implementation backend must not become its own reviewer"
 
 # 4. breezing (codex) references the backend selection SSOT.
 grep -q "Execution Backend" "$BREEZING_SKILL" \
